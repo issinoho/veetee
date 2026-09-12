@@ -1,0 +1,15 @@
+[package]
+name = "vt-headless"
+description = "Headless driver for veetee: trace, replay and conformance testing"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+publish = false
+
+[dependencies]
+vt-parser.workspace = true
+
+[lints]
+workspace = true

@@ -1,0 +1,16 @@
+[package]
+name = "vt-parser"
+description = "Allocation-free DEC STD 070 / ECMA-48 control function parser"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[dependencies]
+
+[dev-dependencies]
+proptest = "1"
+
+[lints]
+workspace = true

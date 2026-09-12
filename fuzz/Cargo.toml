@@ -1,0 +1,23 @@
+[package]
+name = "veetee-fuzz"
+version = "0.0.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+publish = false
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+vt-parser = { path = "../crates/vt-parser" }
+
+# Not part of the main workspace: cargo-fuzz needs nightly and its own target dir.
+[workspace]
+
+[[bin]]
+name = "parser"
+path = "fuzz_targets/parser.rs"
+test = false
+doc = false
+bench = false
