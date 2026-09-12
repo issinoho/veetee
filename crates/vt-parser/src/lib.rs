@@ -106,6 +106,13 @@ pub trait Perform {
 
     /// VT52 `ESC Y line column`, both zero-based.
     fn vt52_cursor(&mut self, line: u8, column: u8) {}
+
+    /// Polled by [`Parser::advance_until_pause`] after each non-printing
+    /// action. Return `true` to stop so the caller can reconfigure the parser
+    /// (e.g. entering VT52 mode) before the remaining bytes are parsed.
+    fn pause_requested(&mut self) -> bool {
+        false
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -217,6 +224,25 @@ impl Parser {
 
     /// Feeds a buffer. Output is identical however the input is chunked.
     pub fn advance<P: Perform + ?Sized>(&mut self, performer: &mut P, bytes: &[u8]) {
+        self.run::<P, false>(performer, bytes);
+    }
+
+    /// Like [`Parser::advance`], but stops as soon as
+    /// [`Perform::pause_requested`] returns `true`. Returns the number of
+    /// bytes consumed; the caller feeds the rest after reconfiguring.
+    pub fn advance_until_pause<P: Perform + ?Sized>(
+        &mut self,
+        performer: &mut P,
+        bytes: &[u8],
+    ) -> usize {
+        self.run::<P, true>(performer, bytes)
+    }
+
+    fn run<P: Perform + ?Sized, const PAUSABLE: bool>(
+        &mut self,
+        performer: &mut P,
+        bytes: &[u8],
+    ) -> usize {
         let mut i = 0;
         while i < bytes.len() {
             if self.state == State::Ground && self.utf8.needed == 0 {
@@ -231,7 +257,11 @@ impl Parser {
             }
             self.advance_byte(performer, bytes[i]);
             i += 1;
+            if PAUSABLE && performer.pause_requested() {
+                break;
+            }
         }
+        i
     }
 
     /// Feeds a single byte.

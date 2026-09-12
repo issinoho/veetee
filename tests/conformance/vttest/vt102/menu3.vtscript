@@ -1,0 +1,11 @@
+# vttest menu 3: character sets — terminal model VT102.
+model vt102
+size 24 80
+answerback "Hello, world"
+spawn ${VTTEST} 24x80.132
+prompt "Enter choice number (0 - 12): "
+send "3\r"
+step menu3-installed-sets
+prompt "Enter choice number (0 - 12): "
+send "0\r"
+expect-exit

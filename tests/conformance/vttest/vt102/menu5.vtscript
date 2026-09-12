@@ -1,0 +1,262 @@
+# vttest menu 5: keyboard — terminal model VT102.
+# 5.2 (auto repeat) exercises the GUI's key-repeat handling and is not scripted here.
+model vt102
+size 24 80
+answerback "Hello, world"
+spawn ${VTTEST} 24x80.132
+prompt "Enter choice number (0 - 12): "
+send "5\r"
+
+# 5.1 LED lights (DECLL)
+prompt "Enter choice number (0 - 9): "
+send "1\r"
+step menu5-leds-1234
+step menu5-leds-234
+step menu5-leds-23
+step menu5-leds-12
+step menu5-leds-1
+step menu5-leds-off
+
+# 5.3 keyboard layout: US ASCII, every printable key
+prompt "Enter choice number (0 - 9): "
+send "3\r"
+prompt "Enter choice number (0 - 2): "
+send "0\r"
+settle
+type "`1234567890-=qwertyuiop[]\\asdfghjkl;'zxcvbnm,./ ~!@#$%^&*()_+QWERTYUIOP{}|ASDFGHJKL:\"ZXCVBNM<>?"
+settle
+key return
+step menu5-layout
+
+# 5.4 cursor keys: ANSI reset, ANSI set, VT52
+prompt "Enter choice number (0 - 9): "
+send "4\r"
+settle
+key up
+settle
+key down
+settle
+key right
+settle
+key left
+settle
+snapshot menu5-cursor-ansi
+key tab
+settle
+key up
+settle
+key down
+settle
+key right
+settle
+key left
+settle
+snapshot menu5-cursor-application
+key tab
+settle
+key up
+settle
+key down
+settle
+key right
+settle
+key left
+settle
+snapshot menu5-cursor-vt52
+key tab
+step menu5-cursor-done
+
+# 5.5 numeric keypad: ANSI numeric/application, VT52 numeric/application
+prompt "Enter choice number (0 - 9): "
+send "5\r"
+settle
+key pf1
+settle
+key pf2
+settle
+key pf3
+settle
+key pf4
+settle
+key kp7
+settle
+key kp8
+settle
+key kp9
+settle
+key kp-
+settle
+key kp4
+settle
+key kp5
+settle
+key kp6
+settle
+key kp,
+settle
+key kp1
+settle
+key kp2
+settle
+key kp3
+settle
+key kp0
+settle
+key kp.
+settle
+key enter
+settle
+snapshot menu5-keypad-ansi-numeric
+key tab
+settle
+key pf1
+settle
+key pf2
+settle
+key pf3
+settle
+key pf4
+settle
+key kp7
+settle
+key kp8
+settle
+key kp9
+settle
+key kp-
+settle
+key kp4
+settle
+key kp5
+settle
+key kp6
+settle
+key kp,
+settle
+key kp1
+settle
+key kp2
+settle
+key kp3
+settle
+key kp0
+settle
+key kp.
+settle
+key enter
+settle
+snapshot menu5-keypad-ansi-application
+key tab
+settle
+key pf1
+settle
+key pf2
+settle
+key pf3
+settle
+key pf4
+settle
+key kp7
+settle
+key kp8
+settle
+key kp9
+settle
+key kp-
+settle
+key kp4
+settle
+key kp5
+settle
+key kp6
+settle
+key kp,
+settle
+key kp1
+settle
+key kp2
+settle
+key kp3
+settle
+key kp0
+settle
+key kp.
+settle
+key enter
+settle
+snapshot menu5-keypad-vt52-numeric
+key tab
+settle
+key pf1
+settle
+key pf2
+settle
+key pf3
+settle
+key pf4
+settle
+key kp7
+settle
+key kp8
+settle
+key kp9
+settle
+key kp-
+settle
+key kp4
+settle
+key kp5
+settle
+key kp6
+settle
+key kp,
+settle
+key kp1
+settle
+key kp2
+settle
+key kp3
+settle
+key kp0
+settle
+key kp.
+settle
+key enter
+settle
+snapshot menu5-keypad-vt52-application
+key tab
+step menu5-keypad-done
+
+# 5.6 / 5.7 editing keypad and function keys: a VT102 has neither
+prompt "Enter choice number (0 - 9): "
+send "6\r"
+step menu5-editing-keypad
+prompt "Enter choice number (0 - 9): "
+send "7\r"
+step menu5-function-keys
+
+# 5.8 answerback (Ctrl+Break)
+prompt "Enter choice number (0 - 9): "
+send "8\r"
+settle
+send-answerback
+settle
+snapshot menu5-answerback
+key return
+
+# 5.9 control keys: every C0 control twice, then DEL
+prompt "Enter choice number (0 - 9): "
+send "9\r"
+settle
+type "\x00\x00\x01\x01\x02\x02\x03\x03\x04\x04\x05\x05\x06\x06\x07\x07\x08\x08\x09\x09\x0a\x0a\x0b\x0b\x0c\x0c\x0d\x0d\x0e\x0e\x0f\x0f"
+settle
+type "\x10\x10\x11\x11\x12\x12\x13\x13\x14\x14\x15\x15\x16\x16\x17\x17\x18\x18\x19\x19\x1a\x1a\x1b\x1b\x1c\x1c\x1d\x1d\x1e\x1e\x1f\x1f"
+settle
+key delete
+step menu5-control-keys
+
+prompt "Enter choice number (0 - 9): "
+send "0\r"
+prompt "Enter choice number (0 - 12): "
+send "0\r"
+expect-exit

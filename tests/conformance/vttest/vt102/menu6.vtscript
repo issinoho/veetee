@@ -1,0 +1,45 @@
+# vttest menu 6: terminal reports — terminal model VT102.
+model vt102
+size 24 80
+answerback "Hello, world"
+spawn ${VTTEST} 24x80.132
+prompt "Enter choice number (0 - 12): "
+send "6\r"
+
+prompt "Enter choice number (0 - 7): "
+send "1\r"
+step menu6-enq-answerback
+
+prompt "Enter choice number (0 - 7): "
+send "2\r"
+prompt "NewLine mode set. Push the RETURN key: "
+key return
+prompt "NewLine mode reset. Push the RETURN key: "
+key return
+step menu6-newline-mode
+
+prompt "Enter choice number (0 - 7): "
+send "3\r"
+step menu6-dsr
+
+prompt "Enter choice number (0 - 7): "
+send "4\r"
+step menu6-primary-da
+
+prompt "Enter choice number (0 - 7): "
+send "5\r"
+step menu6-secondary-da
+
+prompt "Enter choice number (0 - 7): "
+send "6\r"
+step menu6-tertiary-da
+
+prompt "Enter choice number (0 - 7): "
+send "7\r"
+step menu6-decreqtparm
+
+prompt "Enter choice number (0 - 7): "
+send "0\r"
+prompt "Enter choice number (0 - 12): "
+send "0\r"
+expect-exit

@@ -1,0 +1,16 @@
+# vttest menu 1: cursor movements — terminal model VT102.
+model vt102
+size 24 80
+answerback "Hello, world"
+spawn ${VTTEST} 24x80.132
+prompt "Enter choice number (0 - 12): "
+send "1\r"
+step menu1-box-80
+step menu1-box-132
+step menu1-autowrap-80
+step menu1-autowrap-132
+step menu1-controls-in-sequences
+step menu1-leading-zeros
+prompt "Enter choice number (0 - 12): "
+send "0\r"
+expect-exit

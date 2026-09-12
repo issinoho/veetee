@@ -1,0 +1,27 @@
+page 24x80 cursor 23,14 visible
+modes decawm
+ 1  |Testing Secondary Device Attributes (Firmware version)
+ 2  |
+ 3  |           failed
+   ~.........8
+ 4  |
+ 5  |
+ 6  |
+ 7  |
+ 8  |
+ 9  |
+10  |
+11  |
+12  |
+13  |
+14  |
+15  |
+16  |
+17  |
+18  |
+19  |
+20  |
+21  |
+22  |
+23  |Push <RETURN>
+24  |

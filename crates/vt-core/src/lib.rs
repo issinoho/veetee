@@ -1,0 +1,21 @@
+//! The veetee terminal model: a DEC VT terminal (VT52 through VT525) with no
+//! dependency on any user interface.
+//!
+//! Feed host output to [`Terminal::advance`], send [`Terminal::take_output`]
+//! back to the host, and render from [`Terminal::grid`] and
+//! [`Terminal::cursor`]. Behaviour follows DEC STD 070 and the DEC programmer
+//! reference manuals; defaults are DEC factory Set-Up values.
+
+pub mod cell;
+pub mod charset;
+mod config;
+pub mod dump;
+pub mod grid;
+mod keyboard;
+mod modes;
+mod terminal;
+
+pub use config::{Config, Extensions, Model};
+pub use keyboard::Key;
+pub use modes::Modes;
+pub use terminal::{Cursor, Event, Terminal};

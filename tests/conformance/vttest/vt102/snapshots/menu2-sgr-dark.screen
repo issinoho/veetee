@@ -1,0 +1,34 @@
+page 24x80 cursor 23,31 visible
+modes decawm
+ 1  |                   Graphic rendition test pattern:
+ 2  |
+ 3  |
+ 4  |vanilla                                bold
+   ~.......................................1111
+ 5  |
+ 6  |     underline                              bold underline
+   ~.....222222222..............................33333333333333
+ 7  |
+ 8  |blink                                  bold blink
+   ~44444..................................5555555555
+ 9  |
+10  |     underline blink                        bold underline blink
+   ~.....666666666666666........................77777777777777777777
+11  |
+12  |negative                               bold negative
+   ~88888888...............................9999999999999
+13  |
+14  |     underline negative                     bold underline negative
+   ~.....aaaaaaaaaaaaaaaaaa.....................bbbbbbbbbbbbbbbbbbbbbbb
+15  |
+16  |blink negative                         bold blink negative
+   ~cccccccccccccc.........................ddddddddddddddddddd
+17  |
+18  |     underline blink negative               bold underline blink negative
+   ~.....eeeeeeeeeeeeeeeeeeeeeeee...............fffffffffffffffffffffffffffff
+19  |
+20  |
+21  |
+22  |
+23  |Dark background. Push <RETURN>
+24  |

@@ -1,0 +1,27 @@
+page 24x80 cursor 24,18 visible
+modes decawm
+ 1  |NUL (CTRL-@ or CTRL-Space)              DLE (CTRL-P)
+ 2  |SOH (CTRL-A)                            DC1 (CTRL-Q) (X-On)
+ 3  |STX (CTRL-B)                            DC2 (CTRL-R)
+ 4  |ETX (CTRL-C)                            DC3 (CTRL-S) (X-Off)
+ 5  |EOT (CTRL-D)                            DC4 (CTRL-T)
+ 6  |ENQ (CTRL-E)                            NAK (CTRL-U)
+ 7  |ACK (CTRL-F)                            SYN (CTRL-V)
+ 8  |BEL (CTRL-G)                            ETB (CTRL-W)
+ 9  |BS  (CTRL-H) (BACK SPACE)               CAN (CTRL-X)
+10  |HT  (CTRL-I) (TAB)                      EM  (CTRL-Y)
+11  |LF  (CTRL-J) (LINE FEED)                SUB (CTRL-Z)
+12  |VT  (CTRL-K)                            ESC (CTRL-[) (ESCAPE)
+13  |FF  (CTRL-L)                            FS  (CTRL-\ or CTRL-? or CTRL-_)
+14  |CR  (CTRL-M) (RETURN)                   GS  (CTRL-])
+15  |SO  (CTRL-N)                            RS  (CTRL-^ or CTRL-~ or CTRL-`)
+16  |SI  (CTRL-O)                            US  (CTRL-_ or CTRL-?)
+17  |
+18  |
+19  |Push each CTRL-key TWICE. Note that you should be able to send *all*
+20  |CTRL-codes twice, including CTRL-S (X-Off) and CTRL-Q (X-On)!
+21  |Finish with DEL (also called DELETE or RUB OUT), or wait 1 minute.
+22  |
+23  | <127>  -- not a CTRL key
+   ~8888888
+24  |OK. Push <RETURN>

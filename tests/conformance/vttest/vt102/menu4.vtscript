@@ -1,0 +1,16 @@
+# vttest menu 4: double-sized characters — terminal model VT102.
+model vt102
+size 24 80
+answerback "Hello, world"
+spawn ${VTTEST} 24x80.132
+prompt "Enter choice number (0 - 12): "
+send "4\r"
+step menu4-dwl-80
+step menu4-dwl-80-reset
+step menu4-dwl-132
+step menu4-dwl-132-reset
+step menu4-dhl-frame
+step menu4-dhl-half-box
+prompt "Enter choice number (0 - 12): "
+send "0\r"
+expect-exit

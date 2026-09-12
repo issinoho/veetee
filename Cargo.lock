@@ -277,10 +277,19 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e6e4313cd5fcd3dad5cafa179702e2b244f760991f45397d14d4ebf38247da75"
 
 [[package]]
-name = "vt-headless"
+name = "vt-core"
 version = "0.1.0"
 dependencies = [
  "vt-parser",
+]
+
+[[package]]
+name = "vt-headless"
+version = "0.1.0"
+dependencies = [
+ "vt-core",
+ "vt-parser",
+ "vt-transport",
 ]
 
 [[package]]
@@ -288,6 +297,13 @@ name = "vt-parser"
 version = "0.1.0"
 dependencies = [
  "proptest",
+]
+
+[[package]]
+name = "vt-transport"
+version = "0.1.0"
+dependencies = [
+ "rustix",
 ]
 
 [[package]]
@@ -328,6 +344,10 @@ name = "wit-bindgen"
 version = "0.46.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f17a85883d4e6d00e8a97c586de764dabcc06133f7f1d55dce5cdc070ad7fe59"
+
+[[package]]
+name = "xtask"
+version = "0.1.0"
 
 [[package]]
 name = "zerocopy"

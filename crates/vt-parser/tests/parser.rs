@@ -711,6 +711,42 @@ fn utf8_high_bytes_ignored_inside_csi() {
     );
 }
 
+#[test]
+fn advance_until_pause_stops_after_requested_action() {
+    struct Pauser {
+        ev: Vec<Ev>,
+        pause: bool,
+    }
+    impl Perform for Pauser {
+        fn print(&mut self, b: u8) {
+            self.ev.push(Print(b));
+        }
+        fn csi_dispatch(&mut self, seq: Sequence<'_>) {
+            self.ev
+                .push(Ev::Csi(seq.private, vec![], vec![], seq.final_byte));
+            self.pause = true;
+        }
+        fn pause_requested(&mut self) -> bool {
+            std::mem::take(&mut self.pause)
+        }
+    }
+    let mut parser = Parser::new();
+    let mut p = Pauser {
+        ev: vec![],
+        pause: false,
+    };
+    let input = b"ab\x1b[?2lcd";
+    let n = parser.advance_until_pause(&mut p, input);
+    assert_eq!(n, 7);
+    assert_eq!(
+        p.ev,
+        vec![Print(b'a'), Print(b'b'), csi(Some(b'?'), &[], &[], b'l')]
+    );
+    parser.set_vt52(true);
+    assert_eq!(parser.advance_until_pause(&mut p, &input[n..]), 2);
+    assert_eq!(p.ev.len(), 5);
+}
+
 // ------------------------------------------------------------------ properties
 
 #[test]

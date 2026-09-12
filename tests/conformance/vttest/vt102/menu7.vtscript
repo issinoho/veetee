@@ -1,0 +1,13 @@
+# vttest menu 7: VT52 mode — terminal model VT102.
+model vt102
+size 24 80
+answerback "Hello, world"
+spawn ${VTTEST} 24x80.132
+prompt "Enter choice number (0 - 12): "
+send "7\r"
+step menu7-box
+step menu7-charsets
+step menu7-identify
+prompt "Enter choice number (0 - 12): "
+send "0\r"
+expect-exit

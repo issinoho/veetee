@@ -1,0 +1,114 @@
+/// The DEC terminal being emulated. Ordering follows capability.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum Model {
+    Vt100,
+    Vt102,
+    Vt220,
+    Vt320,
+    Vt420,
+    Vt510,
+    Vt520,
+    Vt525,
+}
+
+impl Model {
+    /// Highest conformance level (DECSCL): 1 = VT100, 2 = VT200, 3 = VT300, 4 = VT400, 5 = VT500.
+    pub const fn max_level(self) -> u8 {
+        match self {
+            Model::Vt100 | Model::Vt102 => 1,
+            Model::Vt220 => 2,
+            Model::Vt320 => 3,
+            Model::Vt420 => 4,
+            Model::Vt510 | Model::Vt520 | Model::Vt525 => 5,
+        }
+    }
+
+    /// Parameters of the Primary DA response (`CSI ? … c`).
+    ///
+    /// Extension codes: 1 132 columns, 2 printer port, 6 selective erase,
+    /// 7 DRCS, 8 UDK, 9 NRCS, 15 technical set, 18 windowing,
+    /// 21 horizontal scrolling, 22 colour.
+    // TODO(M4): confirm VT5xx attribute lists against EK-VT510-RM / EK-VT520-RM.
+    pub const fn primary_da(self) -> &'static str {
+        match self {
+            Model::Vt100 => "1;2",
+            Model::Vt102 => "6",
+            Model::Vt220 => "62;1;2;6;7;8;9",
+            Model::Vt320 => "63;1;2;6;7;8;9",
+            Model::Vt420 => "64;1;2;6;7;8;9;15;18;21",
+            Model::Vt510 | Model::Vt520 => "65;1;2;6;7;8;9;15;18;21",
+            Model::Vt525 => "65;1;2;6;7;8;9;15;18;21;22",
+        }
+    }
+
+    /// Parameters of the Secondary DA response (`CSI > … c`); VT100-class terminals have none.
+    pub const fn secondary_da(self) -> Option<&'static str> {
+        match self {
+            Model::Vt100 | Model::Vt102 => None,
+            Model::Vt220 => Some("1;10;0"),
+            Model::Vt320 => Some("24;10;0"),
+            Model::Vt420 => Some("41;10;0"),
+            Model::Vt510 => Some("61;10;0"),
+            Model::Vt520 => Some("64;10;0"),
+            Model::Vt525 => Some("65;10;0"),
+        }
+    }
+
+    /// The conventional `TERM` name for hosts that use terminfo.
+    pub const fn term_name(self) -> &'static str {
+        match self {
+            Model::Vt100 => "vt100",
+            Model::Vt102 => "vt102",
+            Model::Vt220 => "vt220",
+            Model::Vt320 => "vt320",
+            Model::Vt420 => "vt420",
+            Model::Vt510 | Model::Vt520 | Model::Vt525 => "vt520",
+        }
+    }
+
+    pub const fn has_color(self) -> bool {
+        matches!(self, Model::Vt525)
+    }
+}
+
+/// Non-DEC behaviour. Everything here is off by default: veetee emulates
+/// DEC terminals first and only adopts xterm conventions when a profile asks.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct Extensions {
+    /// Decode UTF-8 from the host instead of DEC 8-bit graphic sets.
+    pub utf8: bool,
+    /// Accept ECMA-48 colon sub-parameters and xterm SGR 38/48/90–107.
+    pub xterm_sgr: bool,
+}
+
+/// Power-up / Set-Up configuration. Defaults are DEC factory Set-Up values.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Config {
+    pub model: Model,
+    pub rows: usize,
+    pub cols: usize,
+    /// Set-Up "Auto Wrap". DEC factory default: off.
+    pub autowrap: bool,
+    /// Set-Up "New Line" (LNM). DEC factory default: off.
+    pub new_line: bool,
+    /// Set-Up "Answerback" message, sent in reply to ENQ.
+    pub answerback: Vec<u8>,
+    /// Lines kept after scrolling off the top of the page.
+    pub scrollback_lines: usize,
+    pub extensions: Extensions,
+}
+
+impl Default for Config {
+    fn default() -> Self {
+        Config {
+            model: Model::Vt420,
+            rows: 24,
+            cols: 80,
+            autowrap: false,
+            new_line: false,
+            answerback: Vec::new(),
+            scrollback_lines: 10_000,
+            extensions: Extensions::default(),
+        }
+    }
+}

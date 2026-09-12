@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/*"]
+members = ["crates/*", "xtask"]
 
 [workspace.package]
 version = "0.1.0"
@@ -11,6 +11,8 @@ authors = ["Iain Smith <iain@issinoho.com>"]
 
 [workspace.dependencies]
 vt-parser = { path = "crates/vt-parser" }
+vt-core = { path = "crates/vt-core" }
+vt-transport = { path = "crates/vt-transport" }
 
 [workspace.lints.rust]
 unsafe_code = "deny"

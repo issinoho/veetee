@@ -1,0 +1,26 @@
+page 24x80 cursor 8,14 visible
+modes decawm
+ 1  |********************************************************************************
+ 2  |********************************************************************************
+ 3  |********************************************************************************
+ 4  |
+ 5  |This should be three identical lines of *'s completely filling
+ 6  |the top of the screen without any empty lines between.
+ 7  |(Test of WRAP AROUND mode setting.)
+ 8  |Push <RETURN>
+ 9  |
+10  |
+11  |
+12  |
+13  |
+14  |
+15  |
+16  |
+17  |
+18  |
+19  |
+20  |
+21  |
+22  |
+23  |
+24  |

@@ -1,0 +1,26 @@
+page 24x80 cursor 22,14 visible
+modes decawm
+ 1  |Test of autowrap, mixing control and print characters.
+ 2  |The left/right margins should have letters in order:
+ 3  |I                                                                              i
+ 4  |J                                                                              j
+ 5  |K                                                                              k
+ 6  |L                                                                              l
+ 7  |M                                                                              m
+ 8  |N                                                                              n
+ 9  |O                                                                              o
+10  |P                                                                              p
+11  |Q                                                                              q
+12  |R                                                                              r
+13  |S                                                                              s
+14  |T                                                                              t
+15  |U                                                                              u
+16  |V                                                                              v
+17  |W                                                                              w
+18  |X                                                                              x
+19  |Y                                                                              y
+20  |Z                                                                              z
+21  |
+22  |Push <RETURN>
+23  |
+24  |

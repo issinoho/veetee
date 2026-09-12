@@ -1,17 +1,14 @@
 [package]
-name = "vt-headless"
-description = "Headless driver for veetee: trace, replay and conformance testing"
+name = "vt-core"
+description = "DEC VT terminal model (VT52 through VT525), independent of any UI"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 authors.workspace = true
-publish = false
 
 [dependencies]
 vt-parser.workspace = true
-vt-core.workspace = true
-vt-transport.workspace = true
 
 [lints]
 workspace = true

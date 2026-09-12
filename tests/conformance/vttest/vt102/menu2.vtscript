@@ -1,0 +1,25 @@
+# vttest menu 2: screen features — terminal model VT102.
+model vt102
+size 24 80
+answerback "Hello, world"
+spawn ${VTTEST} 24x80.132
+prompt "Enter choice number (0 - 12): "
+send "2\r"
+step menu2-wraparound
+step menu2-tab-stops
+step menu2-132-light
+step menu2-80-light
+step menu2-132-dark
+step menu2-80-dark
+step menu2-soft-scroll-small
+step menu2-soft-scroll-full
+step menu2-jump-scroll-small
+step menu2-jump-scroll-full
+step menu2-origin-relative
+step menu2-origin-absolute
+step menu2-sgr-dark
+step menu2-sgr-light
+step menu2-save-restore
+prompt "Enter choice number (0 - 12): "
+send "0\r"
+expect-exit
