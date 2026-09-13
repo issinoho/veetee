@@ -21,3 +21,26 @@ vt-transport.workspace = true
 
 [lints]
 workspace = true
+
+# Debian package, built by `cargo xtask dist` with cargo-deb.
+[package.metadata.deb]
+maintainer = "Iain Smith <iain@issinoho.com>"
+copyright = "2026 Iain Smith and the veetee contributors"
+license-file = ["../../LICENSE-MIT", "0"]
+extended-description = """\
+veetee emulates DEC VT100, VT102, VT220, VT320 and VT420 terminals for OpenVMS and other \
+DEC hosts, with Telnet, SSH, serial and local connections, DEC-style fonts and an LK401 \
+keyboard layout."""
+section = "x11"
+priority = "optional"
+depends = "$auto"
+recommends = "openssh-client"
+assets = [
+    ["target/release/veetee", "usr/bin/", "755"],
+    ["target/release/vt-headless", "usr/bin/", "755"],
+    ["../../data/com.issinoho.Veetee.desktop", "usr/share/applications/", "644"],
+    ["../../README.md", "usr/share/doc/veetee/README.md", "644"],
+    ["../../CHANGELOG.md", "usr/share/doc/veetee/CHANGELOG.md", "644"],
+    ["../../LICENSE-APACHE", "usr/share/doc/veetee/LICENSE-APACHE", "644"],
+    ["../vt-fonts/fonts/OFL.txt", "usr/share/doc/veetee/fonts-OFL.txt", "644"],
+]

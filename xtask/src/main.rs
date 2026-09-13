@@ -18,7 +18,11 @@ tasks:
       compatibility enabled. Failures must match
       tests/conformance/esctest/expected-failures.txt, where every entry
       gives the DEC reason for the difference. --update rewrites the list,
-      keeping existing reasons.";
+      keeping existing reasons.
+  dist [--no-deb]
+      Build release binaries and package them under target/dist: a
+      veetee-VERSION-x86_64-linux.tar.gz, a Debian package (needs cargo-deb)
+      and SHA256SUMS.";
 
 /// Pinned vttest release. Update both together.
 const VTTEST_VERSION: &str = "20251205";
@@ -35,6 +39,7 @@ fn main() -> ExitCode {
     let result = match args.first().map(String::as_str) {
         Some("vttest") => vttest(&args[1..]),
         Some("esctest") => esctest(&args[1..]),
+        Some("dist") => dist(&args[1..]),
         _ => Err(USAGE.to_string()),
     };
     match result {
@@ -309,4 +314,87 @@ fn fetch_esctest() -> Result<PathBuf> {
         .args(["checkout", "--quiet", "FETCH_HEAD"])
         .current_dir(&dir))?;
     Ok(dir)
+}
+
+fn dist(args: &[String]) -> Result<()> {
+    let deb = !args.iter().any(|a| a == "--no-deb");
+    let version = env!("CARGO_PKG_VERSION");
+    let arch = env::consts::ARCH;
+    // Release artifacts carry no debug information.
+    let release_env = [
+        ("CARGO_PROFILE_RELEASE_DEBUG", "0"),
+        ("CARGO_PROFILE_RELEASE_STRIP", "symbols"),
+    ];
+    run(Command::new(env!("CARGO"))
+        .args([
+            "build",
+            "--release",
+            "--locked",
+            "-p",
+            "veetee",
+            "-p",
+            "vt-headless",
+        ])
+        .envs(release_env)
+        .current_dir(root()))?;
+
+    let dist = root().join("target/dist");
+    let name = format!("veetee-{version}-{arch}-linux");
+    let stage = dist.join(&name);
+    let _ = fs::remove_dir_all(&dist);
+    let copy = |from: &str, to: &str| -> Result<()> {
+        let dest = stage.join(to);
+        fs::create_dir_all(dest.parent().unwrap()).map_err(|e| e.to_string())?;
+        fs::copy(root().join(from), &dest).map_err(|e| format!("{from}: {e}"))?;
+        Ok(())
+    };
+    copy("target/release/veetee", "bin/veetee")?;
+    copy("target/release/vt-headless", "bin/vt-headless")?;
+    copy(
+        "data/com.issinoho.Veetee.desktop",
+        "share/applications/com.issinoho.Veetee.desktop",
+    )?;
+    for doc in ["README.md", "CHANGELOG.md", "LICENSE-MIT", "LICENSE-APACHE"] {
+        copy(doc, doc)?;
+    }
+    copy("crates/vt-fonts/fonts/OFL.txt", "fonts-OFL.txt")?;
+
+    let tarball = format!("{name}.tar.gz");
+    run(Command::new("tar")
+        .args(["--owner=0", "--group=0", "-czf", &tarball, &name])
+        .current_dir(&dist))?;
+    fs::remove_dir_all(&stage).map_err(|e| e.to_string())?;
+    let mut files = vec![tarball];
+
+    if deb {
+        run(Command::new(env!("CARGO"))
+            .args(["deb", "--no-build", "-p", "veetee", "--output"])
+            .arg(&dist)
+            .current_dir(root()))
+        .map_err(|e| {
+            format!("{e}\n(install cargo-deb with `cargo install cargo-deb`, or pass --no-deb)")
+        })?;
+        for entry in read_dir_sorted(&dist)? {
+            if entry.extension().is_some_and(|e| e == "deb") {
+                files.push(entry.file_name().unwrap().to_string_lossy().into_owned());
+            }
+        }
+    }
+
+    let sums = Command::new("sha256sum")
+        .args(&files)
+        .current_dir(&dist)
+        .output()
+        .map_err(|e| e.to_string())?;
+    if !sums.status.success() {
+        return Err("sha256sum failed".into());
+    }
+    fs::write(dist.join("SHA256SUMS"), &sums.stdout).map_err(|e| e.to_string())?;
+    for file in files
+        .iter()
+        .chain(std::iter::once(&"SHA256SUMS".to_string()))
+    {
+        println!("{}", dist.join(file).display());
+    }
+    Ok(())
 }

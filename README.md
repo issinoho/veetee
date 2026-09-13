@@ -21,13 +21,26 @@ runs with every difference from xterm explained against DEC documentation.
 | `crates/vt-render` | OpenGL renderer: dot stretching, scan lines, double-size lines, 132 columns |
 | `crates/veetee` | The GTK4/libadwaita application |
 | `crates/vt-headless` | CLI driver: `trace` parser actions; `run` scripted sessions with golden screen snapshots |
-| `xtask` | `cargo xtask vttest` / `cargo xtask esctest` fetch pinned vttest and esctest2 and run the conformance suites |
+| `xtask` | `cargo xtask vttest` / `esctest` run the conformance suites against pinned upstream versions; `dist` builds release packages |
+| `tests/conformance` | vttest session scripts with golden screens; esctest2 expected failures |
 | `docs/compat-matrix.md` | Per-function DEC compatibility status and sources |
+| `data/` | Desktop entry |
 | `fuzz/` | cargo-fuzz targets (nightly) |
+
+## Installing
+
+[Releases](https://github.com/issinoho/veetee/releases) provide a Debian/Ubuntu package and an
+x86_64 Linux tarball, both needing GTK 4.12+ and libadwaita 1.5+:
+
+```sh
+sudo apt install ./veetee_0.3.0-1_amd64.deb
+```
+
+Changes are listed in [CHANGELOG.md](CHANGELOG.md).
 
 ## Running
 
-Requires GTK 4.12+ and libadwaita 1.5+ development packages
+Building from source requires GTK 4.12+ and libadwaita 1.5+ development packages
 (`sudo apt install libgtk-4-dev libadwaita-1-dev` on Ubuntu).
 
 ```sh
@@ -36,7 +49,12 @@ cargo run -p veetee -- --telnet vms1             # Telnet (or telnet://vms1:2323
 cargo run -p veetee -- --ssh system@vms1         # SSH via your OpenSSH client and ~/.ssh/config
 cargo run -p veetee -- --serial /dev/ttyUSB0     # serial line (see below)
 cargo run -p veetee -- --model vt102 --telnet vms1
+cargo run -p veetee -- --command 'vttest'        # any program, via /bin/sh -c
+cargo run -p veetee -- --record session.bin --telnet vms1   # keep the host output for replay
 ```
+
+`cargo run -p veetee -- --help` lists every option. More documentation, including OpenVMS
+tips, is in the [wiki](https://github.com/issinoho/veetee/wiki).
 
 Telnet negotiates BINARY (so 8-bit DEC controls pass unchanged), terminal type (`VT420`, or the
 selected model), window size and suppress-go-ahead; F5 sends a Telnet BREAK. SSH runs the system
@@ -44,7 +62,16 @@ selected model), window size and suppress-go-ahead; F5 sends a Telnet BREAK. SSH
 `TERM` set to the emulated model. Network and serial sessions keep their window open when the
 connection closes, so the final screen can still be read and copied.
 
-The phosphor colour (white P4, green P1, amber P3) is in the window menu.
+The phosphor colour (white P4, green P1, amber P3) and full screen are in the window menu. Below
+the page is the VT420 indicator status line (reverse video: printer, Hold Screen, keyboard lock,
+page number and cursor position); hosts can switch it to a host-writable status line.
+
+### Copy and paste
+
+Drag to select (double-click selects a word, including whole VMS file specifications such as
+`DKA0:[SYS0.SYSCOMMON]LOGIN.COM;1`; triple-click selects a line). The selection is copied to the
+primary selection, so middle-click pastes it. Ctrl+Shift+C copies to the clipboard and
+Ctrl+Shift+V pastes; both are also on the right-click menu.
 
 ### Serial lines
 
@@ -72,7 +99,10 @@ The PC keyboard is mapped to LK401 key positions:
 | NumLock / * − | PF1 PF2 PF3 PF4 |
 | Keypad + (Shift: −) | Keypad , (−) |
 | Backspace | `<X]` (sends DEL) |
-| Ctrl+Shift+V | Paste |
+| Pause, Print Screen, Break (Ctrl+Break) | Hold Screen, Print Screen, Break (Answerback) |
+| Ctrl+Shift+C, Ctrl+Shift+V | Copy, Paste |
+
+Set-Up (F3), Print Screen and Data/Talk are not implemented yet.
 
 ## Development
 
@@ -81,6 +111,7 @@ cargo test --workspace
 cargo xtask vttest                    # vttest conformance (needs curl, a C compiler, make)
 cargo xtask vttest --bless vt102/menu2  # re-record snapshots after reviewing a change
 cargo xtask esctest                   # esctest2 against expected-failures.txt (needs git, python3)
+cargo xtask dist                      # release tarball, .deb (needs cargo-deb) and SHA256SUMS
 cargo run -p vt-headless -- trace --utf8 some-capture.bin
 cargo +nightly fuzz run parser        # requires cargo-fuzz
 ```
@@ -89,4 +120,5 @@ cargo +nightly fuzz run parser        # requires cargo-fuzz
 
 Code is dual-licensed under [MIT](LICENSE-MIT) or [Apache-2.0](LICENSE-APACHE), at your
 option. Only permissively-licensed dependencies are accepted (enforced by `cargo deny`).
-Bundled fonts will be original designs released under the SIL Open Font License.
+The bundled fonts are original designs released under the SIL Open Font License
+(`crates/vt-fonts/fonts/OFL.txt`).
