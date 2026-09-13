@@ -4,9 +4,10 @@ use std::cell::RefCell;
 use std::rc::Rc;
 use std::time::{Duration, Instant};
 
-use gtk::glib;
 use gtk::glib::translate::IntoGlib;
 use gtk::prelude::*;
+use gtk::{gdk, gio, glib};
+use vt_core::{Point, Selection};
 use vt_keyboard::{Action, Local, Mods};
 use vt_render::{FrameState, Renderer, Theme};
 
@@ -31,6 +32,9 @@ struct State {
     status: Callback,
     /// Developer hook: save a frame to this PPM file after a delay, then exit.
     capture: Option<(std::path::PathBuf, Duration)>,
+    selection: Option<Selection>,
+    /// Page position where the current mouse drag began.
+    drag_anchor: Option<Point>,
 }
 
 impl State {
@@ -83,10 +87,13 @@ impl TerminalView {
                     .unwrap_or(1500);
                 (path.into(), Duration::from_millis(delay))
             }),
+            selection: None,
+            drag_anchor: None,
         }));
         let view = TerminalView { area, state };
         view.connect_gl();
         view.connect_input();
+        view.connect_mouse();
         view.connect_notices(notices, on_exit);
         view.start_blink_timer();
         view
@@ -149,6 +156,7 @@ impl TerminalView {
                 cursor_on,
                 blink_on,
                 focused: st.focused,
+                selection: st.selection,
             };
             let scale = area.scale_factor();
             let (w, h) = (
@@ -226,13 +234,166 @@ impl TerminalView {
             area.queue_render();
         });
         self.area.add_controller(focus);
+    }
+
+    /// Selection with the mouse: drag for a stream, double-click for a word,
+    /// triple-click for a line. Middle-click pastes the primary selection;
+    /// right-click opens Copy/Paste.
+    fn connect_mouse(&self) {
+        let actions = gio::SimpleActionGroup::new();
+        let copy = gio::SimpleAction::new("copy", None);
+        copy.connect_activate({
+            let view = self.clone();
+            move |_, _| view.copy_to_clipboard()
+        });
+        actions.add_action(&copy);
+        let paste = gio::SimpleAction::new("paste", None);
+        paste.connect_activate({
+            let view = self.clone();
+            move |_, _| view.paste(clipboard_for(&view.area, false))
+        });
+        actions.add_action(&paste);
+        self.area.insert_action_group("view", Some(&actions));
+
+        let menu = gio::Menu::new();
+        menu.append(Some("Copy"), Some("view.copy"));
+        menu.append(Some("Paste"), Some("view.paste"));
+        let popover = gtk::PopoverMenu::from_model(Some(&menu));
+        popover.set_parent(&self.area);
+        popover.set_has_arrow(false);
+        self.area.connect_unrealize({
+            let popover = popover.clone();
+            move |_| popover.unparent()
+        });
 
         let click = gtk::GestureClick::new();
-        let area = self.area.clone();
-        click.connect_pressed(move |_, _, _, _| {
-            area.grab_focus();
+        click.set_button(0);
+        let view = self.clone();
+        click.connect_pressed(move |gesture, n_press, x, y| {
+            view.area.grab_focus();
+            match gesture.current_button() {
+                gdk::BUTTON_PRIMARY => {
+                    let Some(p) = view.point_at(x, y) else { return };
+                    let selection = {
+                        let st = view.state.borrow();
+                        let term = st.session.terminal();
+                        match n_press {
+                            2 => Some(term.word_at(p)),
+                            n if n >= 3 => Some(term.line_at(p)),
+                            _ => None,
+                        }
+                    };
+                    view.set_selection(selection);
+                    if selection.is_some() {
+                        view.copy_to_primary();
+                    }
+                }
+                gdk::BUTTON_MIDDLE => view.paste(clipboard_for(&view.area, true)),
+                gdk::BUTTON_SECONDARY => {
+                    copy.set_enabled(view.state.borrow().selection.is_some());
+                    let rect = gdk::Rectangle::new(x as i32, y as i32, 1, 1);
+                    popover.set_pointing_to(Some(&rect));
+                    popover.popup();
+                }
+                _ => {}
+            }
         });
         self.area.add_controller(click);
+
+        let drag = gtk::GestureDrag::new();
+        drag.set_button(gdk::BUTTON_PRIMARY);
+        let view = self.clone();
+        drag.connect_drag_begin(move |_, x, y| {
+            view.state.borrow_mut().drag_anchor = view.point_at(x, y);
+        });
+        let view = self.clone();
+        drag.connect_drag_update(move |gesture, dx, dy| {
+            let Some((x, y)) = gesture.start_point() else {
+                return;
+            };
+            // Ignore jitter so a plain click does not start a selection.
+            if dx.abs() < 3.0 && dy.abs() < 3.0 {
+                return;
+            }
+            let anchor = view.state.borrow().drag_anchor;
+            if let (Some(anchor), Some(head)) = (anchor, view.point_at(x + dx, y + dy)) {
+                view.set_selection(Some(Selection::new(anchor, head)));
+            }
+        });
+        let view = self.clone();
+        drag.connect_drag_end(move |_, _, _| {
+            let dragged = view.state.borrow_mut().drag_anchor.take().is_some();
+            if dragged && view.state.borrow().selection.is_some() {
+                view.copy_to_primary();
+            }
+        });
+        self.area.add_controller(drag);
+    }
+
+    /// The page cell under a widget position, clamped to the page.
+    fn point_at(&self, x: f64, y: f64) -> Option<Point> {
+        let st = self.state.borrow();
+        let term = st.session.terminal();
+        let grid = term.grid();
+        let scale = f64::from(self.area.scale_factor());
+        let (w, h) = (
+            (f64::from(self.area.width()) * scale).max(1.0) as u32,
+            (f64::from(self.area.height()) * scale).max(1.0) as u32,
+        );
+        let layout = vt_render::layout(w, h, grid.rows(), grid.cols());
+        let px = ((x * scale) as f32).clamp(layout.x, layout.x + layout.width - 1.0);
+        let py = ((y * scale) as f32).clamp(layout.y, layout.y + layout.height - 1.0);
+        let (row, col) = layout.cell_at(px, py)?;
+        let line = grid.line(row.min(grid.rows() - 1));
+        let col = if line.size.is_double_width() {
+            col / 2
+        } else {
+            col
+        };
+        Some(Point {
+            row,
+            col: col.min(line.width() - 1),
+        })
+    }
+
+    fn set_selection(&self, selection: Option<Selection>) {
+        let mut st = self.state.borrow_mut();
+        if st.selection != selection {
+            st.selection = selection;
+            self.area.queue_render();
+        }
+    }
+
+    fn selected_text(&self) -> Option<String> {
+        let st = self.state.borrow();
+        let selection = st.selection?;
+        let text = st.session.terminal().selection_text(&selection);
+        (!text.is_empty()).then_some(text)
+    }
+
+    fn copy_to_clipboard(&self) {
+        match self.selected_text() {
+            Some(text) => self.area.clipboard().set_text(&text),
+            None => (self.state.borrow().notify)("Nothing is selected"),
+        }
+    }
+
+    fn copy_to_primary(&self) {
+        if let Some(text) = self.selected_text() {
+            self.area.primary_clipboard().set_text(&text);
+        }
+    }
+
+    /// Types clipboard text into the session. Line breaks are sent as Return
+    /// (CR), as a user would type them.
+    fn paste(&self, clipboard: gdk::Clipboard) {
+        let session = self.state.borrow().session.clone();
+        glib::spawn_future_local(async move {
+            if let Ok(Some(text)) = clipboard.read_text_future().await {
+                let text = text.replace("\r\n", "\r").replace('\n', "\r");
+                session.type_text(&text);
+            }
+        });
     }
 
     fn local_function(&self, local: Local) {
@@ -244,20 +405,15 @@ impl TerminalView {
                 (st.status)(if held { "Hold Screen" } else { "" });
             }
             Local::Answerback => st.session.send_answerback(),
-            Local::Paste => {
-                let session = st.session.clone();
-                let clipboard = self.area.clipboard();
-                glib::spawn_future_local(async move {
-                    if let Ok(Some(text)) = clipboard.read_text_future().await {
-                        session.type_text(&text);
-                    }
-                });
-            }
+            Local::Paste => self.paste(self.area.clipboard()),
             Local::SetUp => (st.notify)("Set-Up is not available yet"),
             Local::PrintScreen => (st.notify)("Printing is not available yet"),
             Local::SwitchSession => (st.notify)("Dual sessions are not available yet"),
             Local::Break => (st.notify)("Break has no effect on a local shell"),
-            Local::Copy => (st.notify)("Selection is not available yet"),
+            Local::Copy => {
+                drop(st);
+                self.copy_to_clipboard();
+            }
         }
     }
 
@@ -301,6 +457,14 @@ impl TerminalView {
             }
             glib::ControlFlow::Continue
         });
+    }
+}
+
+fn clipboard_for(area: &gtk::GLArea, primary: bool) -> gdk::Clipboard {
+    if primary {
+        area.primary_clipboard()
+    } else {
+        area.clipboard()
     }
 }
 

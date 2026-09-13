@@ -13,9 +13,11 @@ pub mod dump;
 pub mod grid;
 mod keyboard;
 mod modes;
+mod selection;
 mod terminal;
 
 pub use config::{Config, Extensions, Model};
 pub use keyboard::Key;
 pub use modes::Modes;
+pub use selection::{Point, Selection};
 pub use terminal::{Cursor, Event, Terminal};

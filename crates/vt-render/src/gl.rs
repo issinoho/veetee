@@ -116,7 +116,8 @@ void main() {
 
     vec3 fg = v_fg;
     vec3 bg = v_bg;
-    if ((v_flags & 16) != 0) { vec3 t = fg; fg = bg; bg = t; }
+    // Cursor and selection each reverse the cell; both together cancel out.
+    if ((((v_flags & 16) != 0) ? 1 : 0) + (((v_flags & 128) != 0) ? 1 : 0) == 1) { vec3 t = fg; fg = bg; bg = t; }
     vec3 color = mix(bg, fg * beam, coverage);
 
     if ((v_flags & 64) != 0) {

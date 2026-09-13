@@ -16,6 +16,7 @@ pub mod flag {
     pub const CURSOR: u32 = 16;
     pub const FILL: u32 = 32;
     pub const CURSOR_OUTLINE: u32 = 64;
+    pub const SELECTED: u32 = 128;
 }
 
 /// Where the page sits in the window, in device pixels.
@@ -85,6 +86,8 @@ pub struct FrameState {
     pub cursor_on: bool,
     /// The window has keyboard focus (an unfocused cursor is drawn hollow).
     pub focused: bool,
+    /// Text selected with the mouse, drawn in reverse.
+    pub selection: Option<vt_core::Selection>,
 }
 
 /// Builds the instance buffer for one frame: a page fill followed by every
@@ -156,8 +159,14 @@ pub fn build_instances(
                 }
             }
 
+            if frame.selection.is_some_and(|s| s.contains(row, col)) {
+                flags |= flag::SELECTED;
+            }
+
             let glyph = font.index_of(cell.ch);
-            let decorated = flags & (flag::UNDERLINE | flag::CURSOR | flag::CURSOR_OUTLINE) != 0;
+            let decorated = flags
+                & (flag::UNDERLINE | flag::CURSOR | flag::CURSOR_OUTLINE | flag::SELECTED)
+                != 0;
             let blank = (glyph == space || hidden) && bg == page_bg && !decorated;
             if blank {
                 continue;
@@ -198,6 +207,7 @@ mod tests {
     }
 
     const FOCUSED: FrameState = FrameState {
+        selection: None,
         blink_on: true,
         cursor_on: true,
         focused: true,
@@ -285,6 +295,30 @@ mod tests {
             &reverse[9..12],
             &theme.foreground.map(|c| c * theme.normal_intensity)
         );
+    }
+
+    #[test]
+    fn selected_cells_are_flagged_including_blanks() {
+        use vt_core::{Point, Selection};
+        let mut term = Terminal::new(Config::default());
+        term.advance(b"ab");
+        let selection = Some(Selection::new(
+            Point { row: 0, col: 0 },
+            Point { row: 0, col: 3 },
+        ));
+        let inst = instances(
+            &term,
+            FrameState {
+                selection,
+                cursor_on: false,
+                ..FOCUSED
+            },
+        );
+        let selected = inst
+            .iter()
+            .filter(|i| i[5] as u32 & flag::SELECTED != 0)
+            .count();
+        assert_eq!(selected, 4);
     }
 
     #[test]

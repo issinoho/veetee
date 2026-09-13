@@ -626,3 +626,59 @@ fn shrinking_below_cursor_pushes_lines_to_scrollback() {
     assert_eq!(cursor(&t), (3, 2));
     assert_eq!(t.scrollback().len(), 2);
 }
+
+// ------------------------------------------------------------ selection
+
+mod selection {
+    use super::*;
+    use vt_core::{Point, Selection};
+
+    fn sel(r0: usize, c0: usize, r1: usize, c1: usize) -> Selection {
+        Selection::new(Point { row: r0, col: c0 }, Point { row: r1, col: c1 })
+    }
+
+    #[test]
+    fn text_across_lines_trims_and_joins() {
+        let mut t = small(Model::Vt420, 4, 10);
+        t.advance(b"$ DIR\r\nLOGIN.COM\r\nMAIL.MAI");
+        assert_eq!(
+            t.selection_text(&sel(0, 0, 2, 9)),
+            "$ DIR\nLOGIN.COM\nMAIL.MAI"
+        );
+        assert_eq!(
+            t.selection_text(&sel(2, 3, 0, 2)),
+            "DIR\nLOGIN.COM\nMAIL",
+            "either direction"
+        );
+        assert_eq!(t.selection_text(&sel(1, 2, 1, 4)), "GIN");
+    }
+
+    #[test]
+    fn autowrapped_lines_join_without_newline() {
+        let mut t = small(Model::Vt420, 3, 5);
+        t.advance(b"\x1b[?7hABCDEFG");
+        assert_eq!(t.selection_text(&sel(0, 0, 1, 4)), "ABCDEFG");
+    }
+
+    #[test]
+    fn line_drawing_and_double_width() {
+        let mut t = small(Model::Vt420, 3, 10);
+        t.advance(b"\x1b(0lqk\x1b(B\r\n\x1b#6WIDE");
+        assert_eq!(t.selection_text(&sel(0, 0, 1, 9)), "┌─┐\nWIDE");
+    }
+
+    #[test]
+    fn double_click_selects_vms_file_specification() {
+        let mut t = small(Model::Vt420, 2, 60);
+        t.advance(b"$ TYPE DKA0:[SYS0.SYSCOMMON]LOGIN.COM;1, \"quoted\"");
+        let w = t.word_at(Point { row: 0, col: 20 });
+        assert_eq!(t.selection_text(&w), "DKA0:[SYS0.SYSCOMMON]LOGIN.COM;1");
+        let q = t.word_at(Point { row: 0, col: 45 });
+        assert_eq!(t.selection_text(&q), "quoted");
+        let line = t.line_at(Point { row: 0, col: 3 });
+        assert_eq!(
+            t.selection_text(&line),
+            "$ TYPE DKA0:[SYS0.SYSCOMMON]LOGIN.COM;1, \"quoted\""
+        );
+    }
+}
