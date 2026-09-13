@@ -96,8 +96,8 @@ jobs:
           VEETEE_CAPTURE="$(cygpath -w "$PWD/$dir/debug.ppm")" \
             timeout 120 target/debug/veetee.exe --model vt420 --command "$command"
           echo "debug exit $?"
-          # Then the bundle, with only Windows on the PATH as a user would have.
-          VEETEE_CAPTURE="$(cygpath -w "$PWD/$dir/bundle.ppm")" PATH=/c/Windows/system32:/c/Windows \
+          # Then the bundle, with no MSYS2 GTK on the PATH, as a user would have.
+          VEETEE_CAPTURE="$(cygpath -w "$PWD/$dir/bundle.ppm")" PATH=/usr/bin:/c/Windows/system32:/c/Windows \
             /usr/bin/timeout 120 "$app/veetee.exe" --model vt525 --command "$command"
           echo "bundle exit $?"
           ls -l "$dir"
