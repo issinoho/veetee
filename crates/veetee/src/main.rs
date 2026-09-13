@@ -1,4 +1,6 @@
-//! veetee — a DEC VT terminal for the Linux desktop.
+//! veetee — a DEC VT terminal for the Linux (and Windows) desktop.
+// Release builds on Windows start without a console window.
+#![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
 
 mod cli;
 mod gl_loader;
@@ -19,7 +21,21 @@ use cli::{Options, Parsed};
 
 const APP_ID: &str = "com.issinoho.Veetee";
 
+/// A Windows GUI program has no console; when started from one, write
+/// messages (such as `--help`) to it.
+#[cfg(windows)]
+#[allow(unsafe_code)]
+fn attach_console() {
+    use windows_sys::Win32::System::Console::{ATTACH_PARENT_PROCESS, AttachConsole};
+    // SAFETY: no arguments to validate; failure just means no parent console.
+    unsafe { AttachConsole(ATTACH_PARENT_PROCESS) };
+}
+
+#[cfg(not(windows))]
+fn attach_console() {}
+
 fn main() -> glib::ExitCode {
+    attach_console();
     let (config, options) = match cli::parse_args(std::env::args().skip(1)) {
         Ok(Parsed::Run(config, options)) => (config, options),
         Ok(Parsed::Help) => {

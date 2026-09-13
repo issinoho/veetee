@@ -42,6 +42,62 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - run: cargo xtask esctest
 
+  windows:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: msys2 {0}
+    env:
+      CARGO_HOME: ${{ github.workspace }}\.cargo-home
+    steps:
+      - uses: actions/checkout@v4
+      - uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          update: true
+          install: >-
+            zip
+            unzip
+            mingw-w64-ucrt-x86_64-gcc
+            mingw-w64-ucrt-x86_64-pkgconf
+            mingw-w64-ucrt-x86_64-rust
+            mingw-w64-ucrt-x86_64-gtk4
+            mingw-w64-ucrt-x86_64-libadwaita
+            mingw-w64-ucrt-x86_64-mesa
+      - uses: actions/cache@v4
+        with:
+          path: |
+            .cargo-home/registry
+            target
+          key: windows-cargo-${{ hashFiles('Cargo.lock') }}
+          restore-keys: windows-cargo-
+      - run: cargo --version && pkg-config --modversion gtk4 libadwaita-1
+      - run: cargo build --release -p veetee -p vt-headless
+      - run: cargo test --workspace
+      - run: packaging/windows/bundle.sh
+      - name: Smoke test the bundle (software OpenGL)
+        continue-on-error: true
+        run: |
+          dir=target/dist/smoke
+          rm -rf "$dir" && mkdir -p "$dir"
+          unzip -q target/dist/veetee-*-windows-x86_64.zip -d "$dir"
+          app=$(echo "$dir"/veetee-*/bin)
+          "$app/veetee.exe" --help
+          cp /ucrt64/bin/opengl32.dll /ucrt64/bin/libgallium_wgl.dll "$app/" || true
+          # Run with only Windows on the PATH, as a user would.
+          env PATH=/c/Windows/system32:/c/Windows \
+            VEETEE_CAPTURE="$(cygpath -w "$dir/windows.ppm")" VEETEE_CAPTURE_DELAY_MS=6000 GALLIUM_DRIVER=llvmpipe \
+            /usr/bin/timeout 90 "$app/veetee.exe" --model vt420 \
+            --command "echo veetee on Windows & ver & ping -n 60 127.0.0.1 >NUL" || true
+          ls -l "$dir"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: veetee-windows
+          path: |
+            target/dist/veetee-*-windows-x86_64.zip
+            target/dist/smoke/*.ppm
+          if-no-files-found: warn
+
   licenses:
     runs-on: ubuntu-latest
     steps:

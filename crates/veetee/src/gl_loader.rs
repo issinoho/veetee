@@ -7,12 +7,17 @@ use std::sync::OnceLock;
 
 static EPOXY: OnceLock<Result<libloading::Library, String>> = OnceLock::new();
 
+#[cfg(windows)]
+const EPOXY_LIBRARY: &str = "libepoxy-0.dll";
+#[cfg(not(windows))]
+const EPOXY_LIBRARY: &str = "libepoxy.so.0";
+
 /// Creates a glow context for the GL context that is current on this thread.
 pub fn glow_context() -> Result<glow::Context, String> {
     let lib = EPOXY
         .get_or_init(|| {
             // SAFETY: libepoxy has no initialisation side effects beyond symbol resolution.
-            unsafe { libloading::Library::new("libepoxy.so.0") }
+            unsafe { libloading::Library::new(EPOXY_LIBRARY) }
                 .map_err(|e| format!("cannot load libepoxy: {e}"))
         })
         .as_ref()

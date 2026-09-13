@@ -1,14 +1,26 @@
 [package]
 name = "vt-transport"
-description = "Host connections for veetee: PTY, and later Telnet, SSH, serial and LAT"
+description = "Host connections for veetee: local PTY or ConPTY, Telnet, SSH and serial lines"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 authors.workspace = true
 
-[dependencies]
+[target.'cfg(unix)'.dependencies]
 rustix = { version = "1", features = ["pty", "termios", "process", "fs", "event", "stdio"] }
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = [
+    "Win32_Devices_Communication",
+    "Win32_Foundation",
+    "Win32_Security",
+    "Win32_Storage_FileSystem",
+    "Win32_System_Console",
+    "Win32_System_IO",
+    "Win32_System_Pipes",
+    "Win32_System_Threading",
+] }
 
 [lints]
 workspace = true

@@ -15,8 +15,8 @@ usage: veetee [--model MODEL] [--record FILE] [CONNECTION]
 connections (default: your login shell):
   --telnet HOST[:PORT]   Telnet, e.g. --telnet vms1 or telnet://vms1:2323
   --ssh [USER@]HOST      SSH via OpenSSH (uses ~/.ssh/config), e.g. ssh://system@vms1
-  --serial DEVICE        serial line, e.g. --serial /dev/ttyUSB0
-  --command COMMAND      run COMMAND (via /bin/sh -c)
+  --serial DEVICE        serial line, e.g. --serial /dev/ttyUSB0 or --serial COM3
+  --command COMMAND      run COMMAND through the system shell (sh -c, or cmd /C)
 
 options:
   --model MODEL          vt100 vt102 vt220 vt320 vt420 (default) vt510 vt520 vt525
@@ -26,8 +26,8 @@ options:
   --record-keys          also record typed keys (includes passwords)
   --sessions N           open 1 or 2 sessions (2 splits the window, F4 switches)
   --phosphor COLOUR      white (P4, default), green (P1) or amber (P3)
-  --keymap FILE          PC-to-DEC keymap (default: ~/.config/veetee/keymap.toml,
-                         else the built-in LK401 map)
+  --keymap FILE          PC-to-DEC keymap (default: the one saved from the Keyboard
+                         Map window, else the built-in LK401 map)
 
 serial line options (picocom style; defaults are DEC factory Set-Up):
   -b, --baud RATE        bits per second (9600)
@@ -87,6 +87,8 @@ pub struct Options {
     pub keymap: Option<std::path::PathBuf>,
 }
 
+// Parsed once at start-up, so the size difference does not matter.
+#[allow(clippy::large_enum_variant)]
 pub enum Parsed {
     Run(Config, Options),
     Help,
@@ -285,6 +287,27 @@ pub fn model_name(model: Model) -> &'static str {
     }
 }
 
+#[cfg(unix)]
+fn login_shell() -> String {
+    std::env::var("SHELL").unwrap_or_else(|_| "/bin/sh".into())
+}
+
+#[cfg(windows)]
+fn login_shell() -> String {
+    std::env::var("COMSPEC").unwrap_or_else(|_| "cmd.exe".into())
+}
+
+/// The shell that runs `--command`, and its flag for a command string.
+#[cfg(unix)]
+fn command_shell() -> (String, &'static str) {
+    ("/bin/sh".into(), "-c")
+}
+
+#[cfg(windows)]
+fn command_shell() -> (String, &'static str) {
+    (login_shell(), "/C")
+}
+
 /// Opens the connection. May block (DNS, TCP connect), so call it off the UI thread.
 pub fn open_transport(config: &Config, connection: &Connection) -> io::Result<Box<dyn Transport>> {
     let (rows, cols, term) = (
@@ -293,12 +316,10 @@ pub fn open_transport(config: &Config, connection: &Connection) -> io::Result<Bo
         config.model.term_name(),
     );
     Ok(match connection {
-        Connection::Shell => {
-            let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/sh".into());
-            Box::new(Pty::spawn::<&str>(&shell, &[], rows, cols, term)?)
-        }
+        Connection::Shell => Box::new(Pty::spawn::<&str>(&login_shell(), &[], rows, cols, term)?),
         Connection::Command(cmd) => {
-            Box::new(Pty::spawn("/bin/sh", &["-c", cmd], rows, cols, term)?)
+            let (shell, flag) = command_shell();
+            Box::new(Pty::spawn(&shell, &[flag, cmd.as_str()], rows, cols, term)?)
         }
         Connection::Serial(serial) => Box::new(Serial::open(serial.clone())?),
         Connection::Telnet { host, port } => Box::new(Telnet::connect(TelnetConfig {

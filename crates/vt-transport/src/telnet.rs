@@ -10,8 +10,6 @@ use std::net::{TcpStream, ToSocketAddrs};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use rustix::event::{PollFd, PollFlags, Timespec, poll};
-
 const IAC: u8 = 255;
 const DONT: u8 = 254;
 const DO: u8 = 253;
@@ -292,6 +290,8 @@ pub struct Telnet {
     options: Arc<Mutex<Options>>,
     decoder: Decoder,
     description: String,
+    /// The receive timeout currently set on the socket.
+    read_timeout: Option<Duration>,
 }
 
 impl Telnet {
@@ -347,19 +347,18 @@ impl Telnet {
             options: Arc::new(Mutex::new(options)),
             decoder: Decoder::new(config.terminal_type),
             description,
+            read_timeout: None,
         })
     }
 }
 
 impl crate::Transport for Telnet {
     fn read_timeout(&mut self, buf: &mut [u8], timeout: Duration) -> io::Result<usize> {
-        let ts = Timespec {
-            tv_sec: timeout.as_secs() as _,
-            tv_nsec: timeout.subsec_nanos() as _,
-        };
-        let mut fds = [PollFd::new(&self.stream, PollFlags::IN)];
-        if poll(&mut fds, Some(&ts))? == 0 {
-            return Ok(0);
+        // A zero timeout would mean "block forever" to the socket.
+        let timeout = timeout.max(Duration::from_millis(1));
+        if self.read_timeout != Some(timeout) {
+            self.stream.set_read_timeout(Some(timeout))?;
+            self.read_timeout = Some(timeout);
         }
         let n = match self.stream.read(buf) {
             Ok(0) => {
@@ -369,7 +368,16 @@ impl crate::Transport for Telnet {
                 ));
             }
             Ok(n) => n,
-            Err(e) if e.kind() == io::ErrorKind::Interrupted => return Ok(0),
+            Err(e)
+                if matches!(
+                    e.kind(),
+                    io::ErrorKind::WouldBlock
+                        | io::ErrorKind::TimedOut
+                        | io::ErrorKind::Interrupted
+                ) =>
+            {
+                return Ok(0);
+            }
             Err(e) => return Err(e),
         };
         let mut replies = Vec::new();

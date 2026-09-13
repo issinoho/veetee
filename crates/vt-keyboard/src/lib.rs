@@ -107,6 +107,7 @@ pub mod keysym {
 
 /// The LK411 key station (EK-VT520-RM figure 8-4) at a PC main-keypad
 /// position, from the X11/GDK hardware keycode (Linux evdev code + 8).
+#[cfg(not(windows))]
 pub fn station_for_keycode(keycode: u32) -> Option<u8> {
     let evdev = keycode.checked_sub(8)?;
     Some(match evdev {
@@ -127,6 +128,42 @@ pub fn station_for_keycode(keycode: u32) -> Option<u8> {
         52 => 54,                   // . >
         53 => 55,                   // / ?
         57 => 61,                   // space
+        _ => return None,
+    })
+}
+
+/// On Windows GDK reports virtual-key codes, which follow the characters of
+/// the keyboard layout; the table assumes the US layout's positions.
+// 🔎 Non-US layouts move letter virtual keys (AZERTY swaps A and Q), so
+// host-programmed keys (DECPAK) may land on other keys there.
+#[cfg(windows)]
+pub fn station_for_keycode(keycode: u32) -> Option<u8> {
+    Some(match keycode {
+        0xC0 => 1,                                 // VK_OEM_3 ` ~
+        0x31..=0x39 => (keycode - 0x31) as u8 + 2, // 1 … 9
+        0x30 => 11,                                // 0
+        0xBD => 12,                                // VK_OEM_MINUS
+        0xBB => 13,                                // VK_OEM_PLUS
+        0xDB => 27,                                // VK_OEM_4 [
+        0xDD => 28,                                // VK_OEM_6 ]
+        0xBA => 40,                                // VK_OEM_1 ;
+        0xDE => 41,                                // VK_OEM_7 '
+        0xDC => 42,                                // VK_OEM_5 \
+        0xE2 => 45,                                // VK_OEM_102 < >
+        0xBC => 53,                                // VK_OEM_COMMA
+        0xBE => 54,                                // VK_OEM_PERIOD
+        0xBF => 55,                                // VK_OEM_2 /
+        0x20 => 61,                                // space
+        0x41..=0x5A => {
+            let row = "QWERTYUIOP ASDFGHJKL ZXCVBNM";
+            let letter = char::from_u32(keycode)?;
+            let i = row.find(letter)? as u8;
+            match i {
+                0..=9 => 17 + i,
+                11..=19 => 31 + i - 11,
+                _ => 46 + i - 21,
+            }
+        }
         _ => return None,
     })
 }
@@ -292,6 +329,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(not(windows))]
     fn main_keypad_stations() {
         // evdev KEY_A = 30, KEY_Z = 44, KEY_1 = 2, KEY_SPACE = 57.
         assert_eq!(station_for_keycode(30 + 8), Some(31));
@@ -300,6 +338,24 @@ mod tests {
         assert_eq!(station_for_keycode(57 + 8), Some(61));
         assert_eq!(
             station_for_keycode(1 + 8),
+            None,
+            "Escape is not a main keypad station"
+        );
+    }
+
+    #[test]
+    #[cfg(windows)]
+    fn main_keypad_stations() {
+        // Virtual keys: A, Z, 1, space, VK_OEM_2 (/).
+        assert_eq!(station_for_keycode(0x41), Some(31));
+        assert_eq!(station_for_keycode(0x5A), Some(46));
+        assert_eq!(station_for_keycode(0x4D), Some(52));
+        assert_eq!(station_for_keycode(0x50), Some(26));
+        assert_eq!(station_for_keycode(0x31), Some(2));
+        assert_eq!(station_for_keycode(0x20), Some(61));
+        assert_eq!(station_for_keycode(0xBF), Some(55));
+        assert_eq!(
+            station_for_keycode(0x1B),
             None,
             "Escape is not a main keypad station"
         );

@@ -1,6 +1,6 @@
 [package]
 name = "veetee"
-description = "A DEC VT terminal for the Linux desktop"
+description = "A DEC VT terminal for the Linux and Windows desktop"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -18,6 +18,9 @@ vt-fonts.workspace = true
 vt-keyboard.workspace = true
 vt-render.workspace = true
 vt-transport.workspace = true
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = ["Win32_System_Console"] }
 
 [lints]
 workspace = true

@@ -1024,6 +1024,7 @@ dependencies = [
  "vt-keyboard",
  "vt-render",
  "vt-transport",
+ "windows-sys",
 ]
 
 [[package]]
@@ -1088,6 +1089,7 @@ name = "vt-transport"
 version = "0.4.0"
 dependencies = [
  "rustix",
+ "windows-sys",
 ]
 
 [[package]]
