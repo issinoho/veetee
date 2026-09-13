@@ -13,6 +13,8 @@
 //! A `~` line follows any row with renditions: one hex digit per cell,
 //! bold 1, underline 2, blink 4, reverse 8 (`.` for none), trimmed.
 //! Protected (DECSCA) cells get a `p` line in the same style.
+//! When the cursor is off page 1, or the user window (DECSNLS, panning)
+//! does not show exactly the page, a `memory` line follows `modes`.
 //! Soft-font characters are shown as `▯`. When a status line is in use,
 //! `status <type>` follows the page with an `S` row for a host-writable line.
 
@@ -56,6 +58,15 @@ pub fn dump(term: &Terminal) -> String {
     for (_, name) in flags.iter().filter(|(on, _)| *on) {
         out.push(' ');
         out.push_str(name);
+    }
+    let (page, pages) = term.page();
+    let (window_top, screen_lines) = term.window();
+    if page != 0 || !term.cursor_on_display() || window_top != 0 || screen_lines != grid.rows() {
+        let _ = write!(out, "\nmemory page {}/{pages}", page + 1);
+        if !term.cursor_on_display() {
+            out.push_str(" not displayed");
+        }
+        let _ = write!(out, " window {},{}", window_top + 1, screen_lines);
     }
     if term.leds() != 0 {
         let lit: Vec<String> = (0..4)

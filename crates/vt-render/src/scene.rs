@@ -170,9 +170,10 @@ pub struct FrameState {
     pub selection: Option<vt_core::Selection>,
 }
 
-/// Number of rows the page occupies, including a status line.
+/// Number of rows the screen shows: the user window (DECSNLS) plus a
+/// status line.
 pub fn page_rows(term: &Terminal) -> usize {
-    term.grid().rows() + usize::from(term.status_display() != StatusDisplay::None)
+    term.window().1 + usize::from(term.status_display() != StatusDisplay::None)
 }
 
 /// Builds the instance buffer for one frame: a page fill followed by every
@@ -214,17 +215,37 @@ pub fn build_instances(
         text_normal,
         text_bold,
     };
-    let grid = term.grid();
+    // The user window onto the displayed page. Screen lines beyond the end
+    // of the page stay blank (EK-VT420-RM, DECSNLS notes).
+    let grid = term.display_grid();
+    let (window_top, screen_lines) = term.window();
     let cursor = term.cursor();
     let status_active = term.status_active();
-    for (row, line) in grid.lines().iter().enumerate().take(layout.rows) {
-        let cursor_col = (!status_active && row == cursor.row).then_some(cursor.col);
+    let cursor_shown = !status_active && term.cursor_on_display();
+    let visible = grid
+        .lines()
+        .iter()
+        .enumerate()
+        .skip(window_top)
+        .take(screen_lines);
+    for (screen_row, (row, line)) in visible.enumerate().take(layout.rows) {
+        let cursor_col = (cursor_shown && row == cursor.row).then_some(cursor.col);
         draw_line(
-            out, term, layout, frame, theme, font, soft, &colors, row, line, cursor_col,
+            out,
+            term,
+            layout,
+            frame,
+            theme,
+            font,
+            soft,
+            &colors,
+            (screen_row, row),
+            line,
+            cursor_col,
         );
     }
 
-    let status_row = grid.rows();
+    let status_row = screen_lines;
     if status_row < layout.rows {
         match term.status_display() {
             StatusDisplay::None => {}
@@ -239,18 +260,31 @@ pub fn build_instances(
                     font,
                     soft,
                     &colors,
-                    status_row,
+                    (status_row, usize::MAX),
                     term.status_line(),
                     cursor_col,
                 );
             }
             StatusDisplay::Indicator => {
-                let mut line = Line::new(grid.cols(), Cell::BLANK);
+                // The indicator line is shown in reverse video.
+                let mut reverse = Cell::BLANK;
+                reverse.attrs.flags = Flags::REVERSE;
+                let mut line = Line::new(grid.cols(), reverse);
                 for (cell, ch) in line.cells_mut().iter_mut().zip(indicator.chars()) {
                     cell.ch = ch;
                 }
                 draw_line(
-                    out, term, layout, frame, theme, font, soft, &colors, status_row, &line, None,
+                    out,
+                    term,
+                    layout,
+                    frame,
+                    theme,
+                    font,
+                    soft,
+                    &colors,
+                    (status_row, usize::MAX),
+                    &line,
+                    None,
                 );
             }
         }
@@ -273,7 +307,7 @@ fn draw_line(
     font: &Font,
     soft: &mut SoftAtlas,
     colors: &Colors,
-    row: usize,
+    (row, page_row): (usize, usize),
     line: &Line,
     cursor_col: Option<usize>,
 ) {
@@ -318,7 +352,7 @@ fn draw_line(
                 flags |= flag::CURSOR;
             }
         }
-        if frame.selection.is_some_and(|s| s.contains(row, col)) {
+        if frame.selection.is_some_and(|s| s.contains(page_row, col)) {
             flags |= flag::SELECTED;
         }
 

@@ -177,10 +177,11 @@ fn io_loop(
                 recorder = None;
             }
         }
-        let (reply, events, rows) = {
+        let (reply, events, rows, cols) = {
             let mut term = shared.term.lock().unwrap_or_else(|e| e.into_inner());
             term.advance(&buf[..n]);
-            (term.take_output(), term.take_events(), term.grid().rows())
+            let (rows, cols) = (term.grid().rows(), term.grid().cols());
+            (term.take_output(), term.take_events(), rows, cols)
         };
         if !reply.is_empty() {
             let mut writer = shared.writer.lock().unwrap_or_else(|e| e.into_inner());
@@ -191,9 +192,11 @@ fn io_loop(
                 Event::Bell => {
                     let _ = tx.try_send(Notice::Bell);
                 }
-                Event::ColumnsChanged(cols) => {
+                // The host addresses the whole page, so that is its size.
+                Event::ColumnsChanged(_) | Event::LinesChanged(_) => {
                     let _ = transport.resize(rows as u16, cols as u16);
                 }
+                Event::ScreenLinesChanged(_) => {}
                 Event::LedsChanged(_) => {}
             }
         }

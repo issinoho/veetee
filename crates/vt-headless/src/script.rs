@@ -118,6 +118,18 @@ impl Session {
                 self.config.cols = parse_num(arg(1)?)?;
             }
             "autowrap" => self.config.autowrap = arg(0)? == "on",
+            // Opt-in departures from DEC behaviour, e.g. `extensions xterm-compat`.
+            "extensions" => {
+                for name in args {
+                    let ext = &mut self.config.extensions;
+                    match name.as_str() {
+                        "utf8" => ext.utf8 = true,
+                        "xterm-sgr" => ext.xterm_sgr = true,
+                        "xterm-compat" => ext.xterm_compat = true,
+                        other => return Err(invalid(format!("unknown extension {other}"))),
+                    }
+                }
+            }
             "answerback" => self.config.answerback = unescape(arg(0)?)?,
             "spawn" => {
                 let program = expand(arg(0)?)?;

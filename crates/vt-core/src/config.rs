@@ -113,6 +113,11 @@ pub struct Extensions {
     pub utf8: bool,
     /// Accept ECMA-48 colon sub-parameters and xterm SGR 38/48/90–107.
     pub xterm_sgr: bool,
+    /// Use xterm's reading where DEC documentation says otherwise: SU/SD
+    /// scroll the scrolling region instead of panning the user window, and
+    /// DECRQCRA with page 0 and a rectangle checksums the current page
+    /// instead of all pages. Needed by esctest.
+    pub xterm_compat: bool,
 }
 
 /// Power-up / Set-Up configuration. Defaults are DEC factory Set-Up values.

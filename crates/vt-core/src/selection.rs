@@ -54,7 +54,7 @@ impl Terminal {
     /// joined by autowrap are not separated by a newline.
     pub fn selection_text(&self, selection: &Selection) -> String {
         let (start, end) = selection.ordered();
-        let grid = self.grid();
+        let grid = self.display_grid();
         let mut out = String::new();
         for row in start.row..=end.row.min(grid.rows().saturating_sub(1)) {
             let line = grid.line(row);
@@ -88,7 +88,9 @@ impl Terminal {
 
     /// The word under `p` (for double-click), or just `p` if it is blank.
     pub fn word_at(&self, p: Point) -> Selection {
-        let line = self.grid().line(p.row.min(self.grid().rows() - 1));
+        let line = self
+            .display_grid()
+            .line(p.row.min(self.display_grid().rows() - 1));
         let cells = &line.cells()[..line.width()];
         let col = p.col.min(cells.len() - 1);
         if !is_word_char(cells[col].ch) {
@@ -117,8 +119,8 @@ impl Terminal {
 
     /// The whole line containing `p` (for triple-click).
     pub fn line_at(&self, p: Point) -> Selection {
-        let row = p.row.min(self.grid().rows() - 1);
-        let last = self.grid().line(row).width() - 1;
+        let row = p.row.min(self.display_grid().rows() - 1);
+        let last = self.display_grid().line(row).width() - 1;
         Selection::new(Point { row, col: 0 }, Point { row, col: last })
     }
 }

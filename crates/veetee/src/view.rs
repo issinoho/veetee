@@ -169,7 +169,7 @@ impl TerminalView {
                 let term = st.session.terminal();
                 let layout =
                     vt_render::layout(w, h, vt_render::page_rows(&term), term.grid().cols());
-                let indicator = indicator_line(term.grid().cols(), held);
+                let indicator = indicator_line(&term, held);
                 // SAFETY: GTK makes the context current before emitting `render`.
                 #[allow(unsafe_code)]
                 unsafe {
@@ -337,7 +337,8 @@ impl TerminalView {
     fn point_at(&self, x: f64, y: f64) -> Option<Point> {
         let st = self.state.borrow();
         let term = st.session.terminal();
-        let grid = term.grid();
+        let grid = term.display_grid();
+        let (window_top, screen_lines) = term.window();
         let scale = f64::from(self.area.scale_factor());
         let (w, h) = (
             (f64::from(self.area.width()) * scale).max(1.0) as u32,
@@ -347,7 +348,7 @@ impl TerminalView {
         let px = ((x * scale) as f32).clamp(layout.x, layout.x + layout.width - 1.0);
         let py = ((y * scale) as f32).clamp(layout.y, layout.y + layout.height - 1.0);
         let (row, col) = layout.cell_at(px, py)?;
-        let row = row.min(grid.rows() - 1);
+        let row = (window_top + row.min(screen_lines - 1)).min(grid.rows() - 1);
         let line = grid.line(row);
         let col = if line.size.is_double_width() {
             col / 2
@@ -469,11 +470,25 @@ impl TerminalView {
     }
 }
 
-/// The indicator status line, laid out like a VT420's: local state on the
-/// left, printer status on the right.
-fn indicator_line(cols: usize, held: bool) -> String {
-    let left = if held { " Hold Screen" } else { "" };
-    let right = "Printer: None ";
+/// The indicator status line, after the VT420's: printer and local
+/// state on the left, page number and cursor position on the right.
+// 🔎 Field positions are approximate until checked against hardware.
+fn indicator_line(term: &vt_core::Terminal, held: bool) -> String {
+    let mut left = String::from(" Printer: None");
+    if held {
+        left.push_str("   Hold Screen");
+    }
+    if term.modes().keyboard_locked {
+        left.push_str("   Locked");
+    }
+    let cursor = term.cursor();
+    let right = format!(
+        "Page {}   {:>3},{:<3} ",
+        term.page().0 + 1,
+        cursor.row + 1,
+        cursor.col + 1
+    );
+    let cols = term.grid().cols();
     let pad = cols.saturating_sub(left.len() + right.len());
     format!("{left}{}{right}", " ".repeat(pad))
 }

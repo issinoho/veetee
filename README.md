@@ -4,9 +4,10 @@ A DEC VT terminal emulator for the Linux desktop, aiming at SmarTerm/Reflection-
 compatibility: VT52 through VT525, DECforms and FMS applications, DEC-faithful fonts,
 and SSH, Telnet, serial and LAT connections.
 
-**Status:** early development — milestone M2: VT220/VT320 features (protected fields, national
-and DEC Technical character sets, soft fonts, user-defined keys, status line, state reports) on
-top of the VT100/VT102/VT52 core. vttest VT100–VT320 menus pass headless.
+**Status:** early development — milestone M3: VT420 features (left/right margins, rectangular
+area operations and checksums, page memory, macros, terminal state reports) on top of the
+VT220/VT320 and VT100/VT102/VT52 layers. vttest VT100–VT420 menus pass headless, and esctest2
+runs with every difference from xterm explained against DEC documentation.
 
 ## Layout
 
@@ -20,7 +21,7 @@ top of the VT100/VT102/VT52 core. vttest VT100–VT320 menus pass headless.
 | `crates/vt-render` | OpenGL renderer: dot stretching, scan lines, double-size lines, 132 columns |
 | `crates/veetee` | The GTK4/libadwaita application |
 | `crates/vt-headless` | CLI driver: `trace` parser actions; `run` scripted sessions with golden screen snapshots |
-| `xtask` | `cargo xtask vttest` builds a pinned vttest and runs the conformance suite |
+| `xtask` | `cargo xtask vttest` / `cargo xtask esctest` fetch pinned vttest and esctest2 and run the conformance suites |
 | `docs/compat-matrix.md` | Per-function DEC compatibility status and sources |
 | `fuzz/` | cargo-fuzz targets (nightly) |
 
@@ -79,6 +80,7 @@ The PC keyboard is mapped to LK401 key positions:
 cargo test --workspace
 cargo xtask vttest                    # vttest conformance (needs curl, a C compiler, make)
 cargo xtask vttest --bless vt102/menu2  # re-record snapshots after reviewing a change
+cargo xtask esctest                   # esctest2 against expected-failures.txt (needs git, python3)
 cargo run -p vt-headless -- trace --utf8 some-capture.bin
 cargo +nightly fuzz run parser        # requires cargo-fuzz
 ```

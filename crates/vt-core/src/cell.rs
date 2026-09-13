@@ -74,6 +74,11 @@ pub struct Cell {
     /// equivalents; soft-font (DRCS) glyphs use the Private Use Area.
     pub ch: char,
     pub attrs: Attrs,
+    /// The code received for this character (its position in the G-set
+    /// that was invoked), or 0 for a position that has been erased or never
+    /// written. Used for DECRQCRA checksums, which DEC terminals compute from
+    /// codes rather than glyphs.
+    pub code: u8,
 }
 
 impl Cell {
@@ -84,6 +89,7 @@ impl Cell {
             fg: Color::Default,
             bg: Color::Default,
         },
+        code: 0,
     };
 
     /// A cell cleared by an erase function. DEC erases to spaces with no
@@ -96,7 +102,41 @@ impl Cell {
                 fg: Color::Default,
                 bg,
             },
+            code: 0,
         }
+    }
+
+    /// Whether anything has been written here since the last erase.
+    pub const fn is_written(&self) -> bool {
+        self.code != 0
+    }
+
+    /// This cell's contribution to a DEC rectangle checksum (as measured on
+    /// VT520 hardware): the character code plus attribute bits and colour
+    /// indices; erased positions contribute nothing.
+    pub fn checksum(&self) -> u32 {
+        if self.code == 0 {
+            return 0;
+        }
+        let f = self.attrs.flags;
+        let mut sum = u32::from(self.code);
+        for (flag, bit) in [
+            (Flags::UNDERLINE, 0x10),
+            (Flags::REVERSE, 0x20),
+            (Flags::BLINK, 0x40),
+            (Flags::BOLD, 0x80),
+        ] {
+            if f.contains(flag) {
+                sum += bit;
+            }
+        }
+        if let Color::Indexed(i @ 0..=15) = self.attrs.fg {
+            sum += u32::from(i) << 4;
+        }
+        if let Color::Indexed(i @ 0..=15) = self.attrs.bg {
+            sum += u32::from(i);
+        }
+        sum
     }
 }
 

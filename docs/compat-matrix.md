@@ -81,8 +81,32 @@ conformance scripts in `tests/conformance/vttest`.
 | DECRQSS / DECRPSS | `DCS $ q … ST` | ✅ | SGR, DECSTBM, DECSCL, DECSCA, DECSASD, DECSSDT, DECSCPP/DECSLPP/DECSNLS (VT420). **Reply digit 1 = valid** as real VT420/VT520 terminals send (the VT510 manual has it reversed) |
 | DECRQPSR DECCIR DECTABSR | `CSI 1/2 $ w` | ✅ | DECCIR reports the actual set designator (`%5`), as in DEC's own example; vttest expects `<` for UPSS |
 | DECRSPS | `DCS 1/2 $ t` | ✅ | Invalid data stops the restore partway, as DEC documents |
-| DECRQTSR / DECRSTS | | ⬜ | M3 |
-| CHA HPA VPA CNL CPL CHT CBT | | 🟡 | Currently VT500 level only. 🔎 which of these the VT420 has |
+| DECRQTSR / DECRSTS | `CSI 1 $ u`, `DCS 1 $ p` | ✅ | VT420+. RM420 leaves the data format to the implementation: veetee sends `VT1;modes;margins;page size;screen lines;status;DECSACE;C1;tabs` and restores exactly that |
+| CHA HPA VPA CNL CPL CHT CBT | | ✅ | VT500 level only: the VT420 has none of them (RM420 chapter index) |
+
+## VT420 (M3)
+
+| Function | Seq | Status | Behaviour notes / source |
+|----------|-----|--------|--------------------------|
+| DECLRMM DECSLRM | `CSI ? 69 h/l`, `CSI Pl ; Pr s` | ✅ | `CSI s` sets margins only while DECLRMM is set; homes the cursor. Resetting DECLRMM clears the margins; DECSTR resets it (DEC STD 070). Autowrap, IND/RI/LF, IL/DL, ICH/DCH, CR stay inside the margins; outside the margins nothing scrolls |
+| DECIC DECDC | `CSI Pn ' }`, `CSI Pn ' ~` | ✅ | No effect with the cursor outside the margins (RM420) |
+| DECBI DECFI | `ESC 6`, `ESC 9` | ✅ | Shift the region at the left/right margin |
+| DECCRA | `CSI Pts;Pls;Pbs;Prs;Pps;Ptd;Pld;Ppd $ v` | ✅ | Characters and renditions copied between pages; lines keep their own size; clipped at the page edge; overlapping copies use the source as it was |
+| DECERA DECSERA | `CSI Pt;Pl;Pb;Pr $ z`, `$ {` | ✅ | DECERA ignores protection; DECSERA keeps protected characters and all renditions |
+| DECFRA | `CSI Pch;Pt;Pl;Pb;Pr $ x` | ✅ | Pch 32–126 / 160–255 through the in-use GL/GR sets, current SGR |
+| DECCARA DECRARA DECSACE | `$ r`, `$ t`, `CSI Ps * x` | ✅ | DECCARA 0,1,4,5,7,22,24,25,27; DECRARA toggles 0,1,4,5,7. Stream extent by default, rectangle with DECSACE 2 |
+| Rectangle coordinates | | ✅ | Relative to the origin in DECOM, not limited by margins, clamped to the page; top > bottom ignored |
+| DECRQCRA / DECCKSR | `CSI Pid;Pp;Pt;Pl;Pb;Pr * y` | ✅ | Hardware checksum as measured on VT520s (vttest): code + attribute bits + colour index, negated; erased cells count 0. Pp 0 = all pages. **xterm compatibility**: plain sum of character codes on the current page (as esctest expects) |
+| Page memory | NP PP PPA PPR PPB `CSI U/V`, `CSI SP P/Q/R` | ✅ | Six 24-line pages (RM420: 144 lines of memory); NP/PP home the cursor, PPA/PPR/PPB keep the position |
+| DECSLPP DECSCPP | `CSI Pn t`, `CSI Pn $ \|` | ✅ | 24/25/36/48/72/144 lines → 6/5/4/3/2/1 pages; DECSCPP 80/132 keeps page contents (DECCOLM erases) |
+| DECSNLS | `CSI Pn * \|` | ✅ | 24, 36 or 48 screen lines (next supported value up); screen lines beyond the page stay blank |
+| SU SD | `CSI Pn S/T` | ✅ | **Pan the user window** through page memory (RM420); no effect when the page fits the screen. xterm compatibility scrolls instead. 🔎 hardware |
+| DECVCCM DECPCCM | `CSI ? 61/64 h/l` | ✅ | Both set by default (RM420): the window follows the cursor and the display follows the cursor's page |
+| DECRQDE | `CSI " v` | ✅ | `CSI lines;cols;1;top;page " w` |
+| DECDMAC DECINVM | `DCS Pid;Pdt;Pen ! z`, `CSI Pid * z` | ✅ | 64 macros in 6 KB, text or hex with `!Pn;…;` repeats; invoked as host input (nesting capped at 16); RIS clears, DECSTR keeps |
+| DECMSR / memory checksum | `CSI ? 62 n`, `CSI ? 63 ; Pid n` | ✅ | Free bytes ÷ 16; checksum of macro memory |
+| Indicator status line | | 🟡 | Reverse video with printer state, Hold Screen, keyboard lock, page and cursor position. 🔎 field layout against hardware |
+| xterm compatibility extras | `CSI 18 t`, `CSI s`, `CSI u` | ✅ | Text area size report and SCOSC/SCORC, only with `xterm_compat` |
 
 ## Keyboard (vt-core `Key`)
 
@@ -116,5 +140,19 @@ conformance scripts in `tests/conformance/vttest`.
 |------|--------|
 | 3 Character sets (VT100 sets, SI/SO, locking and single shifts) | ✅ |
 | 11.1 VT220: DSR, SRM, DECTCEM, ECH, DECSCA, S8C1T, DECSTR, DECUDK | ✅ (printer post-1.0; DECDLD test needs a font file) |
-| 11.2 VT320: SU/SD, DECXCPR, DECCIR, DECTABSR, DECRPM, DECRSPS, DECRQSS, DECRQUPSS, status line | ✅ (page format/movement, DECRQTSR, DECRPDE: M3) |
-| 11.3–11.4 VT420/VT520 | ⬜ M3/M4 |
+| 11.2 VT320: SU/SD, DECXCPR, DECCIR, DECTABSR, DECRPM, DECRSPS, DECRQSS, DECRQUPSS, status line | ✅ (SU/SD pan, so the VT320 scroll pictures stay put) |
+| 11.3.2 VT420 cursor movement: DECBI, DECFI, movement within margins, with and without DECLRMM/DECOM | ✅ |
+| 11.3.3 VT420 editing: DECIC/DECDC, IND/RI, IL/DL, ICH/DCH, BS/CR/TAB within margins | ✅ |
+| 11.3.4 keyboard control, 11.3.5 macros | ⬜ keyboard in M6; vttest has no macro test |
+| 11.3.6 rectangles: DECCARA, DECCRA, DECERA, DECFRA, DECRARA, DECSERA, with and without DECOM | ✅ |
+| 11.3.7 reports: DECRPM, DECRQSS (DECSACE, DECSLRM, DECSNLS), DECMSR, memory checksum, DECRQCRA GL/GR, DECXCPR | ✅ |
+| 11.3.8 DECSNLS | ✅ |
+| 11.4 VT520 | ⬜ M4 |
+
+## esctest2 (VT420 model, xterm compatibility)
+
+`cargo xtask esctest` runs the pinned esctest2 at `--max-vt-level=4`: 326 tests pass. The 212 failures are
+listed in `tests/conformance/esctest/expected-failures.txt`, each with its DEC reason — mostly xterm-only
+features (window operations, colour setting, alternate screen, reverse wrap), VT510 functions the VT420 lacks,
+and xterm's habit of checksumming some erased cells as spaces. Any other failure, or a listed test that starts
+passing, fails the task.

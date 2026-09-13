@@ -40,9 +40,75 @@ pub struct Modes {
     pub backarrow_sends_bs: bool,
     /// DECNRCM (42): 7-bit national replacement character sets.
     pub national: bool,
+    /// DECLRMM / DECVSSM (69): left and right margins can be set.
+    pub lr_margins: bool,
+    /// DECVCCM (61): the user window pans to follow the cursor.
+    pub vertical_coupling: bool,
+    /// DECPCCM (64): moving to another page displays that page.
+    pub page_coupling: bool,
+    /// DECKBUM (68): data processing keys rather than typewriter keys.
+    pub data_processing_keys: bool,
 }
 
 impl Modes {
+    /// All modes as a bit set, for terminal state reports.
+    pub fn to_bits(&self) -> u32 {
+        self.flags()
+            .iter()
+            .enumerate()
+            .fold(0, |acc, (i, on)| acc | (u32::from(*on) << i))
+    }
+
+    /// Restores modes from [`Modes::to_bits`].
+    pub fn from_bits(bits: u32, mut base: Modes) -> Modes {
+        let mut i = 0;
+        base.for_each_mut(|m| {
+            *m = bits & (1 << i) != 0;
+            i += 1;
+        });
+        base
+    }
+
+    fn flags(&self) -> [bool; 23] {
+        let mut copy = *self;
+        let mut out = [false; 23];
+        let mut i = 0;
+        copy.for_each_mut(|m| {
+            out[i] = *m;
+            i += 1;
+        });
+        out
+    }
+
+    fn for_each_mut(&mut self, mut f: impl FnMut(&mut bool)) {
+        for m in [
+            &mut self.keyboard_locked,
+            &mut self.insert,
+            &mut self.send_receive,
+            &mut self.new_line,
+            &mut self.cursor_keys_application,
+            &mut self.ansi,
+            &mut self.columns_132,
+            &mut self.smooth_scroll,
+            &mut self.reverse_screen,
+            &mut self.origin,
+            &mut self.autowrap,
+            &mut self.auto_repeat,
+            &mut self.print_form_feed,
+            &mut self.print_extent_full,
+            &mut self.cursor_visible,
+            &mut self.keypad_application,
+            &mut self.backarrow_sends_bs,
+            &mut self.national,
+            &mut self.lr_margins,
+            &mut self.vertical_coupling,
+            &mut self.page_coupling,
+            &mut self.data_processing_keys,
+        ] {
+            f(m);
+        }
+    }
+
     /// Power-up modes. `autowrap` and `new_line` come from Set-Up.
     pub const fn power_up(autowrap: bool, new_line: bool, national: bool) -> Modes {
         Modes {
@@ -64,6 +130,10 @@ impl Modes {
             keypad_application: false,
             backarrow_sends_bs: false,
             national,
+            lr_margins: false,
+            vertical_coupling: true,
+            page_coupling: true,
+            data_processing_keys: false,
         }
     }
 }

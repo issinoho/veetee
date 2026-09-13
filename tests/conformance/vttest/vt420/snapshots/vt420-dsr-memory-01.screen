@@ -1,0 +1,28 @@
+page 24x80 cursor 23,14 visible
+modes decawm
+ 1  |Testing DECCKSR: Test Memory Checksum
+ 2  |
+ 3  |          <27> P 1 ! ~ 0 0 0 0 <27> \  ok
+   ~.........88888888888888888888888888888
+ 4  |
+ 5  |
+ 6  |
+ 7  |
+ 8  |
+ 9  |
+10  |
+11  |
+12  |
+13  |
+14  |
+15  |
+16  |
+17  |
+18  |
+19  |
+20  |
+21  |
+22  |
+23  |Push <RETURN>
+24  |
+status indicator

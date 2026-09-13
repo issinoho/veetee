@@ -1,0 +1,27 @@
+page 24x80 cursor 23,14 visible
+modes decawm
+ 1  |  1   2   3   4   5   6   7   8   9  10  11  12  13  14  15  16  17  18  19  20
+ 2  |
+ 3  |
+ 4  |
+ 5  |
+ 6  |
+ 7  |
+ 8  |
+ 9  |
+10  |
+11  |
+12  |
+13  |
+14  |
+15  |
+16  |
+17  |
+18  |
+19  |
+20  |Test Back Index (DECBI)
+21  |If your terminal supports DECBI (backward index), then the top row
+22  |should be numbered 1 through 20.
+23  |Push <RETURN>
+24  |
+status indicator

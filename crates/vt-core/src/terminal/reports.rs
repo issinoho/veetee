@@ -14,7 +14,7 @@ impl Emulator {
         self.output.extend_from_slice(body.as_bytes());
     }
 
-    fn reply_dcs(&mut self, body: &str) {
+    pub(super) fn reply_dcs(&mut self, body: &str) {
         if self.c1_8bit {
             self.output.push(0x90);
             self.output.extend_from_slice(body.as_bytes());
@@ -63,7 +63,8 @@ impl Emulator {
             // DECXCPR: extended cursor position with page number.
             (Some(b'?'), 6) if level >= 4 => {
                 let (row, col) = self.report_position();
-                self.reply_csi(&format!("?{row};{col};1R"));
+                let page = self.page + 1;
+                self.reply_csi(&format!("?{row};{col};{page}R"));
             }
             // Printer: no printer attached.
             (Some(b'?'), 15) if level >= 2 => self.reply_csi("?13n"),
@@ -82,12 +83,23 @@ impl Emulator {
                     self.reply_csi(&format!("?27;{language}n"));
                 }
             }
+            // Macro space report (DECMSR): available bytes / 16.
+            (Some(b'?'), 62) if level >= 4 => {
+                let free = self.macro_space() / 16;
+                self.reply_csi(&format!("{free}*{{"));
+            }
             // Data integrity: no communication errors.
             (Some(b'?'), 75) if level >= 4 => self.reply_csi("?70n"),
             // Multiple sessions: not configured.
             (Some(b'?'), 85) if level >= 4 => self.reply_csi("?83n"),
             _ => {}
         }
+    }
+
+    /// DSR ?63: memory checksum (DECCKSR) of the macro definitions.
+    pub(super) fn memory_checksum(&mut self, pid: u16) {
+        let sum = self.macro_checksum();
+        self.reply_dcs(&format!("{pid}!~{sum:04X}"));
     }
 
     /// Cursor position for CPR, relative to the margins in origin mode.
@@ -98,8 +110,12 @@ impl Emulator {
         } else {
             (self.cursor.row, self.cursor.col)
         };
-        let origin = if self.modes.origin { self.top } else { 0 };
-        (row + 1 - origin.min(row), col + 1)
+        let (oy, ox) = if self.modes.origin {
+            (self.top, self.left)
+        } else {
+            (0, 0)
+        };
+        (row + 1 - oy.min(row), col + 1 - ox.min(col))
     }
 
     // ----------------------------------------------------- mode requests
@@ -133,7 +149,10 @@ impl Emulator {
                 66 => on(m.keypad_application),
                 67 => on(m.backarrow_sends_bs),
                 60 if self.level >= 4 => 4,
-                61 | 64 | 68 | 69 if self.level >= 4 => 2,
+                61 if self.level >= 4 => on(m.vertical_coupling),
+                64 if self.level >= 4 => on(m.page_coupling),
+                68 if self.level >= 4 => on(m.data_processing_keys),
+                69 if self.level >= 4 => on(m.lr_margins),
                 _ => 0,
             },
         };
@@ -168,7 +187,9 @@ impl Emulator {
             )),
             b"$|" if level >= 4 => Some(format!("{}$|", self.cols())),
             b"t" if level >= 4 => Some(format!("{}t", self.rows())),
-            b"*|" if level >= 4 => Some(format!("{}*|", self.rows())),
+            b"*|" if level >= 4 => Some(format!("{}*|", self.screen_lines)),
+            b"s" if level >= 4 => Some(format!("{};{}s", self.left + 1, self.right + 1)),
+            b"*x" if level >= 4 => Some(format!("{}*x", if self.sace_rectangle { 2 } else { 0 })),
             _ => None,
         };
         match body {
@@ -346,6 +367,89 @@ impl Emulator {
             self.designate(g, scss & (1 << g) != 0, intermediate, final_byte);
         }
         Some(())
+    }
+
+    // -------------------------------------------------- terminal state
+
+    /// DECTSR. DEC documents the data string as model-specific; veetee's is
+    /// `VT1` followed by `;`-separated settings that DECRSTS restores.
+    pub(super) fn terminal_state_report(&mut self) {
+        let status = match self.status.kind {
+            StatusDisplay::None => 0,
+            StatusDisplay::Indicator => 1,
+            StatusDisplay::HostWritable => 2,
+        };
+        let tabs: String = self
+            .tabs
+            .iter()
+            .enumerate()
+            .filter(|(_, t)| **t)
+            .map(|(c, _)| format!("{}/", c + 1))
+            .collect();
+        let body = format!(
+            "1$sVT1;{:08X};{};{};{};{};{};{};{};{};{};{};{}",
+            self.modes.to_bits(),
+            self.top + 1,
+            self.bottom + 1,
+            self.left + 1,
+            self.right + 1,
+            self.rows(),
+            self.cols(),
+            self.screen_lines,
+            status,
+            u8::from(self.sace_rectangle),
+            u8::from(self.c1_8bit),
+            tabs.trim_end_matches('/'),
+        );
+        self.reply_dcs(&body);
+    }
+
+    /// DECRSTS with a DECTSR data string produced by [`Self::terminal_state_report`].
+    pub(super) fn restore_terminal_state(&mut self, data: &[u8]) {
+        let Ok(text) = std::str::from_utf8(data) else {
+            return;
+        };
+        let f: Vec<&str> = text.split(';').collect();
+        if f.len() < 13 || f[0] != "VT1" {
+            return;
+        }
+        let num = |i: usize| f[i].parse::<usize>().ok();
+        let (Ok(bits), Some(rows), Some(cols)) = (u32::from_str_radix(f[1], 16), num(6), num(7))
+        else {
+            return;
+        };
+        self.set_page_length(rows);
+        self.set_page_width(cols);
+        let columns_132 = self.modes.columns_132;
+        self.modes = crate::modes::Modes::from_bits(bits, self.modes);
+        self.modes.columns_132 = columns_132;
+        self.pause = true;
+        let clamp = |v: Option<usize>, max: usize| v.map(|v| v.clamp(1, max) - 1);
+        let (rows, cols) = (self.rows(), self.cols());
+        if let (Some(t), Some(b), Some(l), Some(r)) = (
+            clamp(num(2), rows),
+            clamp(num(3), rows),
+            clamp(num(4), cols),
+            clamp(num(5), cols),
+        ) {
+            if t < b && l < r {
+                (self.top, self.bottom, self.left, self.right) = (t, b, l, r);
+            }
+        }
+        if let Some(lines) = num(8) {
+            self.set_screen_lines(lines);
+        }
+        if let Some(kind) = num(9) {
+            self.set_status_type(kind as u16);
+        }
+        self.sace_rectangle = f[10] == "1";
+        self.c1_8bit = f[11] == "1" && self.level >= 2;
+        self.tabs.fill(false);
+        for stop in f[12].split('/').filter_map(|c| c.parse::<usize>().ok()) {
+            if (1..=self.tabs.len()).contains(&stop) {
+                self.tabs[stop - 1] = true;
+            }
+        }
     }
 
     // ---------------------------------------------- supplemental sets

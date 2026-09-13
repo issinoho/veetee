@@ -1,0 +1,72 @@
+# vttest menus 11.3.7 and 11.3.8: VT420 reports and screen display — terminal
+# model VT420.
+model vt420
+size 24 80
+# The DECRQCRA tests request a checksum per character; allow them time.
+timeout 300
+spawn ${VTTEST} 24x80.132
+prompt "Enter choice number (0 - 12): "
+send "11\r"
+prompt "Enter choice number (0 - 8): "
+send "3\r"
+prompt "Enter choice number (0 - 8): "
+send "7\r"
+
+# 11.3.7.2 presentation state reports
+prompt "Enter choice number (0 - 3): "
+send "2\r"
+prompt "Enter choice number (0 - 3): "
+send "2\r"
+prompt "Enter choice number (0 - 2): "
+send "2\r"
+walk vt420-rpt-decrpm-dec "Enter choice number (0 - 2): "
+send "0\r"
+prompt "Enter choice number (0 - 3): "
+send "3\r"
+prompt "Enter choice number (0 - 7): "
+send "4\r"
+walk vt420-rpt-decsace "Enter choice number (0 - 7): "
+send "6\r"
+walk vt420-rpt-decslrm "Enter choice number (0 - 7): "
+send "7\r"
+walk vt420-rpt-decsnls "Enter choice number (0 - 7): "
+send "0\r"
+prompt "Enter choice number (0 - 3): "
+send "0\r"
+
+# 11.3.7.3 device status reports
+prompt "Enter choice number (0 - 3): "
+send "3\r"
+prompt "Enter choice number (0 - 11): "
+send "5\r"
+walk vt420-dsr-macrospace "Enter choice number (0 - 11): "
+send "6\r"
+walk vt420-dsr-memory "Enter choice number (0 - 11): "
+send "7\r"
+walk vt420-dsr-data "Enter choice number (0 - 11): "
+send "8\r"
+walk vt420-dsr-session "Enter choice number (0 - 11): "
+send "9\r"
+walk vt420-dsr-decrqcra-gl "Enter choice number (0 - 11): "
+send "10\r"
+walk vt420-dsr-decrqcra-gr "Enter choice number (0 - 11): "
+send "11\r"
+walk vt420-dsr-decxcpr "Enter choice number (0 - 11): "
+send "0\r"
+prompt "Enter choice number (0 - 3): "
+send "0\r"
+
+# 11.3.8 screen display
+prompt "Enter choice number (0 - 8): "
+send "8\r"
+prompt "Enter choice number (0 - 2): "
+send "2\r"
+walk vt420-screen-decsnls "Enter choice number (0 - 2): "
+send "0\r"
+prompt "Enter choice number (0 - 8): "
+send "0\r"
+prompt "Enter choice number (0 - 8): "
+send "0\r"
+prompt "Enter choice number (0 - 12): "
+send "0\r"
+expect-exit

@@ -12,6 +12,7 @@ use crate::softfont::{SoftFonts, SoftGlyph};
 use crate::udk::UserKeys;
 
 mod dcs;
+mod rect;
 mod reports;
 
 /// Something the host application (GUI, headless driver) must act on.
@@ -22,6 +23,10 @@ pub enum Event {
     ColumnsChanged(usize),
     /// DECLL: bit 0 = L1 … bit 3 = L4.
     LedsChanged(u8),
+    /// DECSLPP changed the number of lines per page.
+    LinesChanged(usize),
+    /// DECSNLS changed the number of lines the screen displays.
+    ScreenLinesChanged(usize),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -77,11 +82,22 @@ impl Terminal {
 
     /// Processes bytes received from the host.
     pub fn advance(&mut self, bytes: &[u8]) {
+        self.advance_nested(bytes, 0);
+        self.emu.couple();
+    }
+
+    fn advance_nested(&mut self, bytes: &[u8], depth: usize) {
         let mut rest = bytes;
         while !rest.is_empty() {
             let n = self.parser.advance_until_pause(&mut self.emu, rest);
             rest = &rest[n..];
             self.sync_parser();
+            let invoked = std::mem::take(&mut self.emu.pending_input);
+            // A macro runs as if received at this point; nesting is bounded
+            // so a macro that invokes itself cannot hang the terminal.
+            if !invoked.is_empty() && depth < 16 {
+                self.advance_nested(&invoked, depth + 1);
+            }
         }
     }
 
@@ -121,6 +137,32 @@ impl Terminal {
 
     pub fn leds(&self) -> u8 {
         self.emu.leds
+    }
+
+    /// The page the cursor is on (zero-based) and the number of pages.
+    pub fn page(&self) -> (usize, usize) {
+        (self.emu.page, self.emu.page_count())
+    }
+
+    /// The page shown on the screen, which differs from the cursor's page
+    /// when page cursor coupling (DECPCCM) is off.
+    pub fn display_grid(&self) -> &Grid {
+        self.emu.page_grid(self.emu.display_page)
+    }
+
+    /// Whether the cursor is on the displayed page.
+    pub fn cursor_on_display(&self) -> bool {
+        self.emu.display_page == self.emu.page
+    }
+
+    /// The user window: first displayed page line and the number of screen lines.
+    pub fn window(&self) -> (usize, usize) {
+        (self.emu.window_top, self.emu.screen_lines)
+    }
+
+    /// Left and right margins (DECSLRM), zero-based inclusive.
+    pub fn lr_margins(&self) -> (usize, usize) {
+        (self.emu.left, self.emu.right)
     }
 
     /// Top and bottom margins (DECSTBM), zero-based inclusive.
@@ -273,7 +315,18 @@ impl Terminal {
 #[derive(Debug, Clone)]
 struct Emulator {
     config: Config,
+    /// The page the cursor is on. Other pages live in `pages`.
     grid: Grid,
+    /// Page memory; the slot for `page` is an empty placeholder while that
+    /// page is in `grid`.
+    pages: Vec<Grid>,
+    page: usize,
+    /// The page shown in the user window.
+    display_page: usize,
+    /// First page line shown in the user window.
+    window_top: usize,
+    /// Lines the screen displays (DECSNLS).
+    screen_lines: usize,
     scrollback: VecDeque<Line>,
     cursor: Cursor,
     saved: Option<SavedCursor>,
@@ -284,6 +337,10 @@ struct Emulator {
     /// Scrolling margins, zero-based inclusive.
     top: usize,
     bottom: usize,
+    left: usize,
+    right: usize,
+    /// DECSACE: DECCARA/DECRARA affect the whole rectangle (true) or a stream.
+    sace_rectangle: bool,
     tabs: Vec<bool>,
     level: u8,
     c1_8bit: bool,
@@ -295,12 +352,31 @@ struct Emulator {
     soft: SoftFonts,
     soft_generation: u64,
     dcs: dcs::DcsState,
+    /// DECDMAC definitions, indexed by macro ID (0–63).
+    macros: Vec<Vec<u8>>,
+    /// Macro text waiting to be processed as input (DECINVM).
+    pending_input: Vec<u8>,
     output: Vec<u8>,
     events: Vec<Event>,
     pause: bool,
 }
 
 const TAB_WIDTH: usize = 8;
+
+/// Pages available for a page length with one session (EK-VT420-RM table 6-1).
+fn pages_for_length(lines: usize) -> usize {
+    match lines {
+        0..=24 => 6,
+        25 => 5,
+        26..=36 => 4,
+        37..=48 => 3,
+        49..=72 => 2,
+        _ => 1,
+    }
+}
+
+/// Screen heights the VT420 can display (DECSNLS).
+const SCREEN_LINES: [usize; 3] = [24, 36, 48];
 
 fn default_tabs(cols: usize) -> Vec<bool> {
     (0..cols).map(|c| c > 0 && c % TAB_WIDTH == 0).collect()
@@ -317,8 +393,27 @@ impl Emulator {
         } else {
             StatusDisplay::None
         };
+        // A VT420 with one session has 6 pages of 24 lines (EK-VT420-RM, DECSLPP).
+        let page_count = if model.max_level() >= 4 {
+            pages_for_length(rows)
+        } else {
+            1
+        };
         Emulator {
             grid: Grid::new(rows, cols),
+            pages: (0..page_count)
+                .map(|i| {
+                    if i == 0 {
+                        Grid::new(0, 0)
+                    } else {
+                        Grid::new(rows, cols)
+                    }
+                })
+                .collect(),
+            page: 0,
+            display_page: 0,
+            window_top: 0,
+            screen_lines: rows,
             scrollback: VecDeque::new(),
             cursor: Cursor {
                 row: 0,
@@ -336,6 +431,9 @@ impl Emulator {
             ),
             top: 0,
             bottom: rows - 1,
+            left: 0,
+            right: cols - 1,
+            sace_rectangle: false,
             tabs: default_tabs(cols),
             level: model.max_level(),
             c1_8bit: false,
@@ -352,6 +450,8 @@ impl Emulator {
             soft: SoftFonts::default(),
             soft_generation: 0,
             dcs: dcs::DcsState::None,
+            macros: vec![Vec::new(); 64],
+            pending_input: Vec::new(),
             output: Vec::new(),
             events: Vec::new(),
             pause: false,
@@ -402,13 +502,180 @@ impl Emulator {
         Region {
             top,
             bottom: self.bottom,
-            left: 0,
-            right: self.cols() - 1,
+            left: self.left,
+            right: self.right,
         }
     }
 
+    /// Cursor inside both the top/bottom and left/right margins.
     fn within_margins(&self) -> bool {
-        (self.top..=self.bottom).contains(&self.cursor.row)
+        (self.top..=self.bottom).contains(&self.cursor.row) && self.within_lr_margins()
+    }
+
+    fn within_lr_margins(&self) -> bool {
+        (self.left..=self.right).contains(&self.cursor.col)
+    }
+
+    /// Resets all four margins to the page borders.
+    fn reset_margins(&mut self) {
+        self.top = 0;
+        self.bottom = self.rows() - 1;
+        self.left = 0;
+        self.right = self.cols() - 1;
+    }
+
+    /// The rightmost column the cursor can write or move to from where it is:
+    /// the right margin when inside the margins, otherwise the line end.
+    fn right_limit(&self) -> usize {
+        let last = self.last_col();
+        if !self.status.active && self.within_lr_margins() {
+            self.right.min(last)
+        } else {
+            last
+        }
+    }
+
+    // ------------------------------------------------------------- pages
+
+    fn page_count(&self) -> usize {
+        self.pages.len()
+    }
+
+    fn page_grid(&self, page: usize) -> &Grid {
+        if page == self.page {
+            &self.grid
+        } else {
+            &self.pages[page]
+        }
+    }
+
+    fn page_grid_mut(&mut self, page: usize) -> &mut Grid {
+        if page == self.page {
+            &mut self.grid
+        } else {
+            &mut self.pages[page]
+        }
+    }
+
+    /// Moves the cursor to another page, keeping its position.
+    fn switch_page(&mut self, page: usize) {
+        let page = page.min(self.page_count() - 1);
+        if page != self.page {
+            let current = std::mem::replace(&mut self.grid, Grid::new(0, 0));
+            self.pages[self.page] = current;
+            self.grid = std::mem::replace(&mut self.pages[page], Grid::new(0, 0));
+            self.page = page;
+        }
+        if self.modes.page_coupling {
+            self.display_page = page;
+        }
+        let (row, col) = (self.cursor.row, self.cursor.col);
+        self.goto(row, col);
+    }
+
+    /// NP/PP (`home`) or PPA/PPR/PPB.
+    fn move_page(&mut self, target: isize, home: bool) {
+        if self.page_count() < 2 || self.status.active {
+            return;
+        }
+        let page = target.clamp(0, self.page_count() as isize - 1) as usize;
+        self.switch_page(page);
+        if home {
+            self.goto(0, 0);
+        }
+    }
+
+    /// Applies `f` to every page in page memory.
+    fn for_each_page(&mut self, mut f: impl FnMut(&mut Grid)) {
+        f(&mut self.grid);
+        let current = self.page;
+        for (i, page) in self.pages.iter_mut().enumerate() {
+            if i != current {
+                f(page);
+            }
+        }
+    }
+
+    /// DECSLPP: lines per page; the number of pages follows the page length.
+    fn set_page_length(&mut self, lines: usize) {
+        if !matches!(lines, 24 | 25 | 36 | 48 | 72 | 144) || lines == self.rows() {
+            return;
+        }
+        self.exit_status_line();
+        let cols = self.cols();
+        let count = pages_for_length(lines);
+        // Margins at the page limits (the default) stay at the page limits.
+        let full_page = self.top == 0 && self.bottom == self.rows() - 1;
+        self.for_each_page(|g| g.resize(lines, cols));
+        if self.page >= count {
+            self.switch_page(count - 1);
+        }
+        self.pages.resize_with(count, || Grid::new(lines, cols));
+        self.pages.truncate(count);
+        self.display_page = self.display_page.min(count - 1);
+        // Otherwise DECSLPP keeps the margins unless they no longer fit (RM420).
+        if full_page || self.bottom >= lines {
+            self.top = 0;
+            self.bottom = lines - 1;
+        }
+        let (row, col) = (self.cursor.row, self.cursor.col);
+        self.goto(row, col);
+        self.couple();
+        self.events.push(Event::LinesChanged(lines));
+    }
+
+    /// DECSCPP: 80 or 132 columns without clearing page memory.
+    fn set_page_width(&mut self, cols: usize) {
+        if cols == self.cols() {
+            return;
+        }
+        self.exit_status_line();
+        let rows = self.rows();
+        self.modes.columns_132 = cols == 132;
+        self.for_each_page(|g| g.resize(rows, cols));
+        self.status_line.resize(cols, Cell::BLANK);
+        self.resize_tabs(cols);
+        if self.right >= cols {
+            self.left = 0;
+            self.right = cols - 1;
+        }
+        let (row, col) = (self.cursor.row, self.cursor.col);
+        self.goto(row, col);
+        self.events.push(Event::ColumnsChanged(cols));
+    }
+
+    /// DECSNLS: the terminal uses the next supported screen height.
+    fn set_screen_lines(&mut self, requested: usize) {
+        let lines = SCREEN_LINES
+            .iter()
+            .copied()
+            .find(|&l| l >= requested)
+            .unwrap_or(SCREEN_LINES[SCREEN_LINES.len() - 1]);
+        if lines != self.screen_lines {
+            self.screen_lines = lines;
+            self.couple();
+            self.events.push(Event::ScreenLinesChanged(lines));
+        }
+    }
+
+    /// SU/SD on DEC terminals: move the user window within the page.
+    fn pan(&mut self, delta: isize) {
+        let max_top = self.rows().saturating_sub(self.screen_lines);
+        self.window_top = (self.window_top as isize + delta).clamp(0, max_top as isize) as usize;
+    }
+
+    /// DECVCCM: pan the user window to keep the cursor in view.
+    fn couple(&mut self) {
+        let max_top = self.rows().saturating_sub(self.screen_lines);
+        if self.modes.vertical_coupling && self.display_page == self.page {
+            let row = self.cursor.row;
+            if row < self.window_top {
+                self.window_top = row;
+            } else if row >= self.window_top + self.screen_lines {
+                self.window_top = row + 1 - self.screen_lines;
+            }
+        }
+        self.window_top = self.window_top.min(max_top);
     }
 
     // ------------------------------------------------------- cursor motion
@@ -432,6 +699,7 @@ impl Emulator {
         let (row, col) = (row.max(1) - 1, col.max(1) - 1);
         if self.modes.origin {
             let row = (self.top + row).min(self.bottom);
+            let col = (self.left + col).min(self.right);
             self.goto(row, col);
         } else {
             self.goto(row, col);
@@ -462,18 +730,31 @@ impl Emulator {
         self.goto(row, self.cursor.col);
     }
 
+    // 🔎 The VT420/VT510 manuals say CUF and CUB stop at the page border;
+    // like xterm, they stop at the left/right margin when starting inside it.
     fn cuf(&mut self, n: usize) {
-        let col = (self.cursor.col + n).min(self.last_col());
+        let col = (self.cursor.col + n).min(self.right_limit());
         self.goto(self.cursor.row, col);
     }
 
     fn cub(&mut self, n: usize) {
-        let col = self.cursor.col.saturating_sub(n);
+        let limit = if self.cursor.col >= self.left && !self.status.active {
+            self.left
+        } else {
+            0
+        };
+        let col = self.cursor.col.saturating_sub(n).max(limit);
         self.goto(self.cursor.row, col);
     }
 
+    /// CR returns to the left margin, or column 1 from left of it.
     fn carriage_return(&mut self) {
-        self.goto(self.cursor.row, 0);
+        let col = if self.cursor.col >= self.left && !self.status.active {
+            self.left
+        } else {
+            0
+        };
+        self.goto(self.cursor.row, col);
     }
 
     /// IND: down one line, scrolling the region if at the bottom margin.
@@ -482,7 +763,10 @@ impl Emulator {
             return;
         }
         if self.cursor.row == self.bottom {
-            self.scroll_up(1);
+            // Outside the left/right margins nothing scrolls.
+            if self.within_lr_margins() {
+                self.scroll_up(1);
+            }
         } else if self.cursor.row + 1 < self.rows() {
             self.cursor.row += 1;
         }
@@ -496,9 +780,11 @@ impl Emulator {
             return;
         }
         if self.cursor.row == self.top {
-            let region = self.region(self.top);
-            let blank = self.blank();
-            self.grid.scroll_down(region, 1, blank);
+            if self.within_lr_margins() {
+                let region = self.region(self.top);
+                let blank = self.blank();
+                self.grid.scroll_down(region, 1, blank);
+            }
         } else if self.cursor.row > 0 {
             self.cursor.row -= 1;
         }
@@ -517,7 +803,7 @@ impl Emulator {
         let region = self.region(self.top);
         let blank = self.blank();
         let gone = self.grid.scroll_up(region, n, blank);
-        if self.top == 0 && self.config.scrollback_lines > 0 {
+        if self.top == 0 && self.page == 0 && self.config.scrollback_lines > 0 {
             for line in gone {
                 if self.scrollback.len() == self.config.scrollback_lines {
                     self.scrollback.pop_front();
@@ -528,7 +814,11 @@ impl Emulator {
     }
 
     fn tab(&mut self, n: usize) {
-        let last = self.last_col();
+        let last = if self.cursor.col <= self.right && !self.status.active {
+            self.right.min(self.last_col())
+        } else {
+            self.last_col()
+        };
         let mut col = self.cursor.col;
         for _ in 0..n {
             col = (col + 1..last).find(|&c| self.tabs[c]).unwrap_or(last);
@@ -546,17 +836,21 @@ impl Emulator {
 
     // ------------------------------------------------------------ graphics
 
-    fn put_char(&mut self, ch: char) {
+    fn put_char(&mut self, ch: char, code: u8) {
         if self.cursor.pending_wrap && self.modes.autowrap && !self.status.active {
             self.grid.line_mut(self.cursor.row).wrapped = true;
-            self.cursor.col = 0;
+            // Wrap to the left margin of the next line (column 1 if the cursor
+            // was right of the right margin).
+            let inside = self.within_lr_margins();
             self.index();
+            self.cursor.col = if inside { self.left } else { 0 };
         }
         let col = self.cursor.col;
-        let last = self.last_col();
+        let last = self.right_limit();
         let cell = Cell {
             ch,
             attrs: self.cursor.attrs,
+            code: code.max(1),
         };
         let blank = self.blank();
         let insert = self.modes.insert;
@@ -588,8 +882,13 @@ impl Emulator {
         } else {
             self.charsets.translate(byte)
         };
+        let code = if self.modes.national || !self.modes.ansi {
+            byte & 0x7F
+        } else {
+            byte
+        };
         if let Some(ch) = ch {
-            self.put_char(ch);
+            self.put_char(ch, code);
         }
     }
 
@@ -673,18 +972,76 @@ impl Emulator {
         self.carriage_return();
     }
 
+    /// ICH: ignored when the cursor is outside the left/right margins.
     fn insert_chars(&mut self, n: usize) {
-        let (col, last) = (self.cursor.col, self.last_col());
+        if !self.status.active && !self.within_lr_margins() {
+            return;
+        }
+        let (col, last) = (self.cursor.col, self.right_limit());
         let blank = self.blank();
         self.cursor_line_mut().insert(col, last, n, blank);
         self.cursor.pending_wrap = false;
     }
 
     fn delete_chars(&mut self, n: usize) {
-        let (col, last) = (self.cursor.col, self.last_col());
+        if !self.status.active && !self.within_lr_margins() {
+            return;
+        }
+        let (col, last) = (self.cursor.col, self.right_limit());
         let blank = self.blank();
         self.cursor_line_mut().delete(col, last, n, blank);
         self.cursor.pending_wrap = false;
+    }
+
+    /// DECIC/DECDC: insert or delete columns at the cursor within the
+    /// scrolling margins. No effect outside them.
+    fn insert_columns(&mut self, n: usize, insert: bool) {
+        if self.status.active || !self.within_margins() {
+            return;
+        }
+        let (col, right) = (self.cursor.col, self.right);
+        let blank = Cell::BLANK;
+        for row in self.top..=self.bottom {
+            let line = self.grid.line_mut(row);
+            if insert {
+                line.insert(col, right, n, blank);
+            } else {
+                line.delete(col, right, n, blank);
+            }
+        }
+        self.cursor.pending_wrap = false;
+    }
+
+    /// DECBI (ESC 6) moves left; at the left margin the region's contents shift right.
+    fn back_index(&mut self) {
+        if self.status.active {
+            return;
+        }
+        let col = self.cursor.col;
+        if col == self.left && (self.top..=self.bottom).contains(&self.cursor.row) {
+            let (left, right) = (self.left, self.right);
+            for row in self.top..=self.bottom {
+                self.grid.line_mut(row).insert(left, right, 1, Cell::BLANK);
+            }
+        } else if col > 0 {
+            self.goto(self.cursor.row, col - 1);
+        }
+    }
+
+    /// DECFI (ESC 9) moves right; at the right margin the region's contents shift left.
+    fn forward_index(&mut self) {
+        if self.status.active {
+            return;
+        }
+        let col = self.cursor.col;
+        if col == self.right && (self.top..=self.bottom).contains(&self.cursor.row) {
+            let (left, right) = (self.left, self.right);
+            for row in self.top..=self.bottom {
+                self.grid.line_mut(row).delete(left, right, 1, Cell::BLANK);
+            }
+        } else if col < self.last_col() {
+            self.goto(self.cursor.row, col + 1);
+        }
     }
 
     fn erase_chars(&mut self, n: usize) {
@@ -726,6 +1083,23 @@ impl Emulator {
             42 if self.level >= 3 => self.modes.national = on,
             66 if self.level >= 3 => self.modes.keypad_application = on,
             67 if self.level >= 3 => self.modes.backarrow_sends_bs = on,
+            61 if self.level >= 4 => self.modes.vertical_coupling = on,
+            64 if self.level >= 4 => self.modes.page_coupling = on,
+            68 if self.level >= 4 => self.modes.data_processing_keys = on,
+            69 if self.level >= 4 => {
+                self.modes.lr_margins = on;
+                if on {
+                    // Line attributes in page memory become single width (EK-VT420-RM).
+                    self.for_each_page(|grid| {
+                        for row in 0..grid.rows() {
+                            grid.line_mut(row).size = LineSize::Single;
+                        }
+                    });
+                } else {
+                    self.left = 0;
+                    self.right = self.cols() - 1;
+                }
+            }
             _ => {}
         }
     }
@@ -735,13 +1109,17 @@ impl Emulator {
         self.exit_status_line();
         self.modes.columns_132 = cols == 132;
         let rows = self.rows();
-        self.grid.resize(rows, cols);
-        self.grid.clear(Cell::BLANK);
+        // DECCOLM erases all of page memory (EK-VT420-RM).
+        self.for_each_page(|g| {
+            g.resize(rows, cols);
+            g.clear(Cell::BLANK);
+        });
         self.status_line.resize(cols, Cell::BLANK);
         // Tab stops are not reset (DEC STD 070); new columns get the default stops.
         self.resize_tabs(cols);
-        self.top = 0;
-        self.bottom = rows - 1;
+        // DECCOLM resets all margins and makes left/right margins unavailable.
+        self.modes.lr_margins = false;
+        self.reset_margins();
         self.goto(0, 0);
         self.events.push(Event::ColumnsChanged(cols));
     }
@@ -879,8 +1257,9 @@ impl Emulator {
         self.modes.keyboard_locked = false;
         self.modes.keypad_application = false;
         self.modes.cursor_keys_application = false;
-        self.top = 0;
-        self.bottom = self.rows() - 1;
+        // DEC STD 070 also resets left/right margin mode.
+        self.modes.lr_margins = false;
+        self.reset_margins();
         self.upss = self.config.supplemental.charset();
         self.charsets = initial_charsets(self.config.model, self.upss);
         // SGR normal rendition and DECSCA erasable.
@@ -911,16 +1290,17 @@ impl Emulator {
         let fill = Cell {
             ch: 'E',
             attrs: Attrs::default(),
+            code: b'E',
         };
         self.grid.clear(fill);
-        self.top = 0;
-        self.bottom = self.rows() - 1;
+        self.reset_margins();
         self.modes.origin = false;
         self.goto(0, 0);
     }
 
     fn set_line_size(&mut self, size: LineSize) {
-        if self.status.active {
+        // DECDWL/DECDHL are ignored while left/right margins are available.
+        if self.status.active || (self.modes.lr_margins && size != LineSize::Single) {
             return;
         }
         let row = self.cursor.row;
@@ -949,11 +1329,12 @@ impl Emulator {
             }
             self.cursor.row -= excess;
         }
-        self.grid.resize(rows, cols);
+        self.for_each_page(|g| g.resize(rows, cols));
+        self.screen_lines = rows;
+        self.window_top = 0;
         self.status_line.resize(cols, Cell::BLANK);
         self.resize_tabs(cols);
-        self.top = 0;
-        self.bottom = rows - 1;
+        self.reset_margins();
         let (row, col) = (self.cursor.row, self.cursor.col);
         self.goto(row, col);
     }
@@ -1125,7 +1506,8 @@ impl Perform for Emulator {
     }
 
     fn print_char(&mut self, ch: char) {
-        self.put_char(ch);
+        let code = u8::try_from(u32::from(ch)).unwrap_or(b'?');
+        self.put_char(ch, code);
     }
 
     fn execute(&mut self, byte: u8) {
@@ -1149,7 +1531,7 @@ impl Perform for Emulator {
                 } else {
                     charset::ERROR_CHARACTER
                 };
-                self.put_char(error);
+                self.put_char(error, b'?');
             }
             0x84 => self.index(),
             0x85 => {
@@ -1189,6 +1571,8 @@ impl Perform for Emulator {
             }
             ([], b'M') => self.reverse_index(),
             ([], b'Z') => self.device_attributes(),
+            ([], b'6') if self.level >= 4 => self.back_index(),
+            ([], b'9') if self.level >= 4 => self.forward_index(),
             ([], b'c') => self.full_reset(),
             ([], b'N') if vt220 => self.charsets.single_shift = Some(2),
             ([], b'O') if vt220 => self.charsets.single_shift = Some(3),
@@ -1233,6 +1617,7 @@ impl Perform for Emulator {
         let vt220 = self.level >= 2;
         let vt320 = self.level >= 3;
         let vt420 = self.level >= 4;
+        let xterm = self.config.extensions.xterm_compat;
         let vt510 = self.level >= 5;
         match (seq.private, seq.intermediates, seq.final_byte) {
             (None, [], b'@') if vt220 => self.insert_chars(n(0)),
@@ -1251,12 +1636,81 @@ impl Perform for Emulator {
             }
             (None, [], b'I') if vt510 => self.tab(n(0)),
             (None, [], b'Z') if vt510 => self.back_tab(n(0)),
-            (None, [], b'S') if vt420 && !self.status.active => self.scroll_up(n(0)),
-            (None, [], b'T') if vt420 && p.len() <= 1 && !self.status.active => {
-                let region = self.region(self.top);
-                let blank = self.blank();
-                self.grid.scroll_down(region, n(0), blank);
+            (None, [], b'S') if vt420 && !self.status.active => {
+                if self.config.extensions.xterm_compat {
+                    self.scroll_up(n(0));
+                } else {
+                    self.pan(n(0) as isize);
+                }
             }
+            (None, [], b'T') if vt420 && p.len() <= 1 && !self.status.active => {
+                if self.config.extensions.xterm_compat {
+                    let region = self.region(self.top);
+                    let blank = self.blank();
+                    self.grid.scroll_down(region, n(0), blank);
+                } else {
+                    self.pan(-(n(0) as isize));
+                }
+            }
+            // SCOSC/SCORC as xterm and the SCO console use them.
+            (None, [], b's') if xterm && !self.modes.lr_margins && p.is_empty() => {
+                self.save_cursor()
+            }
+            (None, [], b'u') if xterm && p.is_empty() => self.restore_cursor(),
+            (None, [], b's') if vt420 && self.modes.lr_margins && !self.status.active => {
+                let left = n(0) - 1;
+                let right =
+                    usize::from(p.get_nonzero_or(1, self.cols() as u16)).min(self.cols()) - 1;
+                if left < right {
+                    self.left = left;
+                    self.right = right;
+                    self.home();
+                }
+            }
+            (None, [], b'U') if vt420 => self.move_page((self.page + n(0)) as isize, true),
+            (None, [], b'V') if vt420 => self.move_page(self.page as isize - n(0) as isize, true),
+            (None, [b' '], b'P') if vt420 => self.move_page(n(0) as isize - 1, false),
+            (None, [b' '], b'Q') if vt420 => self.move_page((self.page + n(0)) as isize, false),
+            (None, [b' '], b'R') if vt420 => {
+                self.move_page(self.page as isize - n(0) as isize, false)
+            }
+            // xterm window operation 18: report the text area size.
+            (None, [], b't') if xterm && p.get_or(0, 0) == 18 => {
+                let (rows, cols) = (self.rows(), self.cols());
+                self.reply_csi(&format!("8;{rows};{cols}t"));
+            }
+            (None, [], b't') if vt420 && p.len() == 1 => {
+                self.set_page_length(usize::from(p.get_or(0, 0)));
+            }
+            (None, [b'$'], b'|') if vt420 => match p.get_or(0, 0) {
+                0 | 80 => self.set_page_width(80),
+                132 => self.set_page_width(132),
+                _ => {}
+            },
+            (None, [b'*'], b'|') if vt420 => self.set_screen_lines(n(0)),
+            (None, [b'"'], b'v') if vt420 => {
+                self.couple();
+                let shown = self.screen_lines.min(self.rows());
+                let body = format!(
+                    "{shown};{};1;{};{}\"w",
+                    self.cols(),
+                    self.window_top + 1,
+                    self.display_page + 1
+                );
+                self.reply_csi(&body);
+            }
+            (None, [b'$'], b'v') if vt420 => self.copy_rectangle(p),
+            (None, [b'$'], b'z') if vt420 => self.erase_rectangle(p),
+            (None, [b'$'], b'{') if vt420 => self.selective_erase_rectangle(p),
+            (None, [b'$'], b'x') if vt420 => self.fill_rectangle(p),
+            (None, [b'$'], b'r') if vt420 => self.change_rectangle_attributes(p, false),
+            (None, [b'$'], b't') if vt420 => self.change_rectangle_attributes(p, true),
+            (None, [b'*'], b'x') if vt420 => self.select_attribute_change_extent(p.get_or(0, 0)),
+            (None, [b'*'], b'y') if vt420 => self.request_checksum(p),
+            (None, [b'*'], b'z') if vt420 => self.invoke_macro(p.get_or(0, 0)),
+            (None, [b'$'], b'u') if vt420 && p.get_or(0, 0) == 1 => self.terminal_state_report(),
+            (None, [b'\''], b'}') if vt420 => self.insert_columns(n(0), true),
+            (None, [b'\''], b'~') if vt420 => self.insert_columns(n(0), false),
             (None, [], b'A') => self.cuu(n(0)),
             (None, [], b'B') => self.cud(n(0)),
             (None, [], b'C') => self.cuf(n(0)),
@@ -1292,6 +1746,9 @@ impl Perform for Emulator {
                 }
             }
             (None, [], b'm') => self.select_graphic_rendition(p),
+            (Some(b'?'), [], b'n') if p.get_or(0, 0) == 63 && vt420 => {
+                self.memory_checksum(p.get_or(1, 0))
+            }
             (None | Some(b'?'), [], b'n') => self.device_status(seq.private, p.get_or(0, 0)),
             (None, [], b'q') => {
                 for v in p.iter().map(|v| v.value.unwrap_or(0)) {
