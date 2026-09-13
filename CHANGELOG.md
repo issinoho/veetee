@@ -5,6 +5,11 @@ milestones (0.3 = M3). The format follows [Keep a Changelog](https://keepachange
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-09-13
+
+Milestone M6 (keyboard and OpenVMS applications) and the first part of M7 (fonts), and the first
+Windows build. M5 (RFC 2217 and LAT) is still to come.
+
 - `--phosphor white|green|amber` selects the phosphor colour at start.
 - **Keyboard (M6)**: the PC-to-LK401 map is a TOML keymap with a visual *Keyboard Map* editor
   (`~/.config/veetee/keymap.toml`, `--keymap FILE`); VT500 modified function, editing and cursor
@@ -26,6 +31,9 @@ milestones (0.3 = M3). The format follows [Keep a Changelog](https://keepachange
 - Fixed: keypad digits, `.`, `/`, `*` and `−` went to the input method as text, so EDT and EVE
   received digits instead of application keypad sequences; host-programmed main keypad keys
   (DECPAK) were bypassed the same way. veetee now handles mapped keys first.
+- **Windows**: a zip for 64-bit Windows 10 (1809) and later, with the GTK runtime included. Local
+  command windows run on a Windows pseudo console (ConPTY), SSH uses Windows' OpenSSH client and
+  serial lines use COM ports. CI builds and tests on Windows.
 - Project website in `site/`, published with GitHub Pages; screenshots are regenerated from
   veetee's renderer with `site/capture/capture.sh`.
 
@@ -97,6 +105,7 @@ The first release: VT100 through VT420 emulation with local, Telnet, SSH and ser
   `cargo deny` licence checks and parser fuzzing.
 - `cargo xtask dist` builds the release tarball and Debian package.
 
-[Unreleased]: https://github.com/issinoho/veetee/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/issinoho/veetee/compare/v0.6.0...HEAD
+[0.6.0]: https://github.com/issinoho/veetee/compare/v0.4.0...v0.6.0
 [0.4.0]: https://github.com/issinoho/veetee/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/issinoho/veetee/releases/tag/v0.3.0

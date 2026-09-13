@@ -11,7 +11,7 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  release:
+  linux:
     # The oldest supported Ubuntu keeps the glibc requirement low.
     runs-on: ubuntu-24.04
     steps:
@@ -28,29 +28,75 @@ jobs:
             echo "tag $GITHUB_REF_NAME does not match crate version $version" >&2
             exit 1
           fi
-          echo "VERSION=$version" >> "$GITHUB_ENV"
 
       - run: cargo test --workspace --locked
 
       - run: cargo install cargo-deb --locked
       - run: cargo xtask dist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux
+          path: |
+            target/dist/veetee-*.tar.gz
+            target/dist/veetee_*.deb
+
+  windows:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: msys2 {0}
+    env:
+      CARGO_PROFILE_RELEASE_DEBUG: "0"
+      CARGO_PROFILE_RELEASE_STRIP: symbols
+    steps:
+      - uses: actions/checkout@v4
+      - uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          update: true
+          install: >-
+            zip
+            mingw-w64-ucrt-x86_64-gcc
+            mingw-w64-ucrt-x86_64-pkgconf
+            mingw-w64-ucrt-x86_64-rust
+            mingw-w64-ucrt-x86_64-gtk4
+            mingw-w64-ucrt-x86_64-libadwaita
+      - run: cargo build --release --locked -p veetee -p vt-headless
+      - run: packaging/windows/bundle.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows
+          path: target/dist/veetee-*-x86_64-windows.zip
+
+  publish:
+    needs: [linux, windows]
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
 
       - name: Extract release notes from CHANGELOG.md
         run: |
-          awk -v v="$VERSION" '
+          version=${GITHUB_REF_NAME#v}
+          echo "VERSION=$version" >> "$GITHUB_ENV"
+          awk -v v="$version" '
             $0 ~ "^## \\[" v "\\]" { on = 1; next }
             on && /^## \[/ { exit }
             on && /^\[[^]]+\]: / { exit }
             on { print }
-          ' CHANGELOG.md > target/dist/notes.md
-          test -s target/dist/notes.md
+          ' CHANGELOG.md > notes.md
+          test -s notes.md
 
       - name: Publish the GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          cd target/dist
+          cd dist
+          sha256sum veetee-*.tar.gz veetee_*.deb veetee-*.zip > SHA256SUMS
           gh release create "$GITHUB_REF_NAME" \
             --title "veetee $VERSION" \
-            --notes-file notes.md \
-            veetee-*.tar.gz veetee_*.deb SHA256SUMS
+            --notes-file ../notes.md \
+            veetee-*.tar.gz veetee_*.deb veetee-*.zip SHA256SUMS

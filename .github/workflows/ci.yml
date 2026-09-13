@@ -75,27 +75,39 @@ jobs:
       - run: cargo build --release -p veetee -p vt-headless
       - run: cargo test --workspace
       - run: packaging/windows/bundle.sh
-      - name: Smoke test the bundle (software OpenGL)
+      - name: Smoke test with software OpenGL
         continue-on-error: true
         run: |
+          set -x
+          pacman -Ql mingw-w64-ucrt-x86_64-mesa | grep -i '\.dll$' || true
           dir=target/dist/smoke
           rm -rf "$dir" && mkdir -p "$dir"
-          unzip -q target/dist/veetee-*-windows-x86_64.zip -d "$dir"
+          unzip -q target/dist/veetee-*-x86_64-windows.zip -d "$dir"
           app=$(echo "$dir"/veetee-*/bin)
-          "$app/veetee.exe" --help
-          cp /ucrt64/bin/opengl32.dll /ucrt64/bin/libgallium_wgl.dll "$app/" || true
-          # Run with only Windows on the PATH, as a user would.
-          env PATH=/c/Windows/system32:/c/Windows \
-            VEETEE_CAPTURE="$(cygpath -w "$dir/windows.ppm")" VEETEE_CAPTURE_DELAY_MS=6000 GALLIUM_DRIVER=llvmpipe \
-            /usr/bin/timeout 90 "$app/veetee.exe" --model vt420 \
-            --command "echo veetee on Windows & ver & ping -n 60 127.0.0.1 >NUL" || true
+          "$app/veetee.exe" --help > "$dir/help.txt"; echo "help exit $?"
+          # A console build first, so GTK's own messages are visible.
+          cargo build -p veetee
+          for gl in opengl32.dll libgallium_wgl.dll libglapi.dll; do
+            cp "/ucrt64/bin/$gl" target/debug/ 2>/dev/null || true
+            cp "/ucrt64/bin/$gl" "$app/" 2>/dev/null || true
+          done
+          export GALLIUM_DRIVER=llvmpipe VEETEE_CAPTURE_DELAY_MS=8000
+          command="echo veetee on Windows & ver & ping -n 60 127.0.0.1 >NUL"
+          VEETEE_CAPTURE="$(cygpath -w "$PWD/$dir/debug.ppm")" \
+            timeout 120 target/debug/veetee.exe --model vt420 --command "$command"
+          echo "debug exit $?"
+          # Then the bundle, with only Windows on the PATH as a user would have.
+          VEETEE_CAPTURE="$(cygpath -w "$PWD/$dir/bundle.ppm")" PATH=/c/Windows/system32:/c/Windows \
+            /usr/bin/timeout 120 "$app/veetee.exe" --model vt525 --command "$command"
+          echo "bundle exit $?"
           ls -l "$dir"
       - uses: actions/upload-artifact@v4
         with:
           name: veetee-windows
           path: |
-            target/dist/veetee-*-windows-x86_64.zip
+            target/dist/veetee-*-x86_64-windows.zip
             target/dist/smoke/*.ppm
+            target/dist/smoke/help.txt
           if-no-files-found: warn
 
   licenses:

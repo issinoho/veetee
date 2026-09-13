@@ -1,14 +1,15 @@
 # veetee
 
-A DEC VT terminal emulator for the Linux desktop, aiming at SmarTerm/Reflection-class
+A DEC VT terminal emulator for the Linux (and Windows) desktop, aiming at SmarTerm/Reflection-class
 compatibility: VT52 through VT525, DECforms and FMS applications, DEC-faithful fonts,
 and SSH, Telnet, serial and LAT connections.
 
 **Website:** [veetee.issinoho.com](http://veetee.issinoho.com/) · **Documentation:** [wiki](https://github.com/issinoho/veetee/wiki)
 
-**Status:** early development — milestone M4 (0.4.0): VT510/VT520/VT525 features (VT525
-colour, VT500 character sets, cursor styles, Set-Up selections and reports, dual sessions) on top
-of the VT420, VT220/VT320 and VT100/VT102/VT52 layers. vttest VT100–VT520 menus pass headless,
+**Status:** early development — 0.6.0: the VT100 through VT525 (colour, VT500 character sets,
+dual sessions, page memory, rectangular operations, soft fonts), an LK401 keyboard map with a
+visual editor and VT520 key programming, session recordings, and fonts drawn on DEC's own
+character cells. vttest VT100–VT520 menus pass headless,
 and esctest2 runs at VT level 5 with every difference from xterm explained against DEC
 documentation.
 
@@ -18,7 +19,7 @@ documentation.
 |-------|---------|
 | `crates/vt-parser` | Allocation-free DEC STD 070 / ECMA-48 control function parser (7-bit, 8-bit, UTF-8, VT52) |
 | `crates/vt-core` | The terminal model: screen, modes, character sets, reports, DEC keyboard codes |
-| `crates/vt-transport` | Host connections: local PTY, serial lines, Telnet, SSH (via OpenSSH) |
+| `crates/vt-transport` | Host connections: local PTY (ConPTY on Windows), serial lines, Telnet, SSH (via OpenSSH) |
 | `crates/vt-fonts` | Original DEC-style bitmap fonts (SIL OFL) for each model's character cells, and their parser |
 | `crates/vt-keyboard` | PC keyboard → DEC LK401 key map |
 | `crates/vt-render` | OpenGL renderer: dot stretching, scan lines, double-size lines, 132 columns |
@@ -28,6 +29,7 @@ documentation.
 | `tests/conformance` | vttest session scripts with golden screens; esctest2 expected failures |
 | `docs/compat-matrix.md` | Per-function DEC compatibility status and sources |
 | `data/` | Desktop entry |
+| `packaging/windows` | Windows zip bundling (MSYS2 GTK runtime) |
 | `fuzz/` | cargo-fuzz targets (nightly) |
 
 ## Installing
@@ -36,8 +38,12 @@ documentation.
 x86_64 Linux tarball, both needing GTK 4.12+ and libadwaita 1.5+:
 
 ```sh
-sudo apt install ./veetee_0.4.0-1_amd64.deb
+sudo apt install ./veetee_0.6.0-1_amd64.deb
 ```
+
+For Windows 10 (1809) or later, unzip `veetee-0.6.0-x86_64-windows.zip` and run
+`bin\veetee.exe`; the GTK runtime is included. Local command windows use the Windows pseudo
+console, `--ssh` uses Windows' OpenSSH client and `--serial COM3` opens a COM port.
 
 Changes are listed in [CHANGELOG.md](CHANGELOG.md).
 

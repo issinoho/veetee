@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Builds target/dist/veetee-VERSION-windows-x86_64.zip: veetee.exe and
+# Builds target/dist/veetee-VERSION-x86_64-windows.zip: veetee.exe and
 # vt-headless.exe with the GTK 4 and libadwaita runtime they need.
 #
 # Run from the repository root in an MSYS2 UCRT64 shell, after
@@ -8,7 +8,7 @@ set -euo pipefail
 
 prefix=${MINGW_PREFIX:-/ucrt64}
 version=$(sed -n 's/^version = "\(.*\)"$/\1/p' Cargo.toml | head -n 1)
-name="veetee-$version-windows-x86_64"
+name="veetee-$version-x86_64-windows"
 dist="target/dist/$name"
 
 rm -rf "$dist" "target/dist/$name.zip"
@@ -34,10 +34,10 @@ pixbuf=lib/gdk-pixbuf-2.0/2.10.0
 mkdir -p "$dist/$pixbuf/loaders"
 cp "$prefix/$pixbuf/loaders/"*.dll "$dist/$pixbuf/loaders/"
 copy_dlls "$dist/$pixbuf/loaders/"*.dll
-# The cache must name the loaders relative to the installation.
-root=$(cygpath -m "$(pwd)/$dist")
-GDK_PIXBUF_MODULEDIR="$dist/$pixbuf/loaders" gdk-pixbuf-query-loaders \
-  | sed -e "s|$root/||g" -e "s|$(pwd)/$dist/||g" > "$dist/$pixbuf/loaders.cache"
+# The cache must name the loaders relative to the installation, which
+# gdk-pixbuf resolves against the folder above bin on Windows.
+(cd "$dist" && GDK_PIXBUF_MODULEDIR="$pixbuf/loaders" gdk-pixbuf-query-loaders) > "$dist/$pixbuf/loaders.cache"
+grep -q '^"lib/' "$dist/$pixbuf/loaders.cache"
 
 # GSettings schemas GTK reads, and the icon themes.
 cp "$prefix"/share/glib-2.0/schemas/org.gtk.gtk4.*.gschema.xml "$dist/share/glib-2.0/schemas/"
