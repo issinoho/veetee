@@ -89,6 +89,11 @@ impl Pty {
         }
     }
 
+    /// A second handle to the PTY for writing from another thread.
+    pub fn writer(&self) -> io::Result<File> {
+        self.master.try_clone()
+    }
+
     pub fn write_all(&mut self, bytes: &[u8]) -> io::Result<()> {
         self.master.write_all(bytes)
     }

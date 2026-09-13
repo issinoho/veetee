@@ -10,9 +10,12 @@ license = "MIT OR Apache-2.0"
 authors = ["Iain Smith <iain@issinoho.com>"]
 
 [workspace.dependencies]
-vt-parser = { path = "crates/vt-parser" }
-vt-core = { path = "crates/vt-core" }
-vt-transport = { path = "crates/vt-transport" }
+vt-parser = { path = "crates/vt-parser", version = "0.1.0" }
+vt-core = { path = "crates/vt-core", version = "0.1.0" }
+vt-fonts = { path = "crates/vt-fonts", version = "0.1.0" }
+vt-keyboard = { path = "crates/vt-keyboard", version = "0.1.0" }
+vt-render = { path = "crates/vt-render", version = "0.1.0" }
+vt-transport = { path = "crates/vt-transport", version = "0.1.0" }
 
 [workspace.lints.rust]
 unsafe_code = "deny"

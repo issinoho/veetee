@@ -4,7 +4,8 @@ A DEC VT terminal emulator for the Linux desktop, aiming at SmarTerm/Reflection-
 compatibility: VT52 through VT525, DECforms and FMS applications, DEC-faithful fonts,
 and SSH, Telnet, serial and LAT connections.
 
-**Status:** early development — milestone M1 (VT100/VT102/VT52 core; vttest menus 1–8 pass headless).
+**Status:** early development — milestone M1: VT100/VT102/VT52 core (vttest menus 1–8 pass),
+first GTK4 window with a local shell, DEC-style dot-matrix font and phosphor rendering.
 
 ## Layout
 
@@ -13,10 +14,41 @@ and SSH, Telnet, serial and LAT connections.
 | `crates/vt-parser` | Allocation-free DEC STD 070 / ECMA-48 control function parser (7-bit, 8-bit, UTF-8, VT52) |
 | `crates/vt-core` | The terminal model: screen, modes, character sets, reports, DEC keyboard codes |
 | `crates/vt-transport` | Host connections (local PTY so far) |
+| `crates/vt-fonts` | Original DEC-style bitmap fonts (SIL OFL) and their parser |
+| `crates/vt-keyboard` | PC keyboard → DEC LK401 key map |
+| `crates/vt-render` | OpenGL renderer: dot stretching, scan lines, double-size lines, 132 columns |
+| `crates/veetee` | The GTK4/libadwaita application |
 | `crates/vt-headless` | CLI driver: `trace` parser actions; `run` scripted sessions with golden screen snapshots |
 | `xtask` | `cargo xtask vttest` builds a pinned vttest and runs the conformance suite |
 | `docs/compat-matrix.md` | Per-function DEC compatibility status and sources |
 | `fuzz/` | cargo-fuzz targets (nightly) |
+
+## Running
+
+Requires GTK 4.12+ and libadwaita 1.5+ development packages
+(`sudo apt install libgtk-4-dev libadwaita-1-dev` on Ubuntu).
+
+```sh
+cargo run -p veetee                  # local shell, VT420
+cargo run -p veetee -- --model vt102 # emulate another model
+```
+
+The phosphor colour (white P4, green P1, amber P3) is in the window menu.
+
+### Keyboard
+
+The PC keyboard is mapped to LK401 key positions:
+
+| PC key | DEC key |
+|--------|---------|
+| F1 F2 F3 F4 F5 | Hold Screen, Print Screen, Set-Up, Data/Talk, Break |
+| F6–F12, Shift+F1–F10 | F6–F12, F11–F20 (Shift+F5 = Help, Shift+F6 = Do) |
+| Ctrl+F5 | Answerback |
+| Insert Home PgUp / Delete End PgDn | Find, Insert Here, Remove / Select, Prev Screen, Next Screen |
+| NumLock / * − | PF1 PF2 PF3 PF4 |
+| Keypad + (Shift: −) | Keypad , (−) |
+| Backspace | `<X]` (sends DEL) |
+| Ctrl+Shift+V | Paste |
 
 ## Development
 

@@ -1,0 +1,14 @@
+[package]
+name = "vt-fonts"
+description = "Original DEC-style terminal bitmap fonts for veetee"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+# Code is MIT OR Apache-2.0; the font data in fonts/ is under the SIL OFL 1.1.
+license = "(MIT OR Apache-2.0) AND OFL-1.1"
+authors.workspace = true
+
+[dependencies]
+
+[lints]
+workspace = true

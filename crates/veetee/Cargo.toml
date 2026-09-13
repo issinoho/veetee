@@ -1,0 +1,23 @@
+[package]
+name = "veetee"
+description = "A DEC VT terminal for the Linux desktop"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[dependencies]
+adw = { version = "0.9", package = "libadwaita", features = ["v1_5"] }
+async-channel = "2"
+glow = "0.18"
+gtk = { version = "0.11", package = "gtk4", features = ["v4_12"] }
+libloading = "0.9"
+vt-core.workspace = true
+vt-fonts.workspace = true
+vt-keyboard.workspace = true
+vt-render.workspace = true
+vt-transport.workspace = true
+
+[lints]
+workspace = true

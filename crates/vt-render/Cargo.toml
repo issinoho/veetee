@@ -1,0 +1,16 @@
+[package]
+name = "vt-render"
+description = "OpenGL renderer for veetee: DEC-style dot-matrix text with phosphor effects"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[dependencies]
+glow = "0.18"
+vt-core.workspace = true
+vt-fonts.workspace = true
+
+[lints]
+workspace = true

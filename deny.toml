@@ -15,6 +15,12 @@ allow = [
     "CC0-1.0",
 ]
 confidence-threshold = 0.9
+unused-allowed-license = "allow"
+
+# veetee's own fonts are released under the SIL Open Font License.
+[[licenses.exceptions]]
+crate = "vt-fonts"
+allow = ["OFL-1.1"]
 
 [bans]
 multiple-versions = "warn"
