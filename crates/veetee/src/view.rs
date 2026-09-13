@@ -212,9 +212,13 @@ impl TerminalView {
     }
 
     fn connect_input(&self, keymap: SharedKeymap) {
+        // The input method only sees keys veetee does not map itself. Given
+        // first refusal it would turn keypad digits into text, so a host that
+        // selected application keypad mode (EDT, EVE) would receive `7`
+        // instead of `ESC O w`.
         let keys = gtk::EventControllerKey::new();
         let im = gtk::IMMulticontext::new();
-        keys.set_im_context(Some(&im));
+        im.set_client_widget(Some(&self.area));
 
         let state = self.state.clone();
         im.connect_commit(move |_, text| {
@@ -222,7 +226,17 @@ impl TerminalView {
         });
 
         let view = self.clone();
-        keys.connect_key_pressed(move |_, keyval, keycode, modifiers| {
+        let im_keys = im.clone();
+        keys.connect_key_pressed(move |controller, keyval, keycode, modifiers| {
+            let to_input_method = || {
+                controller
+                    .current_event()
+                    .is_some_and(|event| im_keys.filter_keypress(&event))
+            };
+            // A composition in progress keeps every key.
+            if !im_keys.preedit_string().0.is_empty() && to_input_method() {
+                return glib::Propagation::Stop;
+            }
             let mods = Mods {
                 shift: modifiers.contains(gtk::gdk::ModifierType::SHIFT_MASK),
                 ctrl: modifiers.contains(gtk::gdk::ModifierType::CONTROL_MASK),
@@ -246,7 +260,12 @@ impl TerminalView {
                 .borrow()
                 .map(keyval.into_glib(), keyval.to_unicode(), mods);
             let Some(action) = action else {
-                return glib::Propagation::Proceed;
+                // Ordinary typing, dead keys and compose go through the input method.
+                return if to_input_method() {
+                    glib::Propagation::Stop
+                } else {
+                    glib::Propagation::Proceed
+                };
             };
             let session = view.state.borrow().session.clone();
             let outcome = match action {
@@ -265,6 +284,12 @@ impl TerminalView {
                 view.programmed_local_function(n);
             }
             glib::Propagation::Stop
+        });
+        let im_keys = im.clone();
+        keys.connect_key_released(move |controller, _, _, _| {
+            if let Some(event) = controller.current_event() {
+                im_keys.filter_keypress(&event);
+            }
         });
         self.area.add_controller(keys);
 

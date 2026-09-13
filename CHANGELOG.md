@@ -16,6 +16,9 @@ milestones (0.3 = M3). The format follows [Keep a Changelog](https://keepachange
   `cargo xtask openvms` compare checkpoint screens.
 - 132-column mode draws a condensed six-dot font instead of squeezing the 80-column glyphs, and
   glyph dots are box-filtered, so strokes keep an even weight.
+- Fixed: keypad digits, `.`, `/`, `*` and `−` went to the input method as text, so EDT and EVE
+  received digits instead of application keypad sequences; host-programmed main keypad keys
+  (DECPAK) were bypassed the same way. veetee now handles mapped keys first.
 - Project website in `site/`, published with GitHub Pages; screenshots are regenerated from
   veetee's renderer with `site/capture/capture.sh`.
 
