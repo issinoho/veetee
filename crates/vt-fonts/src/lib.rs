@@ -2,14 +2,29 @@
 //!
 //! Fonts are plain-text dot matrices (see `fonts/*.vtfont`) so they can be
 //! edited by hand and reviewed in diffs. They are parsed once at startup.
+//!
+//! DEC terminals draw each screen size with its own font: the VT420 and
+//! VT500 series use a 10×16 cell for 80 columns and 6×16 for 132 columns
+//! at 24 lines, and 10- and 8-dot-high cells at 36 and 48 lines
+//! (EK-VT420-RM table 5-5). A [`FontSet`] holds every size a terminal
+//! family shows; sizes without a hand-drawn font are resampled.
 
 use std::collections::HashMap;
 
-/// The default 80/132-column font, drawn on a 10×10 dot cell.
+mod resample;
+mod set;
+
+pub use set::{Family, FontSet};
+
+/// The VT100/VT220-style font, drawn on a 10×10 dot cell. VT420-family
+/// sets also use it for 36-line screens.
 pub const VEETEE_10X10: &str = include_str!("../fonts/veetee-10x10.vtfont");
 
-/// Cell width of the condensed 132-column glyphs.
-pub const CONDENSED_WIDTH: u8 = 6;
+/// The VT420/VT500-style 80-column font for 24-line screens, 10×16 dots.
+pub const VEETEE_VT420_10X16: &str = include_str!("../fonts/veetee-vt420-10x16.vtfont");
+
+/// The VT420/VT500-style 132-column font for 24-line screens, 6×16 dots.
+pub const VEETEE_VT420_6X16: &str = include_str!("../fonts/veetee-vt420-6x16.vtfont");
 
 /// A parsed bitmap font. Glyph rows are bit masks, bit 0 = leftmost dot.
 #[derive(Debug, Clone)]
@@ -129,45 +144,33 @@ impl Font {
         Ok(font)
     }
 
-    /// The narrow variant drawn in 132-column mode, like the separate
-    /// 132-column fonts of DEC terminals. A 10-dot cell becomes 6 dots by
-    /// merging dot columns in pairs around the centre column: 0+1, 2+3, 4,
-    /// 5+6, 7, 8+9. Letters (columns 1–7) keep their stems, bars and centre
-    /// strokes, and line-drawing characters still meet at the centre and
-    /// reach both edges. Returns `None` for other cell widths.
-    // 🔎 Hand-drawn 132-column glyphs are planned (milestone M7).
-    pub fn condensed(&self) -> Option<Font> {
-        if self.width != 10 {
-            return None;
-        }
-        const GROUPS: [&[usize]; CONDENSED_WIDTH as usize] =
-            [&[0, 1], &[2, 3], &[4], &[5, 6], &[7], &[8, 9]];
+    /// A copy of the font resampled onto a `width`×`height` cell, keeping
+    /// strokes distinct (see [`resample`]).
+    pub fn derive(&self, width: u8, height: u8) -> Font {
         let glyphs = self
             .glyphs
             .iter()
-            .map(|g| Glyph {
-                ch: g.ch,
-                rows: g
-                    .rows
-                    .iter()
-                    .map(|&row| {
-                        GROUPS.iter().enumerate().fold(0u16, |acc, (x, group)| {
-                            if group.iter().any(|&c| row & (1 << c) != 0) {
-                                acc | 1 << x
-                            } else {
-                                acc
-                            }
-                        })
-                    })
-                    .collect(),
-            })
+            .map(|g| resample::glyph(g, (self.width, self.height), (width, height)))
             .collect();
-        Some(Font {
-            width: CONDENSED_WIDTH,
-            height: self.height,
+        Font {
+            width,
+            height,
             glyphs,
             index: self.index.clone(),
-        })
+        }
+    }
+
+    /// Adds every glyph `other` has and this font lacks, resampled to this
+    /// font's cell.
+    pub fn fill_from(&mut self, other: &Font) {
+        for g in &other.glyphs {
+            if !self.index.contains_key(&g.ch) {
+                let derived =
+                    resample::glyph(g, (other.width, other.height), (self.width, self.height));
+                self.index.insert(g.ch, self.glyphs.len() as u16);
+                self.glyphs.push(derived);
+            }
+        }
     }
 
     pub fn glyphs(&self) -> &[Glyph] {
@@ -243,27 +246,51 @@ mod tests {
         assert!(Font::parse("cell 3 1\nU+0041\n#.#\nU+0041\n###\n").is_err());
     }
     #[test]
-    fn condensed_glyphs_keep_their_strokes() {
+    fn derived_glyphs_keep_their_strokes() {
         let font = builtin();
-        let narrow = font.condensed().unwrap();
+        let narrow = font.derive(6, 10);
         assert_eq!(
             (narrow.width, narrow.glyphs().len()),
             (6, font.glyphs().len())
         );
-        let row = |ch: char, y: usize| {
-            let g = &narrow.glyphs()[usize::from(narrow.index_of(ch))];
-            (0..6)
-                .map(|x| if g.dot(x, y) { '#' } else { '.' })
-                .collect::<String>()
-        };
+        let glyph = |ch: char| &narrow.glyphs()[usize::from(narrow.index_of(ch))];
         // Horizontal line-drawing strokes still reach both edges.
-        let line_row = (0..10).find(|&y| {
-            let g = &font.glyphs()[usize::from(font.index_of('─'))];
-            g.dot(0, y)
-        });
-        assert_eq!(row('─', line_row.unwrap()), "######");
-        // A capital H keeps both stems.
-        let h = &narrow.glyphs()[usize::from(narrow.index_of('H'))];
-        assert!((0..10).any(|y| h.dot(0, y) && h.dot(4, y) && !h.dot(2, y)));
+        let line = glyph('─');
+        assert!((0..10).any(|y| (0..6).all(|x| line.dot(x, y))));
+        // A capital H keeps two separate stems on every row but the bar.
+        let h = glyph('H');
+        let runs = |y: usize| {
+            (0..6)
+                .filter(|&x| h.dot(x, y) && (x == 0 || !h.dot(x - 1, y)))
+                .count()
+        };
+        assert!((0..10).filter(|&y| runs(y) == 2).count() >= 5);
+        // Box drawing still meets at one column.
+        let cross = glyph('┼');
+        let vertical = glyph('│');
+        let column = |g: &Glyph| (0..6).find(|&x| (0..10).all(|y| g.dot(x, y)));
+        assert_eq!(column(cross), column(vertical));
+    }
+
+    #[test]
+    fn vt420_fonts_cover_the_emulator() {
+        let set = FontSet::new(Family::Vt420);
+        assert_eq!(set.faces().len(), 6);
+        let wide = &set.faces()[0];
+        assert_eq!((wide.width, wide.height), (10, 16));
+        for face in set.faces() {
+            for c in vt_charset_coverage::required() {
+                assert!(
+                    face.contains(c),
+                    "{}x{} lacks U+{:04X}",
+                    face.width,
+                    face.height,
+                    c as u32
+                );
+            }
+        }
+        // Every face has the same characters, so glyph lookups agree.
+        let count = wide.glyphs().len();
+        assert!(set.faces().iter().all(|f| f.glyphs().len() == count));
     }
 }

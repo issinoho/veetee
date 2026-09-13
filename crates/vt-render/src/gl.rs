@@ -4,15 +4,17 @@
 
 use glow::HasContext;
 use vt_core::Terminal;
-use vt_fonts::Font;
+use vt_fonts::FontSet;
 
 use crate::scene::{
     FrameState, INSTANCE_LEN, Layout, SOFT_ATLAS_COLUMNS, SOFT_SLOT, SoftAtlas, build_instances,
 };
 use crate::theme::Theme;
 
-/// Glyphs per atlas row.
-const ATLAS_COLUMNS: i32 = 32;
+/// Glyph slots per atlas row; every face's glyphs share one atlas of
+/// 16×16 slots, the largest cell.
+const ATLAS_COLUMNS: i32 = 64;
+const ATLAS_SLOT: i32 = 16;
 
 pub struct Renderer {
     program: glow::Program,
@@ -22,7 +24,7 @@ pub struct Renderer {
     atlas: glow::Texture,
     soft_texture: glow::Texture,
     soft: SoftAtlas,
-    font: Font,
+    fonts: FontSet,
     scratch: Vec<f32>,
     uniforms: Uniforms,
 }
@@ -37,7 +39,8 @@ struct Uniforms {
     viewport: Option<glow::UniformLocation>,
     atlas: Option<glow::UniformLocation>,
     soft_atlas: Option<glow::UniformLocation>,
-    cell: Option<glow::UniformLocation>,
+    slot: Option<glow::UniformLocation>,
+    cell_scan_lines: Option<glow::UniformLocation>,
     soft_slot: Option<glow::UniformLocation>,
     soft_columns: Option<glow::UniformLocation>,
     atlas_columns: Option<glow::UniformLocation>,
@@ -87,8 +90,9 @@ flat in ivec2 v_matrix;
 
 uniform sampler2D u_atlas;
 uniform sampler2D u_soft_atlas;
-uniform ivec2 u_cell;
+uniform int u_slot;
 uniform int u_atlas_columns;
+uniform float u_cell_scan_lines;
 uniform int u_soft_slot;
 uniform int u_soft_columns;
 uniform float u_scanlines;
@@ -102,7 +106,7 @@ float dot_at(int x, int y) {
         ivec2 t = ivec2((v_glyph % u_soft_columns) * u_soft_slot + x, (v_glyph / u_soft_columns) * u_soft_slot + y);
         return texelFetch(u_soft_atlas, t, 0).r;
     }
-    ivec2 t = ivec2((v_glyph % u_atlas_columns) * u_cell.x + x, (v_glyph / u_atlas_columns) * u_cell.y + y);
+    ivec2 t = ivec2((v_glyph % u_atlas_columns) * u_slot + x, (v_glyph / u_atlas_columns) * u_slot + y);
     return texelFetch(u_atlas, t, 0).r;
 }
 
@@ -133,11 +137,12 @@ void main() {
     coverage /= 12.0;
 
     if ((v_flags & 32) != 0 || (v_flags & 8) != 0) coverage = 0.0;
-    if ((v_flags & 1) != 0 && int(floor(d.y)) == u_cell.y - 1) coverage = 1.0;
-    if ((v_flags & 512) != 0 && int(floor(d.y)) >= u_cell.y - 1) coverage = 1.0 - coverage;
+    if ((v_flags & 1) != 0 && int(floor(d.y)) == v_matrix.y - 1) coverage = 1.0;
+    if ((v_flags & 512) != 0 && int(floor(d.y)) >= v_matrix.y - 1) coverage = 1.0 - coverage;
 
-    // Each dot row is two scan lines; darken the gap in the lower half of each.
-    float scan = fract(d.y * 2.0);
+    // Scan lines are fixed per screen line (two per dot row on a VT220, one
+    // on a VT420); darken the gap in the lower half of each.
+    float scan = fract(v_local.y * u_cell_scan_lines);
     float beam = 1.0 - u_scanlines * smoothstep(0.55, 0.95, scan);
 
     vec3 fg = v_fg;
@@ -155,11 +160,11 @@ void main() {
 "#;
 
 impl Renderer {
-    /// Compiles shaders and uploads the font atlas.
+    /// Compiles shaders and uploads the glyph atlas of every face in `fonts`.
     ///
     /// # Safety
     /// A GL context must be current and remain current for every later call.
-    pub unsafe fn new(gl: &glow::Context, font: Font) -> Result<Renderer, String> {
+    pub unsafe fn new(gl: &glow::Context, fonts: FontSet) -> Result<Renderer, String> {
         unsafe {
             let header = if gl.version().is_embedded {
                 "#version 300 es\nprecision highp float;\nprecision highp int;\nprecision highp sampler2D;\n"
@@ -192,7 +197,7 @@ impl Renderer {
             }
             gl.bind_vertex_array(None);
 
-            let atlas = upload_atlas(gl, &font)?;
+            let atlas = upload_atlas(gl, &fonts)?;
             let soft = SoftAtlas::default();
             let soft_texture = gl.create_texture()?;
             gl.bind_texture(glow::TEXTURE_2D, Some(soft_texture));
@@ -201,7 +206,8 @@ impl Renderer {
                 viewport: gl.get_uniform_location(program, "u_viewport"),
                 atlas: gl.get_uniform_location(program, "u_atlas"),
                 soft_atlas: gl.get_uniform_location(program, "u_soft_atlas"),
-                cell: gl.get_uniform_location(program, "u_cell"),
+                slot: gl.get_uniform_location(program, "u_slot"),
+                cell_scan_lines: gl.get_uniform_location(program, "u_cell_scan_lines"),
                 soft_slot: gl.get_uniform_location(program, "u_soft_slot"),
                 soft_columns: gl.get_uniform_location(program, "u_soft_columns"),
                 atlas_columns: gl.get_uniform_location(program, "u_atlas_columns"),
@@ -216,15 +222,15 @@ impl Renderer {
                 atlas,
                 soft_texture,
                 soft,
-                font,
+                fonts,
                 scratch: Vec::new(),
                 uniforms,
             })
         }
     }
 
-    pub fn font(&self) -> &Font {
-        &self.font
+    pub fn fonts(&self) -> &FontSet {
+        &self.fonts
     }
 
     /// Draws one frame into the currently bound framebuffer. `indicator` is
@@ -248,7 +254,7 @@ impl Renderer {
             layout,
             frame,
             theme,
-            &self.font,
+            &self.fonts,
             &mut self.soft,
             indicator,
             &mut self.scratch,
@@ -282,11 +288,11 @@ impl Renderer {
             gl.uniform_2_f32(u.viewport.as_ref(), viewport.0 as f32, viewport.1 as f32);
             gl.uniform_1_i32(u.atlas.as_ref(), 0);
             gl.uniform_1_i32(u.soft_atlas.as_ref(), 1);
-            gl.uniform_2_i32(
-                u.cell.as_ref(),
-                i32::from(self.font.width),
-                i32::from(self.font.height),
-            );
+            gl.uniform_1_i32(u.slot.as_ref(), ATLAS_SLOT);
+            let face = self.fonts.face(term.modes().columns_132, layout.rows);
+            let scan_lines =
+                f32::from(face.height) * f32::from(self.fonts.family().scan_lines_per_dot());
+            gl.uniform_1_f32(u.cell_scan_lines.as_ref(), scan_lines);
             gl.uniform_1_i32(u.atlas_columns.as_ref(), ATLAS_COLUMNS);
             gl.uniform_1_i32(u.soft_slot.as_ref(), SOFT_SLOT as i32);
             gl.uniform_1_i32(u.soft_columns.as_ref(), SOFT_ATLAS_COLUMNS as i32);
@@ -375,23 +381,24 @@ unsafe fn link(gl: &glow::Context, vs: &str, fs: &str) -> Result<glow::Program, 
     }
 }
 
-/// Uploads the font, followed by its condensed 132-column variant.
-unsafe fn upload_atlas(gl: &glow::Context, font: &Font) -> Result<glow::Texture, String> {
-    let (cw, ch) = (i32::from(font.width), i32::from(font.height));
-    let condensed = font.condensed();
-    let glyphs: Vec<&vt_fonts::Glyph> = font
-        .glyphs()
+/// Uploads every face's glyphs, face after face, in 16×16 slots.
+unsafe fn upload_atlas(gl: &glow::Context, fonts: &FontSet) -> Result<glow::Texture, String> {
+    let glyphs: Vec<&vt_fonts::Glyph> = fonts
+        .faces()
         .iter()
-        .chain(condensed.iter().flat_map(|c| c.glyphs().iter()))
+        .flat_map(|face| face.glyphs().iter())
         .collect();
     let count = glyphs.len() as i32;
     let rows = (count + ATLAS_COLUMNS - 1) / ATLAS_COLUMNS;
-    let (w, h) = (ATLAS_COLUMNS * cw, rows * ch);
+    let (w, h) = (ATLAS_COLUMNS * ATLAS_SLOT, rows * ATLAS_SLOT);
     let mut pixels = vec![0u8; (w * h) as usize];
     for (i, glyph) in glyphs.into_iter().enumerate() {
-        let (gx, gy) = (i as i32 % ATLAS_COLUMNS * cw, i as i32 / ATLAS_COLUMNS * ch);
-        for y in 0..ch {
-            for x in 0..cw {
+        let (gx, gy) = (
+            i as i32 % ATLAS_COLUMNS * ATLAS_SLOT,
+            i as i32 / ATLAS_COLUMNS * ATLAS_SLOT,
+        );
+        for y in 0..ATLAS_SLOT {
+            for x in 0..ATLAS_SLOT {
                 if glyph.dot(x as usize, y as usize) {
                     pixels[((gy + y) * w + gx + x) as usize] = 255;
                 }

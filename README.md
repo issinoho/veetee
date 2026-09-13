@@ -19,7 +19,7 @@ documentation.
 | `crates/vt-parser` | Allocation-free DEC STD 070 / ECMA-48 control function parser (7-bit, 8-bit, UTF-8, VT52) |
 | `crates/vt-core` | The terminal model: screen, modes, character sets, reports, DEC keyboard codes |
 | `crates/vt-transport` | Host connections: local PTY, serial lines, Telnet, SSH (via OpenSSH) |
-| `crates/vt-fonts` | Original DEC-style bitmap fonts (SIL OFL) and their parser |
+| `crates/vt-fonts` | Original DEC-style bitmap fonts (SIL OFL) for each model's character cells, and their parser |
 | `crates/vt-keyboard` | PC keyboard → DEC LK401 key map |
 | `crates/vt-render` | OpenGL renderer: dot stretching, scan lines, double-size lines, 132 columns |
 | `crates/veetee` | The GTK4/libadwaita application |

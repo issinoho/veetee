@@ -3,8 +3,8 @@ use std::collections::HashMap;
 use vt_core::cell::{Cell, Color, Flags};
 use vt_core::charset::SOFT_BASE;
 use vt_core::grid::{Line, LineSize};
-use vt_core::{StatusDisplay, Terminal};
-use vt_fonts::Font;
+use vt_core::{Model, StatusDisplay, Terminal};
+use vt_fonts::{Family, Font, FontSet};
 
 use crate::theme::Theme;
 
@@ -137,16 +137,30 @@ impl Layout {
     }
 }
 
-/// Fits the page into a window. A VT screen is 4:3 at 24 lines; other page
-/// lengths keep the same width and line height. Line height is a whole
-/// number of pixels so scan lines stay even.
-pub fn layout(width: u32, height: u32, rows: usize, cols: usize) -> Layout {
+/// The character cells a model draws with.
+pub fn family(model: Model) -> Family {
+    match model {
+        Model::Vt100 | Model::Vt102 | Model::Vt220 => Family::Vt220,
+        Model::Vt320 | Model::Vt420 | Model::Vt510 | Model::Vt520 | Model::Vt525 => Family::Vt420,
+    }
+}
+
+/// Where the terminal's page sits in a window of `width`×`height` pixels.
+pub fn page_layout(width: u32, height: u32, term: &Terminal) -> Layout {
+    let rows = page_rows(term);
+    let aspect = family(term.config().model).line_aspect(rows);
+    layout(width, height, rows, term.grid().cols(), aspect)
+}
+
+/// Fits a page of `rows` lines into a window, `line_aspect` line heights
+/// wide (see [`Family::line_aspect`]). Line height is a whole number of
+/// pixels so scan lines stay even.
+pub fn layout(width: u32, height: u32, rows: usize, cols: usize, line_aspect: f32) -> Layout {
     let (w, h) = (width as f32, height as f32);
     let rows_f = rows.max(1) as f32;
-    // Page width is always 32 line heights (4:3 at 24 lines).
-    let cell_height = (h / rows_f).min(w / 32.0).floor().max(1.0);
+    let cell_height = (h / rows_f).min(w / line_aspect).floor().max(1.0);
     let page_height = cell_height * rows_f;
-    let page_width = cell_height * 32.0;
+    let page_width = (cell_height * line_aspect).round();
     Layout {
         x: ((w - page_width) / 2.0).floor().max(0.0),
         y: ((h - page_height) / 2.0).floor().max(0.0),
@@ -187,12 +201,18 @@ pub fn build_instances(
     layout: &Layout,
     frame: FrameState,
     theme: &Theme,
-    font: &Font,
+    fonts: &FontSet,
     soft: &mut SoftAtlas,
     indicator: &str,
     out: &mut Vec<f32>,
 ) {
     soft.sync(term);
+    let face = fonts.face_index(term.modes().columns_132, layout.rows);
+    let font = Glyphs {
+        font: &fonts.faces()[face],
+        offset: face_offset(fonts, face),
+    };
+    let font = &font;
     out.clear();
     let reverse_screen = term.modes().reverse_screen;
     let normal = scale(theme.foreground, theme.normal_intensity);
@@ -215,7 +235,7 @@ pub fn build_instances(
         flag::FILL,
         page_bg,
         page_bg,
-        (font.width, font.height),
+        (font.font.width, font.font.height),
     );
 
     let colors = Colors {
@@ -299,6 +319,31 @@ pub fn build_instances(
     }
 }
 
+/// The atlas index of the first glyph of each face: faces are uploaded one
+/// after another.
+pub fn face_offset(fonts: &FontSet, face: usize) -> u16 {
+    fonts.faces()[..face]
+        .iter()
+        .map(|f| f.glyphs().len() as u16)
+        .sum()
+}
+
+/// The face drawn this frame and where its glyphs start in the atlas.
+struct Glyphs<'a> {
+    font: &'a Font,
+    offset: u16,
+}
+
+impl Glyphs<'_> {
+    fn index_of(&self, ch: char) -> u16 {
+        self.offset + self.font.index_of(ch)
+    }
+
+    fn size(&self) -> (u8, u8) {
+        (self.font.width, self.font.height)
+    }
+}
+
 struct Colors {
     page_bg: [f32; 3],
     text_normal: [f32; 3],
@@ -312,7 +357,7 @@ fn draw_line(
     layout: &Layout,
     frame: FrameState,
     theme: &Theme,
-    font: &Font,
+    font: &Glyphs,
     soft: &mut SoftAtlas,
     colors: &Colors,
     (row, page_row): (usize, usize),
@@ -324,12 +369,7 @@ fn draw_line(
         text_normal,
         text_bold,
     } = *colors;
-    let columns_132 = term.modes().columns_132;
-    let space = if columns_132 && font.width == 10 {
-        font.glyphs().len() as u16 + font.index_of(' ')
-    } else {
-        font.index_of(' ')
-    };
+    let space = font.index_of(' ');
     let (mult, size_flag) = match line.size {
         LineSize::Single => (1, 0),
         LineSize::DoubleWidth => (2, 0),
@@ -392,22 +432,14 @@ fn draw_line(
                     (slot, w, h)
                 }
                 // Unloaded soft characters show the error character.
-                None => (
-                    font.index_of(vt_core::charset::ERROR_CHARACTER),
-                    font.width,
-                    font.height,
-                ),
+                None => {
+                    let (w, h) = font.size();
+                    (font.index_of(vt_core::charset::ERROR_CHARACTER), w, h)
+                }
             }
-        } else if columns_132 && font.width == 10 {
-            // The condensed variant follows the font in the atlas.
-            let offset = font.glyphs().len() as u16;
-            (
-                offset + font.index_of(cell.ch),
-                vt_fonts::CONDENSED_WIDTH,
-                font.height,
-            )
         } else {
-            (font.index_of(cell.ch), font.width, font.height)
+            let (w, h) = font.size();
+            (font.index_of(cell.ch), w, h)
         };
         let decorated = flags
             & (flag::UNDERLINE
@@ -463,8 +495,9 @@ mod tests {
     use super::*;
     use vt_core::{Config, Model};
 
-    fn font() -> Font {
-        Font::parse(vt_fonts::VEETEE_10X10).unwrap()
+    fn fonts() -> &'static FontSet {
+        static FONTS: std::sync::OnceLock<FontSet> = std::sync::OnceLock::new();
+        FONTS.get_or_init(|| FontSet::new(Family::Vt420))
     }
 
     const FOCUSED: FrameState = FrameState {
@@ -475,7 +508,7 @@ mod tests {
     };
 
     fn instances(term: &Terminal, frame: FrameState) -> Vec<[f32; INSTANCE_LEN]> {
-        let lay = layout(1280, 1024, term.grid().rows(), term.grid().cols());
+        let lay = layout(1280, 1024, term.grid().rows(), term.grid().cols(), 32.0);
         let mut out = Vec::new();
         let mut soft = SoftAtlas::default();
         build_instances(
@@ -483,7 +516,7 @@ mod tests {
             &lay,
             frame,
             &Theme::default(),
-            &font(),
+            fonts(),
             &mut soft,
             "",
             &mut out,
@@ -495,11 +528,11 @@ mod tests {
 
     #[test]
     fn page_is_four_by_three_and_centred() {
-        let l = layout(1280, 1024, 24, 80);
+        let l = layout(1280, 1024, 24, 80, 32.0);
         assert_eq!((l.cell_height, l.width, l.height), (40.0, 1280.0, 960.0));
         assert_eq!((l.x, l.y), (0.0, 32.0));
         assert_eq!(l.cell_width, 16.0);
-        let wide = layout(2560, 1024, 24, 132);
+        let wide = layout(2560, 1024, 24, 132, 32.0);
         assert_eq!(wide.height, 1008.0);
         assert_eq!(wide.width, 42.0 * 32.0);
         assert!((wide.cell_width - wide.width / 132.0).abs() < 1e-4);
@@ -618,7 +651,7 @@ mod tests {
         let mut term = Terminal::new(Config::default());
         term.advance(b"\x1b[2$~\x1b[1$}STATUS");
         assert_eq!(page_rows(&term), 25);
-        let lay = layout(1280, 1024, page_rows(&term), 80);
+        let lay = layout(1280, 1024, page_rows(&term), 80, 32.0);
         let mut out = Vec::new();
         let mut soft = SoftAtlas::default();
         build_instances(
@@ -626,7 +659,7 @@ mod tests {
             &lay,
             FOCUSED,
             &Theme::default(),
-            &font(),
+            fonts(),
             &mut soft,
             "",
             &mut out,
@@ -659,13 +692,32 @@ mod tests {
 
 #[cfg(test)]
 mod font_coverage {
-    use vt_core::charset::{Charset, Nrc};
-    use vt_fonts::Font;
+    use vt_core::charset::{Charset, Nrc, Vt500Set};
+    use vt_fonts::{Family, FontSet};
 
-    /// Every character any supported graphic set can produce has a glyph.
+    fn missing(fonts: &FontSet, sets: &[Charset]) -> Vec<String> {
+        let mut missing = Vec::new();
+        for face in fonts.faces() {
+            for set in sets {
+                for code in 0x20..=0x7F {
+                    if let Some(ch) = set.map(code) {
+                        if !face.contains(ch) {
+                            missing.push(format!(
+                                "{}x{} {set:?} {code:#04x} U+{:04X}",
+                                face.width, face.height, ch as u32
+                            ));
+                        }
+                    }
+                }
+            }
+        }
+        missing
+    }
+
+    /// Every character a model's graphic sets can produce has a glyph in
+    /// every face of its family.
     #[test]
-    fn font_covers_all_dec_character_sets() {
-        let font = Font::parse(vt_fonts::VEETEE_10X10).unwrap();
+    fn fonts_cover_all_dec_character_sets() {
         let nrcs = [
             Nrc::British,
             Nrc::Dutch,
@@ -688,21 +740,31 @@ mod font_coverage {
             Charset::IsoLatin1,
         ];
         sets.extend(nrcs.map(Charset::National));
-        let mut missing = Vec::new();
-        for set in sets {
-            for code in 0x20..=0x7F {
-                if let Some(ch) = set.map(code) {
-                    if !font.contains(ch) {
-                        missing.push(format!("{set:?} {code:#04x} U+{:04X}", ch as u32));
-                    }
-                }
-            }
-        }
-        assert!(
-            missing.is_empty(),
-            "missing glyphs:\n{}",
-            missing.join("\n")
+        let vt220 = missing(&FontSet::new(Family::Vt220), &sets);
+        assert!(vt220.is_empty(), "missing glyphs:\n{}", vt220.join("\n"));
+
+        use Vt500Set::*;
+        sets.extend(
+            [
+                DecGreek,
+                DecHebrew,
+                DecTurkish,
+                DecCyrillic,
+                IsoLatin2,
+                IsoGreek,
+                IsoHebrew,
+                IsoCyrillic,
+                IsoLatin5,
+                NrcGreek,
+                NrcHebrew,
+                NrcTurkish,
+                NrcSerboCroatian,
+                NrcRussian,
+            ]
+            .map(Charset::Vt500),
         );
+        let vt420 = missing(&FontSet::new(Family::Vt420), &sets);
+        assert!(vt420.is_empty(), "missing glyphs:\n{}", vt420.join("\n"));
     }
 }
 

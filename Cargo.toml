@@ -27,3 +27,7 @@ all = { level = "warn", priority = -1 }
 [profile.release]
 lto = "thin"
 debug = 1
+
+# Font sets are resampled at startup; keep that quick in debug builds too.
+[profile.dev.package.vt-fonts]
+opt-level = 3

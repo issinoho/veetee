@@ -135,12 +135,12 @@ impl TerminalView {
                 eprintln!("veetee: OpenGL unavailable: {err}");
                 return;
             }
+            let model = state.borrow().session.terminal().config().model;
             let result = crate::gl_loader::glow_context().and_then(|gl| {
-                let font =
-                    vt_fonts::Font::parse(vt_fonts::VEETEE_10X10).map_err(|e| e.to_string())?;
+                let fonts = vt_fonts::FontSet::new(vt_render::family(model));
                 // SAFETY: GTK made this area's context current above.
                 #[allow(unsafe_code)]
-                let renderer = unsafe { Renderer::new(&gl, font)? };
+                let renderer = unsafe { Renderer::new(&gl, fonts)? };
                 Ok((gl, renderer))
             });
             match result {
@@ -186,8 +186,7 @@ impl TerminalView {
             if let (Some(gl), Some(renderer)) = (st.gl.as_ref(), st.renderer.as_mut()) {
                 let held = st.session.is_held();
                 let term = st.session.terminal();
-                let layout =
-                    vt_render::layout(w, h, vt_render::page_rows(&term), term.grid().cols());
+                let layout = vt_render::page_layout(w, h, &term);
                 let indicator = indicator_line(&term, held);
                 // SAFETY: GTK makes the context current before emitting `render`.
                 #[allow(unsafe_code)]
@@ -419,7 +418,7 @@ impl TerminalView {
             (f64::from(self.area.width()) * scale).max(1.0) as u32,
             (f64::from(self.area.height()) * scale).max(1.0) as u32,
         );
-        let layout = vt_render::layout(w, h, vt_render::page_rows(&term), grid.cols());
+        let layout = vt_render::page_layout(w, h, &term);
         let px = ((x * scale) as f32).clamp(layout.x, layout.x + layout.width - 1.0);
         let py = ((y * scale) as f32).clamp(layout.y, layout.y + layout.height - 1.0);
         let (row, col) = layout.cell_at(px, py)?;

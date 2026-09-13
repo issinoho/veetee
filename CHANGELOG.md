@@ -14,8 +14,15 @@ milestones (0.3 = M3). The format follows [Keep a Changelog](https://keepachange
 - **Session recordings**: `--record` writes `.vtrec` recordings with checkpoints (Ctrl+Shift+M),
   leaving typed keys out unless `--record-keys` is given; `vt-headless replay` and
   `cargo xtask openvms` compare checkpoint screens.
-- 132-column mode draws a condensed six-dot font instead of squeezing the 80-column glyphs, and
-  glyph dots are box-filtered, so strokes keep an even weight.
+- Glyph dots are box-filtered, so strokes keep an even weight at any window size.
+- **Fonts (M7)**: the VT320, VT420 and VT500 series draw with new original fonts on DEC's
+  character cells: 10×16 dots for 80 columns and 6×16 for 132 columns at 24 lines, 10 and 8
+  dots high at 36 and 48 lines (EK-VT420-RM table 5-5). The page has the proportions of their
+  800×400 raster of 1:1.4 pixels, with one scan line per dot row. The fonts cover DEC Greek,
+  Hebrew, Turkish and Cyrillic and the ISO Latin-2, Greek, Hebrew, Cyrillic and Latin-5 sets.
+  132-column mode uses the narrow font instead of squeezing the 80-column glyphs. Screen sizes
+  without a hand-drawn font, and 132-column VT100/VT220 text, are resampled so separate strokes
+  stay separate. VT52–VT220 keep the 10×10 font.
 - Fixed: keypad digits, `.`, `/`, `*` and `−` went to the input method as text, so EDT and EVE
   received digits instead of application keypad sequences; host-programmed main keypad keys
   (DECPAK) were bypassed the same way. veetee now handles mapped keys first.
