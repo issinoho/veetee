@@ -4,7 +4,7 @@ A DEC VT terminal emulator for the Linux desktop, aiming at SmarTerm/Reflection-
 compatibility: VT52 through VT525, DECforms and FMS applications, DEC-faithful fonts,
 and SSH, Telnet, serial and LAT connections.
 
-**Status:** early development — milestone M4 in progress: VT510/VT520/VT525 features (VT525
+**Status:** early development — milestone M4 (0.4.0): VT510/VT520/VT525 features (VT525
 colour, VT500 character sets, cursor styles, Set-Up selections and reports, dual sessions) on top
 of the VT420, VT220/VT320 and VT100/VT102/VT52 layers. vttest VT100–VT520 menus pass headless,
 and esctest2 runs at VT level 5 with every difference from xterm explained against DEC
@@ -34,7 +34,7 @@ documentation.
 x86_64 Linux tarball, both needing GTK 4.12+ and libadwaita 1.5+:
 
 ```sh
-sudo apt install ./veetee_0.3.0-1_amd64.deb
+sudo apt install ./veetee_0.4.0-1_amd64.deb
 ```
 
 Changes are listed in [CHANGELOG.md](CHANGELOG.md).

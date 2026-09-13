@@ -5,9 +5,13 @@ milestones (0.3 = M3). The format follows [Keep a Changelog](https://keepachange
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-09-13
+
+Milestone M4: the VT510, VT520 and VT525.
+
 ### Emulation
 
-- **VT510/VT520/VT525** (milestone M4, in progress): CHA, HPA, VPA, HPR, VPR, CNL, CPL, CHT, CBT;
+- **VT510/VT520/VT525**: CHA, HPA, VPA, HPR, VPR, CNL, CPL, CHT, CBT;
   DECST8C; cursor styles (DECSCUSR); DECNCSM; the VT500 private modes; Set-Up selections with
   DECRQSS reports; DECTID, DECTME, DECSR; answerback, banner and time-of-day loading; session
   names as the window title (DECSWT); VT500 page and screen sizes; keyboard language, local
@@ -69,5 +73,6 @@ The first release: VT100 through VT420 emulation with local, Telnet, SSH and ser
   `cargo deny` licence checks and parser fuzzing.
 - `cargo xtask dist` builds the release tarball and Debian package.
 
-[Unreleased]: https://github.com/issinoho/veetee/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/issinoho/veetee/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/issinoho/veetee/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/issinoho/veetee/releases/tag/v0.3.0
