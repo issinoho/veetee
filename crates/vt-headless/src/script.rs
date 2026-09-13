@@ -15,9 +15,12 @@
 //! key pf1 kp7 up f16          # press DEC keys: see `parse_key`
 //! snapshot menu1-box80        # compare with GOLDEN/menu1-box80.screen
 //! step menu1-wrap80           # prompt "Push <RETURN>", snapshot, send "\r"
+//! walk menu11-1 "choice (0 - 7): "  # step through every Push <RETURN> screen
+//!                             # (snapshots NAME-01, NAME-02, …) until PROMPT
 //! settle                      # wait for output after the last input to go quiet
 //! send-answerback             # the DEC Ctrl+Break local function
 //! sleep 200                   # milliseconds, still processing output
+//! timeout 60                  # seconds to wait in prompt/wait-text/walk (default 15)
 //! expect-exit                 # wait for the program to finish
 //! ```
 
@@ -33,7 +36,7 @@ use vt_transport::pty::Pty;
 use crate::USAGE;
 
 const IDLE: Duration = Duration::from_millis(60);
-const TIMEOUT: Duration = Duration::from_secs(15);
+const DEFAULT_TIMEOUT: Duration = Duration::from_secs(15);
 
 pub fn run(args: impl Iterator<Item = String>) -> io::Result<bool> {
     let mut script = None;
@@ -63,6 +66,7 @@ pub fn run(args: impl Iterator<Item = String>) -> io::Result<bool> {
         record: Vec::new(),
         output_since_send: false,
         failures: 0,
+        timeout: DEFAULT_TIMEOUT,
     };
 
     for (lineno, line) in text.lines().enumerate() {
@@ -97,6 +101,7 @@ struct Session {
     record: Vec<u8>,
     output_since_send: bool,
     failures: usize,
+    timeout: Duration,
 }
 
 impl Session {
@@ -176,6 +181,7 @@ impl Session {
                     })?;
             }
             "settle" => self.wait_for(|_| true)?,
+            "timeout" => self.timeout = Duration::from_secs(parse_num(arg(0)?)? as u64),
             "send-answerback" => {
                 self.pump(Duration::ZERO)?;
                 let term = self
@@ -198,8 +204,29 @@ impl Session {
                 self.snapshot(&name)?;
                 self.command("send", &["\\r".to_string()])?;
             }
+            "walk" => {
+                let prefix = arg(0)?.to_string();
+                let menu = String::from_utf8_lossy(&unescape(arg(1)?)?).into_owned();
+                let mut page = 0;
+                loop {
+                    self.wait_for(|t| {
+                        prompt_at_cursor(t, "Push <RETURN>") || prompt_at_cursor(t, &menu)
+                    })
+                    .map_err(|e| io::Error::new(e.kind(), format!("{e} during walk {prefix}")))?;
+                    let term = self
+                        .term
+                        .as_ref()
+                        .ok_or_else(|| invalid("no program spawned".into()))?;
+                    if prompt_at_cursor(term, &menu) {
+                        break;
+                    }
+                    page += 1;
+                    self.snapshot(&format!("{prefix}-{page:02}"))?;
+                    self.command("send", &["\\r".to_string()])?;
+                }
+            }
             "expect-exit" => {
-                let deadline = Instant::now() + TIMEOUT;
+                let deadline = Instant::now() + self.timeout;
                 loop {
                     match self.pump(IDLE) {
                         Err(e) if e.kind() == io::ErrorKind::UnexpectedEof => break,
@@ -274,7 +301,7 @@ impl Session {
     /// Waits until output has gone quiet with `done` true, having seen output
     /// since the last `send`.
     fn wait_for(&mut self, done: impl Fn(&Terminal) -> bool) -> io::Result<()> {
-        let deadline = Instant::now() + TIMEOUT;
+        let deadline = Instant::now() + self.timeout;
         loop {
             let n = self.pump(IDLE)?;
             if n == 0 && self.output_since_send && self.term.as_ref().is_some_and(&done) {
@@ -373,7 +400,7 @@ fn parse_model(s: &str) -> io::Result<Model> {
 
 /// DEC key names: `return delete tab linefeed escape backspace up down left
 /// right find insert remove select prev next pf1`–`pf4 kp0`–`kp9 kp- kp, kp.
-/// enter f6`–`f20 help do`.
+/// enter f6`–`f20 help do udk6`–`udk20` (shifted function keys).
 fn parse_key(name: &str) -> io::Result<Key> {
     let lower = name.to_ascii_lowercase();
     Ok(match lower.as_str() {
@@ -410,6 +437,12 @@ fn parse_key(name: &str) -> io::Result<Key> {
                 .filter(|d| *d <= 9)
             {
                 Key::Keypad(d)
+            } else if let Some(f) = lower
+                .strip_prefix("udk")
+                .and_then(|f| f.parse::<u8>().ok())
+                .filter(|f| (6..=20).contains(f))
+            {
+                Key::UserDefined(f)
             } else if let Some(f) = lower
                 .strip_prefix('f')
                 .and_then(|f| f.parse::<u8>().ok())

@@ -41,6 +41,8 @@ pub enum Key {
     /// functions (Hold Screen, Print Screen, Set-Up, Data/Talk, Break) and
     /// are handled by the frontend.
     Function(u8),
+    /// A shifted F6–F20, which sends its user-defined key string (DECUDK).
+    UserDefined(u8),
 }
 
 /// Terminal state that affects the codes a key sends.
@@ -164,6 +166,9 @@ pub(crate) fn encode(key: Key, cx: KeyContext, out: &mut Vec<u8>) {
             cx.csi(out);
             out.extend_from_slice(format!("{n}~").as_bytes());
         }
+
+        // Resolved by the terminal, which holds the definitions.
+        UserDefined(_) => {}
 
         Function(f) => {
             if cx.level < 2 || !cx.ansi {

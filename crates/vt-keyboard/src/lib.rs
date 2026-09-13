@@ -9,6 +9,7 @@
 //! | F6–F12                         | F6–F12                               |
 //! | Shift+F1–F10                   | F11–F20 (Shift+F5 = Help, Shift+F6 = Do) |
 //! | Ctrl+F5, Ctrl+Break            | Answerback                           |
+//! | Ctrl+F6–F12, Ctrl+Shift+F1–F10 | User-defined keys (DEC Shift+F6–F20) |
 //! | Insert Home PgUp               | Find, Insert Here, Remove            |
 //! | Delete End PgDn                | Select, Prev Screen, Next Screen     |
 //! | NumLock / * −                  | PF1 PF2 PF3 PF4                      |
@@ -164,6 +165,9 @@ fn function_key(sym: u32, mods: Mods) -> Option<Action> {
     let n = (sym - F1 + 1) as u8;
     Some(match (n, mods.shift, mods.ctrl) {
         (5, false, true) => Action::Local(Local::Answerback),
+        // User-defined keys are shifted F6–F20 on a DEC keyboard.
+        (1..=10, true, true) => Action::Key(Key::UserDefined(n + 10)),
+        (6..=12, false, true) => Action::Key(Key::UserDefined(n)),
         (1..=10, true, _) => Action::Key(Key::Function(n + 10)),
         (1, ..) => Action::Local(Local::HoldScreen),
         (2, ..) => Action::Local(Local::PrintScreen),
@@ -282,6 +286,18 @@ mod tests {
         );
         assert_eq!(key(F1 + 4, CTRL), Some(Action::Local(Local::Answerback)));
         assert_eq!(key(F20, NONE), Some(Action::Key(Key::Function(20))));
+        assert_eq!(key(F1 + 5, CTRL), Some(Action::Key(Key::UserDefined(6))));
+        assert_eq!(
+            key(
+                F1 + 5,
+                Mods {
+                    shift: true,
+                    ..CTRL
+                }
+            ),
+            Some(Action::Key(Key::UserDefined(16))),
+            "Ctrl+Shift+F6 is the Do key's UDK"
+        );
     }
 
     #[test]

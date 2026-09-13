@@ -227,16 +227,24 @@ fn erase_in_display_and_line() {
 }
 
 #[test]
-fn ed_resets_line_size_of_erased_lines() {
+fn ed_resets_line_size_of_completely_erased_lines() {
+    // VT510 RM, ED: "When you erase complete lines, they become single-height,
+    // single-width lines".
     let mut t = small(Model::Vt102, 3, 10);
-    t.advance(b"\x1b#6\x1b[2;1H\x1b#3\x1b[3;1H\x1b#6\x1b[2;1H\x1b[J");
+    t.advance(b"\x1b#6\x1b[2;1H\x1b#3\x1b[3;1H\x1b#6\x1b[2;2H\x1b[J");
     assert_eq!(t.grid().line(0).size, LineSize::DoubleWidth);
     assert_eq!(
         t.grid().line(1).size,
         LineSize::DoubleHeightTop,
-        "cursor line keeps its size"
+        "partly erased line keeps its size"
     );
     assert_eq!(t.grid().line(2).size, LineSize::Single);
+    t.advance(b"\x1b[2;1H\x1b[J");
+    assert_eq!(
+        t.grid().line(1).size,
+        LineSize::Single,
+        "erased from column 1: complete"
+    );
 }
 
 // ------------------------------------------------------ VT102 editing
@@ -435,7 +443,7 @@ fn sub_displays_error_character() {
     assert_eq!(row(&t, 1), "A▒B");
     let mut t = term(Model::Vt220);
     t.advance(b"A\x1b[1\x1aB");
-    assert_eq!(row(&t, 1), "A⸮B");
+    assert_eq!(row(&t, 1), "A\u{2426}B");
 }
 
 // ------------------------------------------------------------------ VT52

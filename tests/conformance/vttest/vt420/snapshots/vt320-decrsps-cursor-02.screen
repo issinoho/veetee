@@ -1,0 +1,32 @@
+page 24x80 cursor 23,14 visible
+modes decawm
+ 1  |Testing Restore Presentation State (DECRSPS): cursor
+ 2  |
+ 3  |Flags:
+ 4  |         Selective erase, should be blank:
+ 5  |         Selective erase, should not be blank:     XXXXXX
+   p...................................................pppppp
+ 6  |
+ 7  |Modes:
+   ppppppp
+ 8  |         Autowrap-pending: OK
+   p.........pppppppppppppppppppp
+ 9  |         SS2 pending: OK
+   p.........ppppppppppppppp
+10  |         SS3 pending: OK
+   p.........ppppppppppppppp
+11  |         Origin mode: OK
+12  |
+13  |Character sets:
+14  |         Current GL: OK
+15  |         Current GR: OK
+16  |         G0 suffix: '%5' ERR (DEC Supplemental Graphic)
+17  |         G1 suffix: '>' OK (DEC Technical)
+18  |         G2 suffix: '0' OK (DEC Special graphics and line drawing)
+19  |         G3 suffix: 'A' OK (ISO Latin-1)
+20  |
+21  |
+22  |
+23  |Push <RETURN>
+24  |
+status indicator

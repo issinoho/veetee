@@ -1,13 +1,18 @@
 use std::collections::VecDeque;
 
-use vt_parser::{InputMode, Params, Parser, Perform, Sequence};
+use vt_parser::{InputMode, Params, Parser, Perform, Sequence, StringEnd};
 
 use crate::cell::{Attrs, Cell, Color, Flags};
-use crate::charset::{Charset, CharsetState};
-use crate::config::{Config, Model};
+use crate::charset::{self, Charset, CharsetState};
+use crate::config::{Config, Model, StatusDisplay};
 use crate::grid::{Grid, Line, LineSize, Region};
 use crate::keyboard::{self, Key, KeyContext};
 use crate::modes::Modes;
+use crate::softfont::{SoftFonts, SoftGlyph};
+use crate::udk::UserKeys;
+
+mod dcs;
+mod reports;
 
 /// Something the host application (GUI, headless driver) must act on.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -29,15 +34,28 @@ pub struct Cursor {
     pub pending_wrap: bool,
 }
 
-/// State saved by DECSC and restored by DECRC.
+/// State saved by DECSC and restored by DECRC (VT510 RM, DECSC).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct SavedCursor {
     row: usize,
     col: usize,
+    /// SGR rendition and the DECSCA selective erase attribute.
     attrs: Attrs,
+    /// G0–G3, GL/GR and pending single shifts.
     charsets: CharsetState,
     origin: bool,
-    pending_wrap: bool,
+    /// "Wrap flag (autowrap or no autowrap)".
+    autowrap: bool,
+}
+
+/// Which display receives host output (DECSASD).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct StatusLine {
+    kind: StatusDisplay,
+    active: bool,
+    /// Cursor position on the main display while the status line is active.
+    main_cursor: (usize, usize, bool),
+    col: usize,
 }
 
 /// A DEC VT terminal: feed it host output, read back its screen and replies.
@@ -115,24 +133,71 @@ impl Terminal {
         self.emu.c1_8bit
     }
 
+    /// The status line type in effect (always `None` before the VT320).
+    pub fn status_display(&self) -> StatusDisplay {
+        self.emu.status.kind
+    }
+
+    /// Contents of the host-writable status line.
+    pub fn status_line(&self) -> &Line {
+        &self.emu.status_line
+    }
+
+    /// Host output is going to the status line (DECSASD 1).
+    pub fn status_active(&self) -> bool {
+        self.emu.status.active
+    }
+
+    /// Column of the cursor on the status line while it is active.
+    pub fn status_cursor_col(&self) -> usize {
+        self.emu.status.col
+    }
+
+    pub fn user_keys(&self) -> &UserKeys {
+        &self.emu.udk
+    }
+
+    /// Unlocks user-defined keys (the Set-Up "Unlocked" setting).
+    pub fn unlock_user_keys(&mut self) {
+        self.emu.udk.locked = false;
+    }
+
+    /// The downloaded glyph for a soft character, in the current column mode.
+    pub fn soft_glyph(&self, ch: char) -> Option<&SoftGlyph> {
+        self.emu.soft.glyph(ch, self.emu.modes.columns_132)
+    }
+
+    /// Incremented whenever soft fonts change, so renderers can refresh glyphs.
+    pub fn soft_font_generation(&self) -> u64 {
+        self.emu.soft_generation
+    }
+
     /// A DEC key was pressed. Its codes are queued for the host (see
     /// [`Terminal::take_output`]) and echoed locally when SRM is reset.
     pub fn key(&mut self, key: Key) {
         if self.emu.modes.keyboard_locked {
             return;
         }
-        let e = &self.emu;
-        let cx = KeyContext {
-            ansi: e.modes.ansi,
-            level: e.level,
-            eight_bit: e.c1_8bit,
-            cursor_app: e.modes.cursor_keys_application,
-            keypad_app: e.modes.keypad_application,
-            new_line: e.modes.new_line,
-            backarrow_bs: e.modes.backarrow_sends_bs,
-        };
         let mut bytes = Vec::new();
-        keyboard::encode(key, cx, &mut bytes);
+        if let Key::UserDefined(f) = key {
+            if self.emu.level >= 2 {
+                if let Some(s) = self.emu.udk.get(f) {
+                    bytes.extend_from_slice(s);
+                }
+            }
+        } else {
+            let e = &self.emu;
+            let cx = KeyContext {
+                ansi: e.modes.ansi,
+                level: e.level,
+                eight_bit: e.c1_8bit,
+                cursor_app: e.modes.cursor_keys_application,
+                keypad_app: e.modes.keypad_application,
+                new_line: e.modes.new_line,
+                backarrow_bs: e.modes.backarrow_sends_bs,
+            };
+            keyboard::encode(key, cx, &mut bytes);
+        }
         self.transmit(&bytes);
     }
 
@@ -142,19 +207,29 @@ impl Terminal {
         if self.emu.modes.keyboard_locked {
             return;
         }
-        let utf8 = self.emu.config.extensions.utf8;
-        let eight_bit_graphics = self.emu.level >= 2;
+        let e = &self.emu;
+        let national = e
+            .modes
+            .national
+            .then_some(e.config.keyboard_language)
+            .flatten();
         let mut bytes = Vec::new();
         for ch in text.chars() {
-            if utf8 {
+            if e.config.extensions.utf8 {
                 let mut buf = [0u8; 4];
                 bytes.extend_from_slice(ch.encode_utf8(&mut buf).as_bytes());
+            } else if ch.is_ascii_control() {
+                bytes.push(ch as u8);
+            } else if let Some(nrc) = national {
+                bytes.extend(nrc.encode(ch));
             } else if ch.is_ascii() {
                 bytes.push(ch as u8);
-            } else if eight_bit_graphics {
-                if let Some(b) = crate::charset::encode_dec_multinational(ch) {
-                    bytes.push(b);
-                }
+            } else if e.level >= 2 && !e.modes.national {
+                let encoded = match e.upss {
+                    Charset::IsoLatin1 => charset::encode_latin1(ch),
+                    _ => charset::encode_dec_multinational(ch),
+                };
+                bytes.extend(encoded);
             }
         }
         self.transmit(&bytes);
@@ -203,6 +278,8 @@ struct Emulator {
     cursor: Cursor,
     saved: Option<SavedCursor>,
     charsets: CharsetState,
+    /// Current user-preferred supplemental set (DECAUPSS).
+    upss: Charset,
     modes: Modes,
     /// Scrolling margins, zero-based inclusive.
     top: usize,
@@ -212,6 +289,12 @@ struct Emulator {
     c1_8bit: bool,
     vt52_graphics: bool,
     leds: u8,
+    status: StatusLine,
+    status_line: Line,
+    udk: UserKeys,
+    soft: SoftFonts,
+    soft_generation: u64,
+    dcs: dcs::DcsState,
     output: Vec<u8>,
     events: Vec<Event>,
     pause: bool,
@@ -228,6 +311,12 @@ impl Emulator {
         let rows = config.rows.max(1);
         let cols = config.cols.max(2);
         let model = config.model;
+        let upss = config.supplemental.charset();
+        let status_kind = if model.has_status_line() {
+            config.status_display
+        } else {
+            StatusDisplay::None
+        };
         Emulator {
             grid: Grid::new(rows, cols),
             scrollback: VecDeque::new(),
@@ -238,8 +327,13 @@ impl Emulator {
                 pending_wrap: false,
             },
             saved: None,
-            charsets: initial_charsets(model),
-            modes: Modes::power_up(config.autowrap, config.new_line),
+            charsets: initial_charsets(model, upss),
+            upss,
+            modes: Modes::power_up(
+                config.autowrap,
+                config.new_line,
+                config.national_mode && model.max_level() >= 2,
+            ),
             top: 0,
             bottom: rows - 1,
             tabs: default_tabs(cols),
@@ -247,6 +341,17 @@ impl Emulator {
             c1_8bit: false,
             vt52_graphics: false,
             leds: 0,
+            status: StatusLine {
+                kind: status_kind,
+                active: false,
+                main_cursor: (0, 0, false),
+                col: 0,
+            },
+            status_line: Line::new(cols, Cell::BLANK),
+            udk: UserKeys::new(config.udk_locked),
+            soft: SoftFonts::default(),
+            soft_generation: 0,
+            dcs: dcs::DcsState::None,
             output: Vec::new(),
             events: Vec::new(),
             pause: false,
@@ -268,8 +373,25 @@ impl Emulator {
         self.grid.line(row).width()
     }
 
+    /// The line the cursor is on: the status line while it is active.
+    fn cursor_line_mut(&mut self) -> &mut Line {
+        if self.status.active {
+            &mut self.status_line
+        } else {
+            self.grid.line_mut(self.cursor.row)
+        }
+    }
+
+    fn cursor_line(&self) -> &Line {
+        if self.status.active {
+            &self.status_line
+        } else {
+            self.grid.line(self.cursor.row)
+        }
+    }
+
     fn last_col(&self) -> usize {
-        self.line_width(self.cursor.row) - 1
+        self.cursor_line().width() - 1
     }
 
     fn blank(&self) -> Cell {
@@ -291,8 +413,14 @@ impl Emulator {
 
     // ------------------------------------------------------- cursor motion
 
-    /// Moves the cursor to an absolute position, clamped to the page and line width.
+    /// Moves the cursor to an absolute position, clamped to the page and line
+    /// width. On the status line only the column applies.
     fn goto(&mut self, row: usize, col: usize) {
+        if self.status.active {
+            self.cursor.col = col.min(self.status_line.width() - 1);
+            self.cursor.pending_wrap = false;
+            return;
+        }
         let row = row.min(self.rows() - 1);
         self.cursor.row = row;
         self.cursor.col = col.min(self.line_width(row) - 1);
@@ -350,6 +478,9 @@ impl Emulator {
 
     /// IND: down one line, scrolling the region if at the bottom margin.
     fn index(&mut self) {
+        if self.status.active {
+            return;
+        }
         if self.cursor.row == self.bottom {
             self.scroll_up(1);
         } else if self.cursor.row + 1 < self.rows() {
@@ -361,6 +492,9 @@ impl Emulator {
 
     /// RI: up one line, scrolling the region down if at the top margin.
     fn reverse_index(&mut self) {
+        if self.status.active {
+            return;
+        }
         if self.cursor.row == self.top {
             let region = self.region(self.top);
             let blank = self.blank();
@@ -413,26 +547,27 @@ impl Emulator {
     // ------------------------------------------------------------ graphics
 
     fn put_char(&mut self, ch: char) {
-        if self.cursor.pending_wrap && self.modes.autowrap {
+        if self.cursor.pending_wrap && self.modes.autowrap && !self.status.active {
             self.grid.line_mut(self.cursor.row).wrapped = true;
             self.cursor.col = 0;
             self.index();
         }
-        let (row, col) = (self.cursor.row, self.cursor.col);
+        let col = self.cursor.col;
         let last = self.last_col();
         let cell = Cell {
             ch,
             attrs: self.cursor.attrs,
         };
         let blank = self.blank();
-        let line = self.grid.line_mut(row);
-        if self.modes.insert {
+        let insert = self.modes.insert;
+        let line = self.cursor_line_mut();
+        if insert {
             line.insert(col, last, 1, blank);
         }
         line.cells_mut()[col] = cell;
         if col >= last {
             self.cursor.col = last;
-            self.cursor.pending_wrap = self.modes.autowrap;
+            self.cursor.pending_wrap = self.modes.autowrap && !self.status.active;
         } else {
             self.cursor.col = col + 1;
             self.cursor.pending_wrap = false;
@@ -447,6 +582,9 @@ impl Emulator {
             } else {
                 Charset::Ascii.map(code)
             }
+        } else if self.modes.national {
+            // National mode is a 7-bit mode: GR is not available.
+            self.charsets.translate(byte & 0x7F)
         } else {
             self.charsets.translate(byte)
         };
@@ -457,45 +595,66 @@ impl Emulator {
 
     // -------------------------------------------------------------- erasing
 
-    fn erase_display(&mut self, mode: u16) {
+    /// ED, or DECSED when `selective` (protected characters survive).
+    fn erase_display(&mut self, mode: u16, selective: bool) {
+        if self.status.active {
+            // The status line is a single line: erasing the display clears it.
+            return self.erase_line(2, selective);
+        }
         let blank = self.blank();
         let (row, col) = (self.cursor.row, self.cursor.col);
-        match mode {
-            0 => {
-                self.grid.line_mut(row).erase(col..usize::MAX, blank);
-                for r in row + 1..self.rows() {
-                    self.grid.line_mut(r).clear(blank);
-                }
-            }
-            1 => {
-                for r in 0..row {
-                    self.grid.line_mut(r).clear(blank);
-                }
-                self.grid.line_mut(row).erase(0..col + 1, blank);
-            }
-            2 => self.grid.clear(blank),
+        let last = self.line_width(row) - 1;
+        let rows: Box<dyn Iterator<Item = (usize, std::ops::Range<usize>)>> = match mode {
+            0 => Box::new(
+                std::iter::once((row, col..usize::MAX))
+                    .chain((row + 1..self.rows()).map(|r| (r, 0..usize::MAX))),
+            ),
+            1 => Box::new(
+                (0..row)
+                    .map(|r| (r, 0..usize::MAX))
+                    .chain(std::iter::once((row, 0..col + 1))),
+            ),
+            2 => Box::new((0..self.rows()).map(|r| (r, 0..usize::MAX))),
             _ => return,
+        };
+        let rows: Vec<_> = rows.collect();
+        for (r, range) in rows {
+            let line = self.grid.line_mut(r);
+            if selective {
+                erase_unprotected(line, range, blank);
+            } else if range.start == 0 && (range.end == usize::MAX || (r == row && col >= last)) {
+                // Completely erased lines become single width (VT510 RM, ED).
+                line.clear(blank);
+            } else {
+                line.erase(range, blank);
+            }
         }
         self.cursor.pending_wrap = false;
     }
 
-    fn erase_line(&mut self, mode: u16) {
+    /// EL, or DECSEL when `selective`.
+    fn erase_line(&mut self, mode: u16, selective: bool) {
         let blank = self.blank();
-        let (row, col) = (self.cursor.row, self.cursor.col);
+        let col = self.cursor.col;
         let range = match mode {
             0 => col..usize::MAX,
             1 => 0..col + 1,
             2 => 0..usize::MAX,
             _ => return,
         };
-        self.grid.line_mut(row).erase(range, blank);
+        let line = self.cursor_line_mut();
+        if selective {
+            erase_unprotected(line, range, blank);
+        } else {
+            line.erase(range, blank);
+        }
         self.cursor.pending_wrap = false;
     }
 
     // -------------------------------------------------------- VT102 editing
 
     fn insert_lines(&mut self, n: usize) {
-        if !self.within_margins() {
+        if self.status.active || !self.within_margins() {
             return;
         }
         let region = self.region(self.cursor.row);
@@ -505,7 +664,7 @@ impl Emulator {
     }
 
     fn delete_lines(&mut self, n: usize) {
-        if !self.within_margins() {
+        if self.status.active || !self.within_margins() {
             return;
         }
         let region = self.region(self.cursor.row);
@@ -515,24 +674,23 @@ impl Emulator {
     }
 
     fn insert_chars(&mut self, n: usize) {
-        let (row, col, last) = (self.cursor.row, self.cursor.col, self.last_col());
+        let (col, last) = (self.cursor.col, self.last_col());
         let blank = self.blank();
-        self.grid.line_mut(row).insert(col, last, n, blank);
+        self.cursor_line_mut().insert(col, last, n, blank);
         self.cursor.pending_wrap = false;
     }
 
     fn delete_chars(&mut self, n: usize) {
-        let (row, col, last) = (self.cursor.row, self.cursor.col, self.last_col());
+        let (col, last) = (self.cursor.col, self.last_col());
         let blank = self.blank();
-        self.grid.line_mut(row).delete(col, last, n, blank);
+        self.cursor_line_mut().delete(col, last, n, blank);
         self.cursor.pending_wrap = false;
     }
 
     fn erase_chars(&mut self, n: usize) {
-        let (row, col) = (self.cursor.row, self.cursor.col);
+        let col = self.cursor.col;
         let blank = self.blank();
-        self.grid
-            .line_mut(row)
+        self.cursor_line_mut()
             .erase(col..col.saturating_add(n), blank);
         self.cursor.pending_wrap = false;
     }
@@ -565,6 +723,7 @@ impl Emulator {
             18 => self.modes.print_form_feed = on,
             19 => self.modes.print_extent_full = on,
             25 if self.level >= 2 => self.modes.cursor_visible = on,
+            42 if self.level >= 3 => self.modes.national = on,
             66 if self.level >= 3 => self.modes.keypad_application = on,
             67 if self.level >= 3 => self.modes.backarrow_sends_bs = on,
             _ => {}
@@ -573,10 +732,12 @@ impl Emulator {
 
     /// DECCOLM: the page is cleared, margins reset and the cursor homed.
     fn set_columns(&mut self, cols: usize) {
+        self.exit_status_line();
         self.modes.columns_132 = cols == 132;
         let rows = self.rows();
         self.grid.resize(rows, cols);
         self.grid.clear(Cell::BLANK);
+        self.status_line.resize(cols, Cell::BLANK);
         // Tab stops are not reset (DEC STD 070); new columns get the default stops.
         self.resize_tabs(cols);
         self.top = 0;
@@ -589,11 +750,12 @@ impl Emulator {
         let old = self.tabs.len();
         self.tabs.resize(cols, false);
         for c in old..cols {
-            self.tabs[c] = c % TAB_WIDTH == 0;
+            self.tabs[c] = c > 0 && c % TAB_WIDTH == 0;
         }
     }
 
     fn enter_vt52(&mut self) {
+        self.exit_status_line();
         self.modes.ansi = false;
         self.vt52_graphics = false;
         self.pause = true;
@@ -607,6 +769,55 @@ impl Emulator {
         self.pause = true;
     }
 
+    // ------------------------------------------------------------ status line
+
+    /// DECSSDT: select the status line type.
+    fn set_status_type(&mut self, ps: u16) {
+        if !self.config.model.has_status_line() {
+            return;
+        }
+        let kind = match ps {
+            0 => StatusDisplay::None,
+            1 => StatusDisplay::Indicator,
+            2 => StatusDisplay::HostWritable,
+            _ => return,
+        };
+        if kind != StatusDisplay::HostWritable {
+            self.exit_status_line();
+        }
+        if kind != self.status.kind {
+            // A new host-writable status line starts empty.
+            self.status_line.clear(Cell::BLANK);
+        }
+        self.status.kind = kind;
+    }
+
+    /// DECSASD: direct output to the main display (0) or the status line (1).
+    fn set_active_display(&mut self, ps: u16) {
+        match ps {
+            0 => self.exit_status_line(),
+            1 if self.status.kind == StatusDisplay::HostWritable && !self.status.active => {
+                self.status.main_cursor =
+                    (self.cursor.row, self.cursor.col, self.cursor.pending_wrap);
+                self.status.active = true;
+                self.cursor.col = self.status.col.min(self.status_line.width() - 1);
+                self.cursor.pending_wrap = false;
+            }
+            _ => {}
+        }
+    }
+
+    fn exit_status_line(&mut self) {
+        if !self.status.active {
+            return;
+        }
+        self.status.col = self.cursor.col;
+        self.status.active = false;
+        let (row, col, pending) = self.status.main_cursor;
+        self.goto(row, col);
+        self.cursor.pending_wrap = pending;
+    }
+
     // --------------------------------------------------------- save/restore
 
     fn save_cursor(&mut self) {
@@ -616,24 +827,27 @@ impl Emulator {
             attrs: self.cursor.attrs,
             charsets: self.charsets,
             origin: self.modes.origin,
-            pending_wrap: self.cursor.pending_wrap,
+            autowrap: self.modes.autowrap,
         });
     }
 
     fn restore_cursor(&mut self) {
-        let saved = self.saved.unwrap_or(SavedCursor {
-            row: 0,
-            col: 0,
-            attrs: Attrs::default(),
-            charsets: initial_charsets(self.config.model),
-            origin: false,
-            pending_wrap: false,
-        });
-        self.modes.origin = saved.origin;
-        self.cursor.attrs = saved.attrs;
-        self.charsets = saved.charsets;
-        self.goto(saved.row, saved.col);
-        self.cursor.pending_wrap = saved.pending_wrap && self.cursor.col == self.last_col();
+        match self.saved {
+            Some(saved) => {
+                self.modes.origin = saved.origin;
+                self.modes.autowrap = saved.autowrap;
+                self.cursor.attrs = saved.attrs;
+                self.charsets = saved.charsets;
+                self.goto(saved.row, saved.col);
+            }
+            None => {
+                // Nothing saved: home the cursor with default rendition and sets.
+                self.modes.origin = false;
+                self.cursor.attrs = Attrs::default();
+                self.charsets = initial_charsets(self.config.model, self.upss);
+                self.goto(0, 0);
+            }
+        }
     }
 
     // ---------------------------------------------------------------- reset
@@ -644,29 +858,53 @@ impl Emulator {
         let rows = self.rows();
         let scrollback = std::mem::take(&mut self.scrollback);
         let columns_changed = self.cols() != config.cols;
+        let generation = self.soft_generation + 1;
         *self = Emulator::new(Config { rows, ..config });
         self.scrollback = scrollback;
+        self.soft_generation = generation;
         if columns_changed {
             self.events.push(Event::ColumnsChanged(self.cols()));
         }
         self.pause = true;
     }
 
-    /// DECSTR (VT220 and later).
+    /// DECSTR, per VT510 RM table 5-9.
     fn soft_reset(&mut self) {
+        self.exit_status_line();
         self.modes.cursor_visible = true;
         self.modes.insert = false;
         self.modes.origin = false;
         self.modes.autowrap = false;
+        self.modes.national = false;
         self.modes.keyboard_locked = false;
         self.modes.keypad_application = false;
         self.modes.cursor_keys_application = false;
         self.top = 0;
         self.bottom = self.rows() - 1;
-        self.charsets = initial_charsets(self.config.model);
+        self.upss = self.config.supplemental.charset();
+        self.charsets = initial_charsets(self.config.model, self.upss);
+        // SGR normal rendition and DECSCA erasable.
         self.cursor.attrs = Attrs::default();
         self.saved = None;
         self.cursor.pending_wrap = false;
+    }
+
+    /// DECSCL: select conformance level. The terminal performs a hard reset
+    /// (VT510 RM, DECSCL) and then operates at the new level.
+    fn set_conformance_level(&mut self, params: &Params) {
+        let max = self.config.model.max_level();
+        if max < 2 {
+            return;
+        }
+        let level = match params.get_or(0, 0) {
+            v @ 61..=65 => (v - 60) as u8,
+            _ => return,
+        };
+        let level = level.min(max);
+        let eight_bit = level >= 2 && params.get_or(1, 0) != 1;
+        self.full_reset();
+        self.level = level;
+        self.c1_8bit = eight_bit;
     }
 
     fn screen_alignment(&mut self) {
@@ -682,6 +920,9 @@ impl Emulator {
     }
 
     fn set_line_size(&mut self, size: LineSize) {
+        if self.status.active {
+            return;
+        }
         let row = self.cursor.row;
         let line = self.grid.line_mut(row);
         if size.is_double_width() && !line.size.is_double_width() {
@@ -697,6 +938,7 @@ impl Emulator {
     }
 
     fn resize(&mut self, rows: usize, cols: usize) {
+        self.exit_status_line();
         if self.cursor.row >= rows {
             let excess = self.cursor.row + 1 - rows;
             for line in self.grid.drain_top(excess) {
@@ -708,45 +950,12 @@ impl Emulator {
             self.cursor.row -= excess;
         }
         self.grid.resize(rows, cols);
+        self.status_line.resize(cols, Cell::BLANK);
         self.resize_tabs(cols);
         self.top = 0;
         self.bottom = rows - 1;
         let (row, col) = (self.cursor.row, self.cursor.col);
         self.goto(row, col);
-    }
-
-    // -------------------------------------------------------------- replies
-
-    fn reply_csi(&mut self, body: &str) {
-        if self.c1_8bit {
-            self.output.push(0x9B);
-        } else {
-            self.output.extend_from_slice(b"\x1b[");
-        }
-        self.output.extend_from_slice(body.as_bytes());
-    }
-
-    fn device_attributes(&mut self) {
-        let da = self.config.model.primary_da();
-        // In VT100 mode a VT220+ reports its VT100-compatible identity.
-        let da = if self.level == 1 && self.config.model.max_level() > 1 {
-            Model::Vt102.primary_da()
-        } else {
-            da
-        };
-        self.reply_csi(&format!("?{da}c"));
-    }
-
-    fn device_status(&mut self, private: Option<u8>, code: u16) {
-        match (private, code) {
-            (None, 5) => self.reply_csi("0n"),
-            (None, 6) => {
-                let row = self.cursor.row + 1 - if self.modes.origin { self.top } else { 0 };
-                let col = self.cursor.col + 1;
-                self.reply_csi(&format!("{row};{col}R"));
-            }
-            _ => {}
-        }
     }
 
     // ------------------------------------------------------------------ SGR
@@ -756,15 +965,22 @@ impl Emulator {
         let xterm = self.config.extensions.xterm_sgr;
         let vt220 = self.level >= 2;
         let a = &mut self.cursor.attrs;
+        // SGR never changes the DECSCA protection attribute.
+        let normal = |a: &Attrs| {
+            let mut n = Attrs::default();
+            n.flags
+                .set(Flags::PROTECTED, a.flags.contains(Flags::PROTECTED));
+            n
+        };
         if params.is_empty() {
-            *a = Attrs::default();
+            *a = normal(a);
             return;
         }
         let mut i = 0;
         while i < params.len() {
             let p = params.get_or(i, 0);
             match p {
-                0 => *a = Attrs::default(),
+                0 => *a = normal(a),
                 1 => a.flags.set(Flags::BOLD, true),
                 4 => a.flags.set(Flags::UNDERLINE, true),
                 5 => a.flags.set(Flags::BLINK, true),
@@ -810,8 +1026,8 @@ impl Emulator {
             b'G' => self.vt52_graphics = false,
             b'H' => self.goto(0, 0),
             b'I' => self.reverse_index(),
-            b'J' => self.erase_display(0),
-            b'K' => self.erase_line(0),
+            b'J' => self.erase_display(0, false),
+            b'K' => self.erase_line(0, false),
             b'Z' => self.output.extend_from_slice(b"\x1b/Z"),
             b'=' => self.modes.keypad_application = true,
             b'>' => self.modes.keypad_application = false,
@@ -823,27 +1039,58 @@ impl Emulator {
 
     // ----------------------------------------------------------- designation
 
-    fn designate(&mut self, g: usize, is_96: bool, second: Option<u8>, final_byte: u8) {
+    /// SCS: designate a graphic set into G0–G3.
+    fn designate(&mut self, g: usize, is_96: bool, intermediate: Option<u8>, final_byte: u8) {
+        let level = self.level;
+        let mut designation = Vec::with_capacity(2);
+        designation.extend(intermediate);
+        designation.push(final_byte);
+        // Soft sets are selected by the designator they were loaded with.
+        if level >= 2 {
+            if let Some(slot) = self.soft.find(&designation, is_96) {
+                self.charsets.g[g] = Charset::Soft { slot, is_96 };
+                return;
+            }
+        }
         let set = if is_96 {
-            if self.level < 3 {
-                return;
+            match (intermediate, final_byte) {
+                (None, b'A') if level >= 3 => Charset::IsoLatin1,
+                (None, b'<') if level >= 3 && self.upss.is_96() => self.upss,
+                _ => return,
             }
-            Charset::from_96(second, final_byte)
         } else {
-            Charset::from_94(second, final_byte)
-        };
-        if let Some(set) = set {
-            if set == Charset::DecSupplemental && self.level < 2 {
-                return;
+            match (intermediate, final_byte) {
+                (None, b'B' | b'1') => Charset::Ascii,
+                (None, b'0' | b'2') => Charset::DecSpecialGraphics,
+                (None, b'<') if level == 2 => Charset::DecSupplemental,
+                (None, b'<') if level >= 3 && !self.upss.is_96() => self.upss,
+                (Some(b'%'), b'5') if level >= 3 => Charset::DecSupplemental,
+                (None, b'>') if level >= 3 => Charset::DecTechnical,
+                (None, b'A') if level == 1 => Charset::National(charset::Nrc::British),
+                _ => match Charset::national(intermediate, final_byte) {
+                    // National sets need national mode (DECNRCM) on VT220 and later.
+                    Some(nrc) if self.modes.national => Charset::National(nrc),
+                    _ => return,
+                },
             }
-            self.charsets.g[g] = set;
+        };
+        self.charsets.g[g] = set;
+    }
+}
+
+/// Clears cells in `range` that are not protected by DECSCA.
+fn erase_unprotected(line: &mut Line, range: std::ops::Range<usize>, blank: Cell) {
+    let end = range.end.min(line.len());
+    for cell in line.cells_mut()[range.start.min(end)..end].iter_mut() {
+        if !cell.attrs.flags.contains(Flags::PROTECTED) {
+            *cell = blank;
         }
     }
 }
 
-fn initial_charsets(model: Model) -> CharsetState {
+fn initial_charsets(model: Model, upss: Charset) -> CharsetState {
     if model.max_level() >= 2 {
-        CharsetState::VT220
+        CharsetState::vt220(upss)
     } else {
         CharsetState::VT100
     }
@@ -900,7 +1147,7 @@ impl Perform for Emulator {
                 let error = if self.config.model.max_level() == 1 {
                     '▒'
                 } else {
-                    '⸮'
+                    charset::ERROR_CHARACTER
                 };
                 self.put_char(error);
             }
@@ -984,6 +1231,7 @@ impl Perform for Emulator {
         let n = |i: usize| usize::from(p.get_nonzero_or(i, 1));
         let vt102 = self.config.model >= Model::Vt102;
         let vt220 = self.level >= 2;
+        let vt320 = self.level >= 3;
         let vt420 = self.level >= 4;
         let vt510 = self.level >= 5;
         match (seq.private, seq.intermediates, seq.final_byte) {
@@ -1003,8 +1251,8 @@ impl Perform for Emulator {
             }
             (None, [], b'I') if vt510 => self.tab(n(0)),
             (None, [], b'Z') if vt510 => self.back_tab(n(0)),
-            (None, [], b'S') if vt420 => self.scroll_up(n(0)),
-            (None, [], b'T') if vt420 && p.len() <= 1 => {
+            (None, [], b'S') if vt420 && !self.status.active => self.scroll_up(n(0)),
+            (None, [], b'T') if vt420 && p.len() <= 1 && !self.status.active => {
                 let region = self.region(self.top);
                 let blank = self.blank();
                 self.grid.scroll_down(region, n(0), blank);
@@ -1014,18 +1262,17 @@ impl Perform for Emulator {
             (None, [], b'C') => self.cuf(n(0)),
             (None, [], b'D') => self.cub(n(0)),
             (None, [], b'H' | b'f') => self.cup(n(0), n(1)),
-            (None, [], b'J') => self.erase_display(p.get_or(0, 0)),
-            (None, [], b'K') => self.erase_line(p.get_or(0, 0)),
+            (None, [], b'J') => self.erase_display(p.get_or(0, 0), false),
+            (None, [], b'K') => self.erase_line(p.get_or(0, 0), false),
+            (Some(b'?'), [], b'J') if vt220 => self.erase_display(p.get_or(0, 0), true),
+            (Some(b'?'), [], b'K') if vt220 => self.erase_line(p.get_or(0, 0), true),
             (None, [], b'L') if vt102 => self.insert_lines(n(0)),
             (None, [], b'M') if vt102 => self.delete_lines(n(0)),
             (None, [], b'P') if vt102 => self.delete_chars(n(0)),
             (None, [], b'X') if vt220 => self.erase_chars(n(0)),
             (None, [], b'c') if p.get_or(0, 0) == 0 => self.device_attributes(),
-            (Some(b'>'), [], b'c') if p.get_or(0, 0) == 0 => {
-                if let Some(da) = self.config.model.secondary_da() {
-                    self.reply_csi(&format!(">{da}c"));
-                }
-            }
+            (Some(b'>'), [], b'c') if p.get_or(0, 0) == 0 => self.secondary_attributes(),
+            (Some(b'='), [], b'c') if vt420 && p.get_or(0, 0) == 0 => self.tertiary_attributes(),
             (None, [], b'g') => match p.get_or(0, 0) {
                 0 => {
                     let col = self.cursor.col;
@@ -1057,7 +1304,7 @@ impl Perform for Emulator {
                 }
                 self.events.push(Event::LedsChanged(self.leds));
             }
-            (None, [], b'r') => {
+            (None, [], b'r') if !self.status.active => {
                 let top = n(0) - 1;
                 let bottom =
                     usize::from(p.get_nonzero_or(1, self.rows() as u16)).min(self.rows()) - 1;
@@ -1079,7 +1326,38 @@ impl Perform for Emulator {
                 self.full_reset();
             }
             (None, [b'!'], b'p') if vt220 => self.soft_reset(),
+            (None, [b'"'], b'p') => self.set_conformance_level(p),
+            (None, [b'"'], b'q') if vt220 => {
+                // DECSCA: 1 protects subsequent characters; 0 and 2 do not.
+                let protect = p.get_or(0, 0) == 1;
+                self.cursor.attrs.flags.set(Flags::PROTECTED, protect);
+            }
+            (None, [b'$'], b'p') if vt320 => self.request_mode(None, p.get_or(0, 0)),
+            (Some(b'?'), [b'$'], b'p') if vt320 => self.request_mode(Some(b'?'), p.get_or(0, 0)),
+            (None, [b'$'], b'w') if vt320 => self.presentation_state_report(p.get_or(0, 0)),
+            (None, [b'&'], b'u') if vt320 => self.user_preferred_supplemental_report(),
+            (None, [b'$'], b'~') if vt320 => self.set_status_type(p.get_or(0, 0)),
+            (None, [b'$'], b'}') if vt320 => self.set_active_display(p.get_or(0, 0)),
             _ => {}
+        }
+    }
+
+    fn dcs_hook(&mut self, seq: Sequence<'_>) {
+        self.dcs = if self.modes.ansi {
+            dcs::DcsState::hook(self.level, &seq)
+        } else {
+            dcs::DcsState::None
+        };
+    }
+
+    fn dcs_put(&mut self, byte: u8) {
+        self.dcs.put(byte);
+    }
+
+    fn dcs_unhook(&mut self, end: StringEnd) {
+        let state = std::mem::replace(&mut self.dcs, dcs::DcsState::None);
+        if end == StringEnd::Terminated {
+            self.finish_dcs(state);
         }
     }
 

@@ -168,7 +168,7 @@ mod tests {
         pub fn required() -> impl Iterator<Item = char> {
             let ascii = (0x20u32..0x7F).filter_map(char::from_u32);
             let latin1 = (0xA0u32..=0xFF).filter_map(char::from_u32);
-            let dec = "◆▒␉␌␍␊␤␋┘┐┌└┼⎺⎻─⎼⎽├┤┴┬│≤≥π≠£·ŒœŸ⸮\u{FFFD}".chars();
+            let dec = "◆▒␉␌␍␊␤␋┘┐┌└┼⎺⎻─⎼⎽├┤┴┬│≤≥π≠£·ŒœŸ\u{2426}\u{FFFD}".chars();
             ascii.chain(latin1).chain(dec)
         }
     }

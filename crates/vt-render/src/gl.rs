@@ -6,7 +6,9 @@ use glow::HasContext;
 use vt_core::Terminal;
 use vt_fonts::Font;
 
-use crate::scene::{FrameState, INSTANCE_LEN, Layout, build_instances};
+use crate::scene::{
+    FrameState, INSTANCE_LEN, Layout, SOFT_ATLAS_COLUMNS, SOFT_SLOT, SoftAtlas, build_instances,
+};
 use crate::theme::Theme;
 
 /// Glyphs per atlas row.
@@ -18,6 +20,8 @@ pub struct Renderer {
     quad: glow::Buffer,
     instances: glow::Buffer,
     atlas: glow::Texture,
+    soft_texture: glow::Texture,
+    soft: SoftAtlas,
     font: Font,
     scratch: Vec<f32>,
     uniforms: Uniforms,
@@ -32,7 +36,10 @@ impl std::fmt::Debug for Renderer {
 struct Uniforms {
     viewport: Option<glow::UniformLocation>,
     atlas: Option<glow::UniformLocation>,
+    soft_atlas: Option<glow::UniformLocation>,
     cell: Option<glow::UniformLocation>,
+    soft_slot: Option<glow::UniformLocation>,
+    soft_columns: Option<glow::UniformLocation>,
     atlas_columns: Option<glow::UniformLocation>,
     scanlines: Option<glow::UniformLocation>,
     stretch: Option<glow::UniformLocation>,
@@ -44,6 +51,7 @@ layout(location = 1) in vec4 a_rect;
 layout(location = 2) in vec2 a_glyph_flags;
 layout(location = 3) in vec3 a_fg;
 layout(location = 4) in vec3 a_bg;
+layout(location = 5) in vec2 a_matrix;
 
 uniform vec2 u_viewport;
 
@@ -53,6 +61,7 @@ flat out int v_flags;
 flat out vec3 v_fg;
 flat out vec3 v_bg;
 flat out vec2 v_size;
+flat out ivec2 v_matrix;
 
 void main() {
     vec2 p = a_rect.xy + a_corner * a_rect.zw;
@@ -62,6 +71,7 @@ void main() {
     v_fg = a_fg;
     v_bg = a_bg;
     v_size = a_rect.zw;
+    v_matrix = ivec2(a_matrix + 0.5);
     gl_Position = vec4(p.x / u_viewport.x * 2.0 - 1.0, 1.0 - p.y / u_viewport.y * 2.0, 0.0, 1.0);
 }
 "#;
@@ -73,17 +83,25 @@ flat in int v_flags;
 flat in vec3 v_fg;
 flat in vec3 v_bg;
 flat in vec2 v_size;
+flat in ivec2 v_matrix;
 
 uniform sampler2D u_atlas;
+uniform sampler2D u_soft_atlas;
 uniform ivec2 u_cell;
 uniform int u_atlas_columns;
+uniform int u_soft_slot;
+uniform int u_soft_columns;
 uniform float u_scanlines;
 uniform bool u_stretch;
 
 out vec4 o_color;
 
 float dot_at(int x, int y) {
-    if (x < 0 || y < 0 || x >= u_cell.x || y >= u_cell.y) return 0.0;
+    if (x < 0 || y < 0 || x >= v_matrix.x || y >= v_matrix.y) return 0.0;
+    if ((v_flags & 256) != 0) {
+        ivec2 t = ivec2((v_glyph % u_soft_columns) * u_soft_slot + x, (v_glyph / u_soft_columns) * u_soft_slot + y);
+        return texelFetch(u_soft_atlas, t, 0).r;
+    }
     ivec2 t = ivec2((v_glyph % u_atlas_columns) * u_cell.x + x, (v_glyph / u_atlas_columns) * u_cell.y + y);
     return texelFetch(u_atlas, t, 0).r;
 }
@@ -97,7 +115,7 @@ float lit(vec2 d) {
 }
 
 void main() {
-    vec2 cell = vec2(u_cell);
+    vec2 cell = vec2(v_matrix);
     vec2 d = v_local * cell;
     if ((v_flags & 2) != 0) d.y = v_local.y * cell.y * 0.5;
     if ((v_flags & 4) != 0) d.y = (1.0 + v_local.y) * cell.y * 0.5;
@@ -159,7 +177,7 @@ impl Renderer {
             let instances = gl.create_buffer()?;
             gl.bind_buffer(glow::ARRAY_BUFFER, Some(instances));
             let stride = (INSTANCE_LEN * 4) as i32;
-            for (loc, size, offset) in [(1u32, 4, 0), (2, 2, 4), (3, 3, 6), (4, 3, 9)] {
+            for (loc, size, offset) in [(1u32, 4, 0), (2, 2, 4), (3, 3, 6), (4, 3, 9), (5, 2, 12)] {
                 gl.enable_vertex_attrib_array(loc);
                 gl.vertex_attrib_pointer_f32(loc, size, glow::FLOAT, false, stride, offset * 4);
                 gl.vertex_attrib_divisor(loc, 1);
@@ -167,10 +185,17 @@ impl Renderer {
             gl.bind_vertex_array(None);
 
             let atlas = upload_atlas(gl, &font)?;
+            let soft = SoftAtlas::default();
+            let soft_texture = gl.create_texture()?;
+            gl.bind_texture(glow::TEXTURE_2D, Some(soft_texture));
+            set_nearest(gl);
             let uniforms = Uniforms {
                 viewport: gl.get_uniform_location(program, "u_viewport"),
                 atlas: gl.get_uniform_location(program, "u_atlas"),
+                soft_atlas: gl.get_uniform_location(program, "u_soft_atlas"),
                 cell: gl.get_uniform_location(program, "u_cell"),
+                soft_slot: gl.get_uniform_location(program, "u_soft_slot"),
+                soft_columns: gl.get_uniform_location(program, "u_soft_columns"),
                 atlas_columns: gl.get_uniform_location(program, "u_atlas_columns"),
                 scanlines: gl.get_uniform_location(program, "u_scanlines"),
                 stretch: gl.get_uniform_location(program, "u_stretch"),
@@ -181,6 +206,8 @@ impl Renderer {
                 quad,
                 instances,
                 atlas,
+                soft_texture,
+                soft,
                 font,
                 scratch: Vec::new(),
                 uniforms,
@@ -192,10 +219,12 @@ impl Renderer {
         &self.font
     }
 
-    /// Draws one frame into the currently bound framebuffer.
+    /// Draws one frame into the currently bound framebuffer. `indicator` is
+    /// the text shown when the indicator status line is selected.
     ///
     /// # Safety
     /// The context passed to [`Renderer::new`] must be current.
+    #[allow(clippy::too_many_arguments)]
     pub unsafe fn draw(
         &mut self,
         gl: &glow::Context,
@@ -204,8 +233,18 @@ impl Renderer {
         viewport: (u32, u32),
         frame: FrameState,
         theme: &Theme,
+        indicator: &str,
     ) {
-        build_instances(term, layout, frame, theme, &self.font, &mut self.scratch);
+        build_instances(
+            term,
+            layout,
+            frame,
+            theme,
+            &self.font,
+            &mut self.soft,
+            indicator,
+            &mut self.scratch,
+        );
         unsafe {
             gl.viewport(0, 0, viewport.0 as i32, viewport.1 as i32);
             gl.disable(glow::BLEND);
@@ -213,20 +252,43 @@ impl Renderer {
             gl.clear_color(theme.bezel[0], theme.bezel[1], theme.bezel[2], 1.0);
             gl.clear(glow::COLOR_BUFFER_BIT);
 
+            if self.soft.dirty {
+                gl.bind_texture(glow::TEXTURE_2D, Some(self.soft_texture));
+                gl.pixel_store_i32(glow::UNPACK_ALIGNMENT, 1);
+                gl.tex_image_2d(
+                    glow::TEXTURE_2D,
+                    0,
+                    glow::R8 as i32,
+                    SoftAtlas::WIDTH as i32,
+                    SoftAtlas::HEIGHT as i32,
+                    0,
+                    glow::RED,
+                    glow::UNSIGNED_BYTE,
+                    glow::PixelUnpackData::Slice(Some(&self.soft.pixels)),
+                );
+                self.soft.dirty = false;
+            }
+
             gl.use_program(Some(self.program));
             let u = &self.uniforms;
             gl.uniform_2_f32(u.viewport.as_ref(), viewport.0 as f32, viewport.1 as f32);
             gl.uniform_1_i32(u.atlas.as_ref(), 0);
+            gl.uniform_1_i32(u.soft_atlas.as_ref(), 1);
             gl.uniform_2_i32(
                 u.cell.as_ref(),
                 i32::from(self.font.width),
                 i32::from(self.font.height),
             );
             gl.uniform_1_i32(u.atlas_columns.as_ref(), ATLAS_COLUMNS);
+            gl.uniform_1_i32(u.soft_slot.as_ref(), SOFT_SLOT as i32);
+            gl.uniform_1_i32(u.soft_columns.as_ref(), SOFT_ATLAS_COLUMNS as i32);
             gl.uniform_1_f32(u.scanlines.as_ref(), theme.scanlines);
             gl.uniform_1_i32(u.stretch.as_ref(), i32::from(theme.dot_stretch));
             gl.active_texture(glow::TEXTURE0);
             gl.bind_texture(glow::TEXTURE_2D, Some(self.atlas));
+            gl.active_texture(glow::TEXTURE1);
+            gl.bind_texture(glow::TEXTURE_2D, Some(self.soft_texture));
+            gl.active_texture(glow::TEXTURE0);
 
             gl.bind_vertex_array(Some(self.vao));
             gl.bind_buffer(glow::ARRAY_BUFFER, Some(self.instances));
@@ -252,7 +314,19 @@ impl Renderer {
             gl.delete_buffer(self.quad);
             gl.delete_buffer(self.instances);
             gl.delete_texture(self.atlas);
+            gl.delete_texture(self.soft_texture);
         }
+    }
+}
+
+unsafe fn set_nearest(gl: &glow::Context) {
+    for (param, value) in [
+        (glow::TEXTURE_MIN_FILTER, glow::NEAREST),
+        (glow::TEXTURE_MAG_FILTER, glow::NEAREST),
+        (glow::TEXTURE_WRAP_S, glow::CLAMP_TO_EDGE),
+        (glow::TEXTURE_WRAP_T, glow::CLAMP_TO_EDGE),
+    ] {
+        unsafe { gl.tex_parameter_i32(glow::TEXTURE_2D, param, value as i32) };
     }
 }
 
@@ -324,14 +398,7 @@ unsafe fn upload_atlas(gl: &glow::Context, font: &Font) -> Result<glow::Texture,
             glow::UNSIGNED_BYTE,
             glow::PixelUnpackData::Slice(Some(&pixels)),
         );
-        for (param, value) in [
-            (glow::TEXTURE_MIN_FILTER, glow::NEAREST),
-            (glow::TEXTURE_MAG_FILTER, glow::NEAREST),
-            (glow::TEXTURE_WRAP_S, glow::CLAMP_TO_EDGE),
-            (glow::TEXTURE_WRAP_T, glow::CLAMP_TO_EDGE),
-        ] {
-            gl.tex_parameter_i32(glow::TEXTURE_2D, param, value as i32);
-        }
+        set_nearest(gl);
         Ok(tex)
     }
 }

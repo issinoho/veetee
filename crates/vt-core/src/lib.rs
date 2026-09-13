@@ -14,9 +14,11 @@ pub mod grid;
 mod keyboard;
 mod modes;
 mod selection;
+pub mod softfont;
 mod terminal;
+pub mod udk;
 
-pub use config::{Config, Extensions, Model};
+pub use config::{Config, Extensions, Model, StatusDisplay, Supplemental};
 pub use keyboard::Key;
 pub use modes::Modes;
 pub use selection::{Point, Selection};

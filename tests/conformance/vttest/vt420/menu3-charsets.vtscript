@@ -1,0 +1,20 @@
+# vttest menu 3: character sets — terminal model VT420 (VT220 shifts, NRC mode).
+model vt420
+size 24 80
+timeout 30
+spawn ${VTTEST} 24x80.132
+prompt "Enter choice number (0 - 12): "
+send "3\r"
+prompt "Enter choice number (0 - 13): "
+send "8\r"
+walk charsets-vt100 "): "
+send "9\r"
+walk charsets-si-so "): "
+send "10\r"
+walk charsets-locking-shifts "): "
+send "11\r"
+walk charsets-single-shifts "): "
+send "0\r"
+prompt "Enter choice number (0 - 12): "
+send "0\r"
+expect-exit

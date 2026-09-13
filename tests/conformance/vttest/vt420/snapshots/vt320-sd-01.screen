@@ -1,0 +1,27 @@
+page 24x80 cursor 24,14 visible
+modes decawm
+ 1  |
+ 2  |
+ 3  |
+ 4  |
+ 5  |
+ 6  |
+ 7  |
+ 8  |
+ 9  |
+10  |
+11  |
+12  |
+13  |
+14  |
+15  |
+16  |
+17  |
+18  |
+19  |
+20  |********************
+21  |----+----1----+----2----+----3----+----4----+----5----+----6----+----7----+----8
+22  |Test Pan up (SD)
+23  |There should be a horizontal row of *'s above, just above the message.
+24  |Push <RETURN>
+status indicator

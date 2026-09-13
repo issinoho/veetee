@@ -1,3 +1,5 @@
+use crate::charset::{Charset, Nrc};
+
 /// The DEC terminal being emulated. Ordering follows capability.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Model {
@@ -66,8 +68,40 @@ impl Model {
         }
     }
 
+    /// VT320 and later have a status line.
+    pub const fn has_status_line(self) -> bool {
+        self.max_level() >= 3
+    }
+
     pub const fn has_color(self) -> bool {
         matches!(self, Model::Vt525)
+    }
+}
+
+/// Set-Up "Status Display".
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum StatusDisplay {
+    None,
+    /// Terminal indicators (the factory setting).
+    #[default]
+    Indicator,
+    HostWritable,
+}
+
+/// Set-Up "User-Preferred Supplemental Set".
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum Supplemental {
+    #[default]
+    DecSupplemental,
+    IsoLatin1,
+}
+
+impl Supplemental {
+    pub const fn charset(self) -> Charset {
+        match self {
+            Supplemental::DecSupplemental => Charset::DecSupplemental,
+            Supplemental::IsoLatin1 => Charset::IsoLatin1,
+        }
     }
 }
 
@@ -95,6 +129,15 @@ pub struct Config {
     pub answerback: Vec<u8>,
     /// Lines kept after scrolling off the top of the page.
     pub scrollback_lines: usize,
+    /// Set-Up "Status Display" (VT320 and later).
+    pub status_display: StatusDisplay,
+    /// Set-Up "Keyboard Language"; `None` is North American.
+    pub keyboard_language: Option<Nrc>,
+    /// Set-Up "Character Mode": 7-bit national (DECNRCM set) rather than 8-bit multinational.
+    pub national_mode: bool,
+    pub supplemental: Supplemental,
+    /// Set-Up "User Defined Keys: Locked".
+    pub udk_locked: bool,
     pub extensions: Extensions,
 }
 
@@ -108,6 +151,11 @@ impl Default for Config {
             new_line: false,
             answerback: Vec::new(),
             scrollback_lines: 10_000,
+            status_display: StatusDisplay::default(),
+            keyboard_language: None,
+            national_mode: false,
+            supplemental: Supplemental::default(),
+            udk_locked: false,
             extensions: Extensions::default(),
         }
     }

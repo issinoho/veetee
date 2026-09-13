@@ -38,11 +38,13 @@ pub struct Modes {
     pub keypad_application: bool,
     /// DECBKM (67): set = backarrow key sends BS; reset (DEC default) = DEL.
     pub backarrow_sends_bs: bool,
+    /// DECNRCM (42): 7-bit national replacement character sets.
+    pub national: bool,
 }
 
 impl Modes {
     /// Power-up modes. `autowrap` and `new_line` come from Set-Up.
-    pub const fn power_up(autowrap: bool, new_line: bool) -> Modes {
+    pub const fn power_up(autowrap: bool, new_line: bool, national: bool) -> Modes {
         Modes {
             keyboard_locked: false,
             insert: false,
@@ -61,6 +63,7 @@ impl Modes {
             cursor_visible: true,
             keypad_application: false,
             backarrow_sends_bs: false,
+            national,
         }
     }
 }

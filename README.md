@@ -4,8 +4,9 @@ A DEC VT terminal emulator for the Linux desktop, aiming at SmarTerm/Reflection-
 compatibility: VT52 through VT525, DECforms and FMS applications, DEC-faithful fonts,
 and SSH, Telnet, serial and LAT connections.
 
-**Status:** early development — milestone M1: VT100/VT102/VT52 core (vttest menus 1–8 pass),
-first GTK4 window with a local shell, DEC-style dot-matrix font and phosphor rendering.
+**Status:** early development — milestone M2: VT220/VT320 features (protected fields, national
+and DEC Technical character sets, soft fonts, user-defined keys, status line, state reports) on
+top of the VT100/VT102/VT52 core. vttest VT100–VT320 menus pass headless.
 
 ## Layout
 
@@ -44,6 +45,7 @@ The PC keyboard is mapped to LK401 key positions:
 | F1 F2 F3 F4 F5 | Hold Screen, Print Screen, Set-Up, Data/Talk, Break |
 | F6–F12, Shift+F1–F10 | F6–F12, F11–F20 (Shift+F5 = Help, Shift+F6 = Do) |
 | Ctrl+F5 | Answerback |
+| Ctrl+F6–F12, Ctrl+Shift+F1–F10 | User-defined keys (DEC Shift+F6–F20) |
 | Insert Home PgUp / Delete End PgDn | Find, Insert Here, Remove / Select, Prev Screen, Next Screen |
 | NumLock / * − | PF1 PF2 PF3 PF4 |
 | Keypad + (Shift: −) | Keypad , (−) |

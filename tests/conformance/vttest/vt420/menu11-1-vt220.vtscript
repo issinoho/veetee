@@ -1,0 +1,98 @@
+# vttest menu 11.1: VT220 features — terminal model VT420.
+# Not scripted: 11.1.4 printer (post-1.0), 11.1.5 soft characters (needs a -f font file).
+model vt420
+size 24 80
+answerback "Hello, world"
+spawn ${VTTEST} 24x80.132
+prompt "Enter choice number (0 - 12): "
+send "11\r"
+prompt "Enter choice number (0 - 8): "
+send "1\r"
+
+# 11.1.1 reporting functions: device status reports
+prompt "Enter choice number (0 - 7): "
+send "1\r"
+prompt "Enter choice number (0 - 1): "
+send "1\r"
+prompt "Enter choice number (0 - 4): "
+send "1\r"
+step vt220-dsr-keyboard
+prompt "Enter choice number (0 - 4): "
+send "2\r"
+step vt220-dsr-operating
+prompt "Enter choice number (0 - 4): "
+send "3\r"
+step vt220-dsr-printer
+prompt "Enter choice number (0 - 4): "
+send "4\r"
+step vt220-dsr-udk
+prompt "Enter choice number (0 - 4): "
+send "0\r"
+prompt "Enter choice number (0 - 1): "
+send "0\r"
+
+# 11.1.2 screen-display functions
+prompt "Enter choice number (0 - 7): "
+send "2\r"
+prompt "Enter choice number (0 - 4): "
+send "1\r"
+wait-text "Local echo is enabled"
+# Local echo produces no host output, so pace the keys instead of settling.
+type "a"
+sleep 150
+type "b"
+sleep 150
+type "b"
+wait-text "Local echo is disabled"
+type "c"
+settle
+type "d"
+settle
+type "d"
+step vt220-srm
+prompt "Enter choice number (0 - 4): "
+send "2\r"
+step vt220-dectcem-hidden
+step vt220-dectcem-visible
+prompt "Enter choice number (0 - 4): "
+send "3\r"
+step vt220-ech
+prompt "Enter choice number (0 - 4): "
+send "4\r"
+step vt220-decsca-selective-erase
+step vt220-decsca-ed-el
+step vt220-decsca-ech-ich-dch
+prompt "Enter choice number (0 - 4): "
+send "0\r"
+
+# 11.1.3 8-bit controls
+prompt "Enter choice number (0 - 7): "
+send "3\r"
+step vt220-s8c1t
+
+# 11.1.6 soft terminal reset
+prompt "Enter choice number (0 - 7): "
+send "6\r"
+step vt220-decstr-before
+step vt220-decstr-after
+
+# 11.1.7 user-defined keys (shifted F6-F20 on a DEC keyboard)
+prompt "Enter choice number (0 - 7): "
+send "7\r"
+wait-text "Press 'q' to quit"
+key udk6
+settle
+snapshot vt220-udk-f6
+key udk16
+settle
+snapshot vt220-udk-f16-do
+type "q"
+step vt220-udk-done
+
+prompt "Enter choice number (0 - 7): "
+send "0\r"
+prompt "Enter choice number (0 - 8): "
+send "0\r"
+prompt "Enter choice number (0 - 12): "
+send "0\r"
+expect-exit

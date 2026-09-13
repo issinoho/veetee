@@ -15,5 +15,5 @@ mod scene;
 mod theme;
 
 pub use gl::Renderer;
-pub use scene::{FrameState, Layout, build_instances, layout};
+pub use scene::{FrameState, Layout, SoftAtlas, build_instances, layout, page_rows};
 pub use theme::{Phosphor, Theme};

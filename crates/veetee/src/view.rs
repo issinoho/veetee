@@ -165,12 +165,15 @@ impl TerminalView {
             );
             session::frame_drawn(&st.session);
             if let (Some(gl), Some(renderer)) = (st.gl.as_ref(), st.renderer.as_mut()) {
+                let held = st.session.is_held();
                 let term = st.session.terminal();
-                let layout = vt_render::layout(w, h, term.grid().rows(), term.grid().cols());
+                let layout =
+                    vt_render::layout(w, h, vt_render::page_rows(&term), term.grid().cols());
+                let indicator = indicator_line(term.grid().cols(), held);
                 // SAFETY: GTK makes the context current before emitting `render`.
                 #[allow(unsafe_code)]
                 unsafe {
-                    renderer.draw(gl, &term, &layout, (w, h), frame, &st.theme)
+                    renderer.draw(gl, &term, &layout, (w, h), frame, &st.theme, &indicator)
                 };
                 if let Some((path, delay)) = st.capture.clone() {
                     if st.epoch.elapsed() >= delay {
@@ -340,11 +343,12 @@ impl TerminalView {
             (f64::from(self.area.width()) * scale).max(1.0) as u32,
             (f64::from(self.area.height()) * scale).max(1.0) as u32,
         );
-        let layout = vt_render::layout(w, h, grid.rows(), grid.cols());
+        let layout = vt_render::layout(w, h, vt_render::page_rows(&term), grid.cols());
         let px = ((x * scale) as f32).clamp(layout.x, layout.x + layout.width - 1.0);
         let py = ((y * scale) as f32).clamp(layout.y, layout.y + layout.height - 1.0);
         let (row, col) = layout.cell_at(px, py)?;
-        let line = grid.line(row.min(grid.rows() - 1));
+        let row = row.min(grid.rows() - 1);
+        let line = grid.line(row);
         let col = if line.size.is_double_width() {
             col / 2
         } else {
@@ -403,6 +407,7 @@ impl TerminalView {
                 let held = !st.session.is_held();
                 st.session.set_held(held);
                 (st.status)(if held { "Hold Screen" } else { "" });
+                self.area.queue_render();
             }
             Local::Answerback => st.session.send_answerback(),
             Local::Paste => self.paste(self.area.clipboard()),
@@ -458,6 +463,15 @@ impl TerminalView {
             glib::ControlFlow::Continue
         });
     }
+}
+
+/// The indicator status line, laid out like a VT420's: local state on the
+/// left, printer status on the right.
+fn indicator_line(cols: usize, held: bool) -> String {
+    let left = if held { " Hold Screen" } else { "" };
+    let right = "Printer: None ";
+    let pad = cols.saturating_sub(left.len() + right.len());
+    format!("{left}{}{right}", " ".repeat(pad))
 }
 
 fn clipboard_for(area: &gtk::GLArea, primary: bool) -> gdk::Clipboard {
