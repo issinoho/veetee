@@ -42,5 +42,6 @@ assets = [
     ["../../README.md", "usr/share/doc/veetee/README.md", "644"],
     ["../../CHANGELOG.md", "usr/share/doc/veetee/CHANGELOG.md", "644"],
     ["../../LICENSE-APACHE", "usr/share/doc/veetee/LICENSE-APACHE", "644"],
+    ["../../THIRD-PARTY.md", "usr/share/doc/veetee/THIRD-PARTY.md", "644"],
     ["../vt-fonts/fonts/OFL.txt", "usr/share/doc/veetee/fonts-OFL.txt", "644"],
 ]

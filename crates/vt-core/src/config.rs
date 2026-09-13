@@ -38,8 +38,13 @@ impl Model {
             Model::Vt220 => "62;1;2;6;7;8;9",
             Model::Vt320 => "63;1;2;6;7;8;9",
             Model::Vt420 => "64;1;2;6;7;8;9;15;18;21",
-            Model::Vt510 | Model::Vt520 => "65;1;2;6;7;8;9;15;18;21",
-            Model::Vt525 => "65;1;2;6;7;8;9;15;18;21;22",
+            // The VT510 reports class 64 (EK-VT510-RM DA1). The VT500 factory
+            // lists (international models) also include 19 sessions, 44 PCTerm,
+            // 45 soft key mapping and 46 ASCII emulation, which veetee does not
+            // provide yet; 6, 8 and 15 are implied at level 5 (EK-VT520-RM DA1).
+            Model::Vt510 => "64;1;2;7;8;9;12;15;18;21;23;24;42",
+            Model::Vt520 => "65;1;2;7;9;12;18;21;23;24;42",
+            Model::Vt525 => "65;1;2;7;9;12;18;21;22;23;24;42",
         }
     }
 

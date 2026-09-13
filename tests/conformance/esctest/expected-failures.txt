@@ -1,6 +1,6 @@
 # esctest2 tests that veetee is expected to fail, one per line:
 #   TestClass.test_name  reason
-# esctest2 describes xterm. veetee follows DEC documentation (EK-VT420-RM,
+# esctest2 describes xterm. veetee follows DEC documentation (EK-VT520-RM,
 # DEC STD 070) even with xterm compatibility enabled, so each entry explains
 # why the DEC behaviour differs. Run `cargo xtask esctest --update` to refresh
 # the list; new entries arrive as "TODO: triage" and need a reason.
@@ -11,29 +11,6 @@ BSTests.test_BS_ReverseWrapStartingInDoWrapPosition  xterm reverse-wraparound (m
 BSTests.test_BS_ReverseWrapWithLeftRight  xterm reverse-wraparound (mode 45); DEC BS and CUB stop at the left margin
 BSTests.test_BS_ReversewrapFromLeftEdgeToRightMargin  xterm reverse-wraparound (mode 45); DEC BS and CUB stop at the left margin
 BSTests.test_BS_WrapsInWraparoundMode  xterm reverse-wraparound (mode 45); DEC BS and CUB stop at the left margin
-CBTTests.test_CBT_ExplicitParameter  not a VT420 control function (VT510 and later, or ECMA-48 only); EK-VT420-RM
-CBTTests.test_CBT_IgnoresRegion  not a VT420 control function (VT510 and later, or ECMA-48 only); EK-VT420-RM
-CBTTests.test_CBT_OneTabStopByDefault  not a VT420 control function (VT510 and later, or ECMA-48 only); EK-VT420-RM
-CBTTests.test_CBT_StopsAtLeftEdge  not a VT420 control function (VT510 and later, or ECMA-48 only); EK-VT420-RM
-CHATests.test_CHA_DefaultParam  not a VT420 control function (VT510 and later, or ECMA-48 only); EK-VT420-RM
-CHATests.test_CHA_ExplicitParam  not a VT420 control function (VT510 and later, or ECMA-48 only); EK-VT420-RM
-CHATests.test_CHA_IgnoresScrollRegion  not a VT420 control function (VT510 and later, or ECMA-48 only); EK-VT420-RM
-CHATests.test_CHA_OutOfBoundsLarge  not a VT420 control function (VT510 and later, or ECMA-48 only); EK-VT420-RM
-CHATests.test_CHA_RespectsOriginMode  not a VT420 control function (VT510 and later, or ECMA-48 only); EK-VT420-RM
-CHATests.test_CHA_ZeroParam  not a VT420 control function (VT510 and later, or ECMA-48 only); EK-VT420-RM
-CHTTests.test_CHT_ExplicitParameter  not a VT420 control function (VT510 and later, or ECMA-48 only); EK-VT420-RM
-CHTTests.test_CHT_IgnoresScrollingRegion  not a VT420 control function (VT510 and later, or ECMA-48 only); EK-VT420-RM
-CHTTests.test_CHT_OneTabStopByDefault  not a VT420 control function (VT510 and later, or ECMA-48 only); EK-VT420-RM
-CNLTests.test_CNL_DefaultParam  not a VT420 control function (VT510 and later, or ECMA-48 only); EK-VT420-RM
-CNLTests.test_CNL_ExplicitParam  not a VT420 control function (VT510 and later, or ECMA-48 only); EK-VT420-RM
-CNLTests.test_CNL_StopsAtBottomLine  not a VT420 control function (VT510 and later, or ECMA-48 only); EK-VT420-RM
-CNLTests.test_CNL_StopsAtBottomLineWhenBegunBelowScrollRegion  not a VT420 control function (VT510 and later, or ECMA-48 only); EK-VT420-RM
-CNLTests.test_CNL_StopsAtBottomMarginInScrollRegion  not a VT420 control function (VT510 and later, or ECMA-48 only); EK-VT420-RM
-CPLTests.test_CPL_DefaultParam  not a VT420 control function (VT510 and later, or ECMA-48 only); EK-VT420-RM
-CPLTests.test_CPL_ExplicitParam  not a VT420 control function (VT510 and later, or ECMA-48 only); EK-VT420-RM
-CPLTests.test_CPL_StopsAtTopLine  not a VT420 control function (VT510 and later, or ECMA-48 only); EK-VT420-RM
-CPLTests.test_CPL_StopsAtTopLineWhenBegunAboveScrollRegion  not a VT420 control function (VT510 and later, or ECMA-48 only); EK-VT420-RM
-CPLTests.test_CPL_StopsAtTopMarginInScrollRegion  not a VT420 control function (VT510 and later, or ECMA-48 only); EK-VT420-RM
 CUBTests.test_CUB_AfterNoWrappedInlines  xterm reverse-wraparound (mode 45); DEC BS and CUB stop at the left margin
 CUBTests.test_CUB_AfterOneWrappedInline  xterm reverse-wraparound (mode 45); DEC BS and CUB stop at the left margin
 ChangeColorTests.test_ChangeColor_CIELab  xterm-only window/colour/state operation; no DEC equivalent
@@ -76,16 +53,16 @@ ChangeSpecialColorTests.test_ChangeSpecialColor_Multiple2  xterm-only window/col
 ChangeSpecialColorTests.test_ChangeSpecialColor_RGB  xterm-only window/colour/state operation; no DEC equivalent
 ChangeSpecialColorTests.test_ChangeSpecialColor_RGBI  xterm-only window/colour/state operation; no DEC equivalent
 ChangeSpecialColorTests.test_ChangeSpecialColor_TekHVC  xterm-only window/colour/state operation; no DEC equivalent
-DA2Tests.test_DA2_0  reports VT420 identity (DA1 ?64, DA2 >41), not xterm's; EK-VT420-RM
-DA2Tests.test_DA2_NoParameter  reports VT420 identity (DA1 ?64, DA2 >41), not xterm's; EK-VT420-RM
-DATests.test_DA_0  reports VT420 identity (DA1 ?64, DA2 >41), not xterm's; EK-VT420-RM
-DATests.test_DA_NoParameter  reports VT420 identity (DA1 ?64, DA2 >41), not xterm's; EK-VT420-RM
+DA2Tests.test_DA2_0  reports the VT525 identity (DA1 ?65, DA2 >65), not xterm's; EK-VT520-RM DA1, DA2
+DA2Tests.test_DA2_NoParameter  reports the VT525 identity (DA1 ?65, DA2 >65), not xterm's; EK-VT520-RM DA1, DA2
+DATests.test_DA_0  reports the VT525 identity (DA1 ?65, DA2 >65), not xterm's; EK-VT520-RM DA1, DA2
+DATests.test_DA_NoParameter  reports the VT525 identity (DA1 ?65, DA2 >65), not xterm's; EK-VT520-RM DA1, DA2
 DECBITests.test_DECBI_Scrolls  checksum: xterm counts cells blanked by ECH/ICH/EL/ED 1/DECIC/DECERA etc. as spaces but cleared cells as NUL; DEC terminals give erased positions no checksum weight (vttest DECRQCRA)
 DECBITests.test_DECBI_WholeScreenScrolls  checksum: xterm counts cells blanked by ECH/ICH/EL/ED 1/DECIC/DECERA etc. as spaces but cleared cells as NUL; DEC terminals give erased positions no checksum weight (vttest DECRQCRA)
-DECDSRTests.test_DECDSR_DECMSR  VT420 has 6 KB of macro memory, so DECMSR reports 384 (xterm has none); EK-VT420-RM DECMSR
-DECDSRTests.test_DECDSR_DSRDECLocatorStatus  DEC locator (VT340 graphics); not on a VT420
-DECDSRTests.test_DECDSR_DSRXtermLocatorStatus  DEC locator (VT340 graphics); not on a VT420
-DECDSRTests.test_DECDSR_LocatorType  DEC locator (VT340 graphics); not on a VT420
+DECDSRTests.test_DECDSR_DECMSR  DEC terminals have 6 KB of macro memory, so DECMSR reports 384 (xterm has none); EK-VT420-RM DECMSR
+DECDSRTests.test_DECDSR_DSRDECLocatorStatus  DEC locator (VT340 graphics); not on a VT525
+DECDSRTests.test_DECDSR_DSRXtermLocatorStatus  DEC locator (VT340 graphics); not on a VT525
+DECDSRTests.test_DECDSR_LocatorType  DEC locator (VT340 graphics); not on a VT525
 DECERATests.test_DECERA_basic  checksum: xterm counts cells blanked by ECH/ICH/EL/ED 1/DECIC/DECERA etc. as spaces but cleared cells as NUL; DEC terminals give erased positions no checksum weight (vttest DECRQCRA)
 DECERATests.test_DECERA_defaultArgs  checksum: xterm counts cells blanked by ECH/ICH/EL/ED 1/DECIC/DECERA etc. as spaces but cleared cells as NUL; DEC terminals give erased positions no checksum weight (vttest DECRQCRA)
 DECERATests.test_DECERA_ignoresMargins  checksum: xterm counts cells blanked by ECH/ICH/EL/ED 1/DECIC/DECERA etc. as spaces but cleared cells as NUL; DEC terminals give erased positions no checksum weight (vttest DECRQCRA)
@@ -99,13 +76,29 @@ DECICTests.test_DECIC_ScrollOffRightEdge  checksum: xterm counts cells blanked b
 DECICTests.test_DECIC_ScrollOffRightMarginInScrollRegion  checksum: xterm counts cells blanked by ECH/ICH/EL/ED 1/DECIC/DECERA etc. as spaces but cleared cells as NUL; DEC terminals give erased positions no checksum weight (vttest DECRQCRA)
 DECIDTests.test_DECID_8bit  DECID is ESC Z only; 8-bit SCI is not recognised by DEC terminals
 DECRCTests.test_SaveRestoreCursor_AltVsMain  xterm alternate screen; no DEC equivalent
-DECRCTests.test_SaveRestoreCursor_Wrap  DECSC saves and DECRC restores the autowrap flag; EK-VT510-RM DECSC
-DECRQMTests.test_DECRQM_DEC_DECARM  esctest expects xterm to lack this VT420 mode; veetee reports it
-DECRQMTests.test_DECRQM_DEC_DECKBUM  esctest expects xterm to lack this VT420 mode; veetee reports it
-DECRQMTests.test_DECRQM_DEC_DECPCCM  esctest expects xterm to lack this VT420 mode; veetee reports it
-DECRQMTests.test_DECRQM_DEC_DECVCCM  esctest expects xterm to lack this VT420 mode; veetee reports it
-DECRQSSTests.test_DECRQSS_DECSCUSR  DECSCUSR is VT520; not on a VT420
-DECRQSSTests.test_DECRQSS_DECSLPP  VT420 supports only 24, 25, 36, 48, 72 and 144 lines per page; EK-VT420-RM DECSLPP
+DECRCTests.test_SaveRestoreCursor_Wrap  DECSC saves and DECRC restores the autowrap flag; EK-VT520-RM DECSC
+DECRQMTests.test_DECRQM_DEC_DECAAM  esctest expects xterm to lack this VT500 mode; veetee implements it (EK-VT520-RM table 5-3)
+DECRQMTests.test_DECRQM_DEC_DECARM  esctest expects xterm to lack this VT420 mode; veetee implements it (EK-VT420-RM)
+DECRQMTests.test_DECRQM_DEC_DECARSM  esctest expects xterm to lack this VT500 mode; veetee implements it (EK-VT520-RM table 5-3)
+DECRQMTests.test_DECRQM_DEC_DECCANSM  esctest expects xterm to lack this VT500 mode; veetee implements it (EK-VT520-RM table 5-3)
+DECRQMTests.test_DECRQM_DEC_DECCRTSM  esctest expects xterm to lack this VT500 mode; veetee implements it (EK-VT520-RM table 5-3)
+DECRQMTests.test_DECRQM_DEC_DECESKM  esctest expects xterm to lack this VT500 mode; veetee implements it (EK-VT520-RM table 5-3)
+DECRQMTests.test_DECRQM_DEC_DECHDPXM  esctest expects xterm to lack this VT500 mode; veetee implements it (EK-VT520-RM table 5-3)
+DECRQMTests.test_DECRQM_DEC_DECHEM  esctest expects xterm to lack this VT500 mode; veetee implements it (EK-VT520-RM table 5-3)
+DECRQMTests.test_DECRQM_DEC_DECKBUM  esctest expects xterm to lack this VT420 mode; veetee implements it (EK-VT420-RM)
+DECRQMTests.test_DECRQM_DEC_DECKPM  esctest expects xterm to lack this VT500 mode; veetee implements it (EK-VT520-RM table 5-3)
+DECRQMTests.test_DECRQM_DEC_DECMCM  esctest expects xterm to lack this VT500 mode; veetee implements it (EK-VT520-RM table 5-3)
+DECRQMTests.test_DECRQM_DEC_DECNAKB  esctest expects xterm to lack this VT500 mode; veetee implements it (EK-VT520-RM table 5-3)
+DECRQMTests.test_DECRQM_DEC_DECNCSM  esctest expects xterm's allowWindowOps restriction; DECNCSM always works on a VT520 (EK-VT520-RM DECNCSM)
+DECRQMTests.test_DECRQM_DEC_DECNULM  esctest expects xterm to lack this VT500 mode; veetee implements it (EK-VT520-RM table 5-3)
+DECRQMTests.test_DECRQM_DEC_DECOSCNM  esctest expects xterm to lack this VT500 mode; veetee implements it (EK-VT520-RM table 5-3)
+DECRQMTests.test_DECRQM_DEC_DECPCCM  esctest expects xterm to lack this VT420 mode; veetee implements it (EK-VT420-RM)
+DECRQMTests.test_DECRQM_DEC_DECRLCM  esctest expects xterm to lack this VT500 mode; veetee implements it (EK-VT520-RM table 5-3)
+DECRQMTests.test_DECRQM_DEC_DECRLM  esctest expects xterm to lack this VT500 mode; veetee implements it (EK-VT520-RM table 5-3)
+DECRQMTests.test_DECRQM_DEC_DECVCCM  esctest expects xterm to lack this VT420 mode; veetee implements it (EK-VT420-RM)
+DECRQMTests.test_DECRQM_DEC_DECXRLM  esctest expects xterm to lack this VT500 mode; veetee implements it (EK-VT520-RM table 5-3)
+DECRQSSTests.test_DECRQSS_DECSLPP  DEC terminals support only fixed page lengths (24, 25, 36, 48, 72, 144); EK-VT420-RM DECSLPP
+DECRQSSTests.test_DECRQSS_DECSNLS  VT500 screens show 26, 42 or 53 lines (25, 41 or 52 with a status line), so DECSNLS 24 selects 25; EK-VT520-RM DECSNLS
 DECSEDTests.test_DECSED_0_WithScrollRegion_Protection  checksum: xterm counts cells blanked by ECH/ICH/EL/ED 1/DECIC/DECERA etc. as spaces but cleared cells as NUL; DEC terminals give erased positions no checksum weight (vttest DECRQCRA)
 DECSEDTests.test_DECSED_1  checksum: xterm counts cells blanked by ECH/ICH/EL/ED 1/DECIC/DECERA etc. as spaces but cleared cells as NUL; DEC terminals give erased positions no checksum weight (vttest DECRQCRA)
 DECSEDTests.test_DECSED_1_WithScrollRegion  checksum: xterm counts cells blanked by ECH/ICH/EL/ED 1/DECIC/DECERA etc. as spaces but cleared cells as NUL; DEC terminals give erased positions no checksum weight (vttest DECRQCRA)
@@ -117,13 +110,13 @@ DECSELTests.test_DECSEL_2_Protection  checksum: xterm counts cells blanked by EC
 DECSELTests.test_DECSEL_IgnoresScrollRegion_Protection  checksum: xterm counts cells blanked by ECH/ICH/EL/ED 1/DECIC/DECERA etc. as spaces but cleared cells as NUL; DEC terminals give erased positions no checksum weight (vttest DECRQCRA)
 DECSERATests.test_DECSERA_basic  checksum: xterm counts cells blanked by ECH/ICH/EL/ED 1/DECIC/DECERA etc. as spaces but cleared cells as NUL; DEC terminals give erased positions no checksum weight (vttest DECRQCRA)
 DECSERATests.test_DECSERA_defaultArgs  checksum: xterm counts cells blanked by ECH/ICH/EL/ED 1/DECIC/DECERA etc. as spaces but cleared cells as NUL; DEC terminals give erased positions no checksum weight (vttest DECRQCRA)
-DECSERATests.test_DECSERA_doesNotRespectISOProtect  SPA/EPA (ISO protection) are not VT420 functions; DEC uses DECSCA
+DECSERATests.test_DECSERA_doesNotRespectISOProtect  SPA/EPA (ISO protection) are not DEC VT functions; DEC uses DECSCA
 DECSERATests.test_DECSERA_ignoresMargins  checksum: xterm counts cells blanked by ECH/ICH/EL/ED 1/DECIC/DECERA etc. as spaces but cleared cells as NUL; DEC terminals give erased positions no checksum weight (vttest DECRQCRA)
 DECSERATests.test_DECSERA_overlyLargeSourceClippedToScreenSize  checksum: xterm counts cells blanked by ECH/ICH/EL/ED 1/DECIC/DECERA etc. as spaces but cleared cells as NUL; DEC terminals give erased positions no checksum weight (vttest DECRQCRA)
 DECSERATests.test_DECSERA_respectsOriginMode  checksum: xterm counts cells blanked by ECH/ICH/EL/ED 1/DECIC/DECERA etc. as spaces but cleared cells as NUL; DEC terminals give erased positions no checksum weight (vttest DECRQCRA)
 DECSETTests.test_DECSET_ALTBUF  xterm alternate screen; no DEC equivalent
 DECSETTests.test_DECSET_Allow80To132  xterm mode 40; DEC terminals always honour DECCOLM
-DECSETTests.test_DECSET_DECOM_SoftReset  uses CHA/VPA, which the VT420 lacks
+DECSETTests.test_DECSET_DECNCSM  esctest expects xterm's allowWindowOps restriction; DECNCSM always works on a VT520 (EK-VT520-RM DECNCSM)
 DECSETTests.test_DECSET_MoreFix  xterm curses workaround (mode 41); no DEC equivalent
 DECSETTests.test_DECSET_OPT_ALTBUF  xterm alternate screen; no DEC equivalent
 DECSETTests.test_DECSET_OPT_ALTBUF_CURSOR  xterm alternate screen; no DEC equivalent
@@ -138,35 +131,27 @@ DECSETTiteInhibitTests.test_SaveRestoreCursor_Protection  xterm alternate screen
 DECSETTiteInhibitTests.test_SaveRestoreCursor_Reset  xterm alternate screen modes 1047-1049; no DEC equivalent
 DECSETTiteInhibitTests.test_SaveRestoreCursor_ResetsOriginMode  xterm alternate screen modes 1047-1049; no DEC equivalent
 DECSETTiteInhibitTests.test_SaveRestoreCursor_WorksInLRM  xterm alternate screen modes 1047-1049; no DEC equivalent
-DECSTRTests.test_DECSTR_DECAWM  DECSTR resets DECAWM to no autowrap; EK-VT420-RM table 13-1
+DECSTRTests.test_DECSTR_DECAWM  DECSTR resets DECAWM to no autowrap; EK-VT520-RM table 5-6
 ECHTests.test_ECH_DefaultParam  checksum: xterm counts cells blanked by ECH/ICH/EL/ED 1/DECIC/DECERA etc. as spaces but cleared cells as NUL; DEC terminals give erased positions no checksum weight (vttest DECRQCRA)
 ECHTests.test_ECH_ExplicitParam  checksum: xterm counts cells blanked by ECH/ICH/EL/ED 1/DECIC/DECERA etc. as spaces but cleared cells as NUL; DEC terminals give erased positions no checksum weight (vttest DECRQCRA)
 ECHTests.test_ECH_IgnoresScrollRegion  checksum: xterm counts cells blanked by ECH/ICH/EL/ED 1/DECIC/DECERA etc. as spaces but cleared cells as NUL; DEC terminals give erased positions no checksum weight (vttest DECRQCRA)
 ECHTests.test_ECH_OutsideScrollRegion  checksum: xterm counts cells blanked by ECH/ICH/EL/ED 1/DECIC/DECERA etc. as spaces but cleared cells as NUL; DEC terminals give erased positions no checksum weight (vttest DECRQCRA)
 ECHTests.test_ECH_doesNotRespectDECPRotection  checksum: xterm counts cells blanked by ECH/ICH/EL/ED 1/DECIC/DECERA etc. as spaces but cleared cells as NUL; DEC terminals give erased positions no checksum weight (vttest DECRQCRA)
-ECHTests.test_ECH_respectsISOProtection  SPA/EPA (ISO protection) are not VT420 functions; DEC uses DECSCA
+ECHTests.test_ECH_respectsISOProtection  SPA/EPA (ISO protection) are not DEC VT functions; DEC uses DECSCA
 EDTests.test_ED_1  checksum: xterm counts cells blanked by ECH/ICH/EL/ED 1/DECIC/DECERA etc. as spaces but cleared cells as NUL; DEC terminals give erased positions no checksum weight (vttest DECRQCRA)
 EDTests.test_ED_1_WithScrollRegion  checksum: xterm counts cells blanked by ECH/ICH/EL/ED 1/DECIC/DECERA etc. as spaces but cleared cells as NUL; DEC terminals give erased positions no checksum weight (vttest DECRQCRA)
-EDTests.test_ED_respectsISOProtection  SPA/EPA (ISO protection) are not VT420 functions; DEC uses DECSCA
+EDTests.test_ED_respectsISOProtection  SPA/EPA (ISO protection) are not DEC VT functions; DEC uses DECSCA
 ELTests.test_EL_1  checksum: xterm counts cells blanked by ECH/ICH/EL/ED 1/DECIC/DECERA etc. as spaces but cleared cells as NUL; DEC terminals give erased positions no checksum weight (vttest DECRQCRA)
-ELTests.test_EL_respectsISOProtection  SPA/EPA (ISO protection) are not VT420 functions; DEC uses DECSCA
-HPATests.test_HPA_DefaultParams  not a VT420 control function (VT510 and later, or ECMA-48 only); EK-VT420-RM
-HPATests.test_HPA_DoesNotChangeRow  not a VT420 control function (VT510 and later, or ECMA-48 only); EK-VT420-RM
-HPATests.test_HPA_IgnoresOriginMode  not a VT420 control function (VT510 and later, or ECMA-48 only); EK-VT420-RM
-HPATests.test_HPA_StopsAtRightEdge  not a VT420 control function (VT510 and later, or ECMA-48 only); EK-VT420-RM
-HPRTests.test_HPR_DefaultParams  not a VT420 control function (VT510 and later, or ECMA-48 only); EK-VT420-RM
-HPRTests.test_HPR_DoesNotChangeRow  not a VT420 control function (VT510 and later, or ECMA-48 only); EK-VT420-RM
-HPRTests.test_HPR_IgnoresOriginMode  not a VT420 control function (VT510 and later, or ECMA-48 only); EK-VT420-RM
-HPRTests.test_HPR_StopsAtRightEdge  not a VT420 control function (VT510 and later, or ECMA-48 only); EK-VT420-RM
+ELTests.test_EL_respectsISOProtection  SPA/EPA (ISO protection) are not DEC VT functions; DEC uses DECSCA
 ICHTests.test_ICH_DefaultParam  checksum: xterm counts cells blanked by ECH/ICH/EL/ED 1/DECIC/DECERA etc. as spaces but cleared cells as NUL; DEC terminals give erased positions no checksum weight (vttest DECRQCRA)
 ICHTests.test_ICH_ExplicitParam  checksum: xterm counts cells blanked by ECH/ICH/EL/ED 1/DECIC/DECERA etc. as spaces but cleared cells as NUL; DEC terminals give erased positions no checksum weight (vttest DECRQCRA)
 ICHTests.test_ICH_ScrollEntirelyOffRightEdge  checksum: xterm counts cells blanked by ECH/ICH/EL/ED 1/DECIC/DECERA etc. as spaces but cleared cells as NUL; DEC terminals give erased positions no checksum weight (vttest DECRQCRA)
 ICHTests.test_ICH_ScrollOffRightEdge  checksum: xterm counts cells blanked by ECH/ICH/EL/ED 1/DECIC/DECERA etc. as spaces but cleared cells as NUL; DEC terminals give erased positions no checksum weight (vttest DECRQCRA)
 ICHTests.test_ICH_ScrollOffRightMarginInScrollRegion  checksum: xterm counts cells blanked by ECH/ICH/EL/ED 1/DECIC/DECERA etc. as spaces but cleared cells as NUL; DEC terminals give erased positions no checksum weight (vttest DECRQCRA)
-REPTests.test_REP_DefaultParam  not a VT420 control function (VT510 and later, or ECMA-48 only); EK-VT420-RM
-REPTests.test_REP_ExplicitParam  not a VT420 control function (VT510 and later, or ECMA-48 only); EK-VT420-RM
-REPTests.test_REP_RespectsLeftRightMargins  not a VT420 control function (VT510 and later, or ECMA-48 only); EK-VT420-RM
-REPTests.test_REP_RespectsTopBottomMargins  not a VT420 control function (VT510 and later, or ECMA-48 only); EK-VT420-RM
+REPTests.test_REP_DefaultParam  REP is ECMA-48 only; no DEC terminal implements it (EK-VT520-RM)
+REPTests.test_REP_ExplicitParam  REP is ECMA-48 only; no DEC terminal implements it (EK-VT520-RM)
+REPTests.test_REP_RespectsLeftRightMargins  REP is ECMA-48 only; no DEC terminal implements it (EK-VT520-RM)
+REPTests.test_REP_RespectsTopBottomMargins  REP is ECMA-48 only; no DEC terminal implements it (EK-VT520-RM)
 RISTests.test_RIS_ResetTitleMode  xterm title modes; no DEC equivalent
 ResetColorTests.test_ResetColor_All  xterm-only window/colour/state operation; no DEC equivalent
 ResetColorTests.test_ResetColor_Standard  xterm-only window/colour/state operation; no DEC equivalent
@@ -175,17 +160,9 @@ ResetSpecialColorTests.test_ResetSpecialColor_Multiple  xterm-only window/colour
 ResetSpecialColorTests.test_ResetSpecialColor_Multiple2  xterm-only window/colour/state operation; no DEC equivalent
 ResetSpecialColorTests.test_ResetSpecialColor_Single  xterm-only window/colour/state operation; no DEC equivalent
 ResetSpecialColorTests.test_ResetSpecialColor_Single2  xterm-only window/colour/state operation; no DEC equivalent
-S8C1TTests.test_S8C1T_SPA_EPA  SPA/EPA (ISO protection) are not VT420 functions; DEC uses DECSCA
+S8C1TTests.test_S8C1T_SPA_EPA  SPA/EPA (ISO protection) are not DEC VT functions; DEC uses DECSCA
 SCORCTests.test_SaveRestoreCursor_AltVsMain  xterm alternate screen; no DEC equivalent
-SCORCTests.test_SaveRestoreCursor_Wrap  DECSC saves and DECRC restores the autowrap flag; EK-VT510-RM DECSC
-VPATests.test_VPA_DefaultParams  not a VT420 control function (VT510 and later, or ECMA-48 only); EK-VT420-RM
-VPATests.test_VPA_DoesNotChangeColumn  not a VT420 control function (VT510 and later, or ECMA-48 only); EK-VT420-RM
-VPATests.test_VPA_IgnoresOriginMode  not a VT420 control function (VT510 and later, or ECMA-48 only); EK-VT420-RM
-VPATests.test_VPA_StopsAtBottomEdge  not a VT420 control function (VT510 and later, or ECMA-48 only); EK-VT420-RM
-VPRTests.test_VPR_DefaultParams  not a VT420 control function (VT510 and later, or ECMA-48 only); EK-VT420-RM
-VPRTests.test_VPR_DoesNotChangeColumn  not a VT420 control function (VT510 and later, or ECMA-48 only); EK-VT420-RM
-VPRTests.test_VPR_IgnoresOriginMode  not a VT420 control function (VT510 and later, or ECMA-48 only); EK-VT420-RM
-VPRTests.test_VPR_StopsAtBottomEdge  not a VT420 control function (VT510 and later, or ECMA-48 only); EK-VT420-RM
+SCORCTests.test_SaveRestoreCursor_Wrap  DECSC saves and DECRC restores the autowrap flag; EK-VT520-RM DECSC
 XtermSaveTests.test_XtermSave_SaveResetState  xterm-only window/colour/state operation; no DEC equivalent
 XtermSaveTests.test_XtermSave_SaveSetState  xterm-only window/colour/state operation; no DEC equivalent
 XtermWinopsTests.test_XtermWinops_DECSLPP  xterm-only window/colour/state operation; no DEC equivalent

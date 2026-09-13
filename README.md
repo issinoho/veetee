@@ -4,10 +4,11 @@ A DEC VT terminal emulator for the Linux desktop, aiming at SmarTerm/Reflection-
 compatibility: VT52 through VT525, DECforms and FMS applications, DEC-faithful fonts,
 and SSH, Telnet, serial and LAT connections.
 
-**Status:** early development — milestone M3: VT420 features (left/right margins, rectangular
-area operations and checksums, page memory, macros, terminal state reports) on top of the
-VT220/VT320 and VT100/VT102/VT52 layers. vttest VT100–VT420 menus pass headless, and esctest2
-runs with every difference from xterm explained against DEC documentation.
+**Status:** early development — milestone M4 in progress: VT510/VT520/VT525 features (VT525
+colour, VT500 character sets, cursor styles, Set-Up selections and reports, dual sessions) on top
+of the VT420, VT220/VT320 and VT100/VT102/VT52 layers. vttest VT100–VT520 menus pass headless,
+and esctest2 runs at VT level 5 with every difference from xterm explained against DEC
+documentation.
 
 ## Layout
 
@@ -48,9 +49,10 @@ cargo run -p veetee                              # local shell, VT420
 cargo run -p veetee -- --telnet vms1             # Telnet (or telnet://vms1:2323)
 cargo run -p veetee -- --ssh system@vms1         # SSH via your OpenSSH client and ~/.ssh/config
 cargo run -p veetee -- --serial /dev/ttyUSB0     # serial line (see below)
-cargo run -p veetee -- --model vt102 --telnet vms1
+cargo run -p veetee -- --model vt525 --telnet vms1   # colour VT525 (vt100 … vt525)
 cargo run -p veetee -- --command 'vttest'        # any program, via /bin/sh -c
 cargo run -p veetee -- --record session.bin --telnet vms1   # keep the host output for replay
+cargo run -p veetee -- --sessions 2 --telnet vms1   # two sessions in a split window; F4 switches
 ```
 
 `cargo run -p veetee -- --help` lists every option. More documentation, including OpenVMS
@@ -91,7 +93,7 @@ The PC keyboard is mapped to LK401 key positions:
 
 | PC key | DEC key |
 |--------|---------|
-| F1 F2 F3 F4 F5 | Hold Screen, Print Screen, Set-Up, Data/Talk, Break |
+| F1 F2 F3 F4 F5 | Hold Screen, Print Screen, Set-Up, Session, Break |
 | F6–F12, Shift+F1–F10 | F6–F12, F11–F20 (Shift+F5 = Help, Shift+F6 = Do) |
 | Ctrl+F5 | Answerback |
 | Ctrl+F6–F12, Ctrl+Shift+F1–F10 | User-defined keys (DEC Shift+F6–F20) |

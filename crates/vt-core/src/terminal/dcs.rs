@@ -39,6 +39,17 @@ pub(super) enum DcsState {
     RestoreTerminalState {
         data: Vec<u8>,
     },
+    RestoreColorTable {
+        data: Vec<u8>,
+    },
+    LoadAnswerback {
+        encoding: u16,
+        data: Vec<u8>,
+    },
+    LoadBanner {
+        encoding: u16,
+        data: Vec<u8>,
+    },
 }
 
 impl DcsState {
@@ -85,6 +96,17 @@ impl DcsState {
             (None, [b'$'], b'p') if level >= 4 && p.get_or(0, 0) == 1 => {
                 DcsState::RestoreTerminalState { data }
             }
+            (None, [b'$'], b'p') if level >= 5 && p.get_or(0, 0) == 2 => {
+                DcsState::RestoreColorTable { data }
+            }
+            (None, [], b'v') if level >= 5 => DcsState::LoadAnswerback {
+                encoding: p.get_or(0, 0),
+                data,
+            },
+            (None, [], b'r') if level >= 5 => DcsState::LoadBanner {
+                encoding: p.get_or(0, 0),
+                data,
+            },
             _ => DcsState::None,
         }
     }
@@ -98,7 +120,10 @@ impl DcsState {
             | DcsState::RestorePresentation { data, .. }
             | DcsState::AssignSupplemental { data, .. }
             | DcsState::DefineMacro { data, .. }
-            | DcsState::RestoreTerminalState { data } => data,
+            | DcsState::RestoreTerminalState { data }
+            | DcsState::RestoreColorTable { data }
+            | DcsState::LoadAnswerback { data, .. }
+            | DcsState::LoadBanner { data, .. } => data,
         };
         if data.len() < LIMIT {
             data.push(byte);
@@ -136,6 +161,12 @@ impl Emulator {
                 data,
             } => self.define_macro(id, delete, hex, &data),
             DcsState::RestoreTerminalState { data } => self.restore_terminal_state(&data),
+            DcsState::RestoreColorTable { data } if self.color_terminal() => {
+                self.restore_color_table(&data)
+            }
+            DcsState::RestoreColorTable { .. } => {}
+            DcsState::LoadAnswerback { encoding, data } => self.load_answerback(encoding, &data),
+            DcsState::LoadBanner { encoding, data } => self.load_banner(encoding, &data),
         }
     }
 

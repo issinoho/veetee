@@ -82,6 +82,118 @@ pub enum Charset {
     IsoLatin1,
     /// A downloaded soft set (DECDLD), by font slot.
     Soft { slot: u8, is_96: bool },
+    /// A VT510/VT520 national or supplemental set.
+    Vt500(Vt500Set),
+}
+
+/// Character sets added by the VT510 and VT520 (EK-VT520-RM table 5-14).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum Vt500Set {
+    DecGreek,
+    DecHebrew,
+    DecTurkish,
+    DecCyrillic,
+    IsoLatin2,
+    IsoGreek,
+    IsoHebrew,
+    IsoCyrillic,
+    IsoLatin5,
+    /// National replacement sets, available only in NRC mode.
+    NrcGreek,
+    NrcHebrew,
+    NrcTurkish,
+    NrcSerboCroatian,
+    NrcRussian,
+}
+
+impl Vt500Set {
+    fn table(self) -> &'static [Option<char>; 96] {
+        use crate::charset_tables::*;
+        match self {
+            Vt500Set::DecGreek => &DEC_GREEK,
+            Vt500Set::DecHebrew => &DEC_HEBREW,
+            Vt500Set::DecTurkish => &DEC_TURKISH,
+            Vt500Set::DecCyrillic => &DEC_CYRILLIC,
+            Vt500Set::IsoLatin2 => &ISO_LATIN_2,
+            Vt500Set::IsoGreek => &ISO_GREEK,
+            Vt500Set::IsoHebrew => &ISO_HEBREW,
+            Vt500Set::IsoCyrillic => &ISO_CYRILLIC,
+            Vt500Set::IsoLatin5 => &ISO_LATIN_5,
+            Vt500Set::NrcGreek => &NRC_GREEK,
+            Vt500Set::NrcHebrew => &NRC_HEBREW,
+            Vt500Set::NrcTurkish => &NRC_TURKISH,
+            Vt500Set::NrcSerboCroatian => &NRC_SERBO_CROATIAN,
+            Vt500Set::NrcRussian => &NRC_RUSSIAN,
+        }
+    }
+
+    pub const fn is_96(self) -> bool {
+        matches!(
+            self,
+            Vt500Set::IsoLatin2
+                | Vt500Set::IsoGreek
+                | Vt500Set::IsoHebrew
+                | Vt500Set::IsoCyrillic
+                | Vt500Set::IsoLatin5
+        )
+    }
+
+    pub const fn is_national(self) -> bool {
+        matches!(
+            self,
+            Vt500Set::NrcGreek
+                | Vt500Set::NrcHebrew
+                | Vt500Set::NrcTurkish
+                | Vt500Set::NrcSerboCroatian
+                | Vt500Set::NrcRussian
+        )
+    }
+
+    /// The set selected by an SCS designator.
+    pub fn from_designator(
+        is_96: bool,
+        intermediate: Option<u8>,
+        final_byte: u8,
+    ) -> Option<Vt500Set> {
+        use Vt500Set::*;
+        Some(match (is_96, intermediate, final_byte) {
+            (false, Some(b'"'), b'?') => DecGreek,
+            (false, Some(b'"'), b'4') => DecHebrew,
+            (false, Some(b'%'), b'0') => DecTurkish,
+            (false, Some(b'&'), b'4') => DecCyrillic,
+            (false, Some(b'"'), b'>') => NrcGreek,
+            (false, Some(b'%'), b'=') => NrcHebrew,
+            (false, Some(b'%'), b'2') => NrcTurkish,
+            (false, Some(b'%'), b'3') => NrcSerboCroatian,
+            (false, Some(b'&'), b'5') => NrcRussian,
+            (true, None, b'B') => IsoLatin2,
+            (true, None, b'F') => IsoGreek,
+            (true, None, b'H') => IsoHebrew,
+            (true, None, b'L') => IsoCyrillic,
+            (true, None, b'M') => IsoLatin5,
+            _ => return None,
+        })
+    }
+
+    pub const fn designator(self) -> &'static str {
+        use Vt500Set::*;
+        match self {
+            DecGreek => "\"?",
+            DecHebrew => "\"4",
+            DecTurkish => "%0",
+            DecCyrillic => "&4",
+            IsoLatin2 => "B",
+            IsoGreek => "F",
+            IsoHebrew => "H",
+            IsoCyrillic => "L",
+            IsoLatin5 => "M",
+            NrcGreek => "\">",
+            NrcHebrew => "%=",
+            NrcTurkish => "%2",
+            NrcSerboCroatian => "%3",
+            NrcRussian => "&5",
+        }
+    }
 }
 
 /// DEC Special Graphics for 0x5F–0x7E.
@@ -223,6 +335,7 @@ impl Charset {
         match self {
             Charset::IsoLatin1 => true,
             Charset::Soft { is_96, .. } => is_96,
+            Charset::Vt500(set) => set.is_96(),
             _ => false,
         }
     }
@@ -258,6 +371,7 @@ impl Charset {
             },
             Charset::DecTechnical => TECHNICAL[usize::from(code - 0x21)].unwrap_or(ERROR_CHARACTER),
             Charset::IsoLatin1 => char::from(code | 0x80),
+            Charset::Vt500(set) => set.table()[usize::from(code - 0x20)].unwrap_or(ERROR_CHARACTER),
             Charset::Soft { slot, .. } => {
                 char::from_u32(SOFT_BASE + u32::from(slot) * 256 + u32::from(code))
                     .unwrap_or(ERROR_CHARACTER)
@@ -295,6 +409,7 @@ impl Charset {
             Charset::DecTechnical => ">",
             Charset::IsoLatin1 => "A",
             Charset::Soft { .. } => " @",
+            Charset::Vt500(set) => set.designator(),
             Charset::National(n) => match n {
                 British => "A",
                 Dutch => "4",

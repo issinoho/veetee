@@ -82,7 +82,7 @@ conformance scripts in `tests/conformance/vttest`.
 | DECRQPSR DECCIR DECTABSR | `CSI 1/2 $ w` | ✅ | DECCIR reports the actual set designator (`%5`), as in DEC's own example; vttest expects `<` for UPSS |
 | DECRSPS | `DCS 1/2 $ t` | ✅ | Invalid data stops the restore partway, as DEC documents |
 | DECRQTSR / DECRSTS | `CSI 1 $ u`, `DCS 1 $ p` | ✅ | VT420+. RM420 leaves the data format to the implementation: veetee sends `VT1;modes;margins;page size;screen lines;status;DECSACE;C1;tabs` and restores exactly that |
-| CHA HPA VPA CNL CPL CHT CBT | | ✅ | VT500 level only: the VT420 has none of them (RM420 chapter index) |
+| CHA HPA VPA CNL CPL CHT CBT | | ✅ | VT500 level only: the VT420 has none of them (RM420 chapter index). See the VT500 section |
 
 ## VT420 (M3)
 
@@ -107,6 +107,40 @@ conformance scripts in `tests/conformance/vttest`.
 | DECMSR / memory checksum | `CSI ? 62 n`, `CSI ? 63 ; Pid n` | ✅ | Free bytes ÷ 16; checksum of macro memory |
 | Indicator status line | | 🟡 | Reverse video with printer state, Hold Screen, keyboard lock, page and cursor position. 🔎 field layout against hardware |
 | xterm compatibility extras | `CSI 18 t`, `CSI s`, `CSI u` | ✅ | Text area size report and SCOSC/SCORC, only with `xterm_compat` |
+
+## VT510 / VT520 / VT525 (M4)
+
+**RM520** VT520/VT525 Video Terminal Programmer Information (EK-VT520-RM).
+
+| Function | Seq | Status | Behaviour notes / source |
+|----------|-----|--------|--------------------------|
+| CHA HPA VPA | `CSI Pn G`, `` CSI Pn ` ``, `CSI Pn d` | ✅ | Honour origin mode (relative to the margins, clamped to them) but otherwise ignore margins (vttest, from a VT510; RM520 is silent) |
+| HPR VPR | `CSI Pn a`, `CSI Pn e` | ✅ | Relative moves stopping at the page edge |
+| CNL CPL | `CSI Pn E/F` | ✅ | CUD/CUU (stopping at the margins from inside) then CR |
+| CHT CBT | `CSI Pn I/Z` | ✅ | CHT stops at the right margin from inside; CBT stops at the left margin only in origin mode (vttest) |
+| DECST8C | `CSI ? 5 W` | ✅ | Clears all stops, then every 8 columns from column 9 |
+| DECSCUSR | `CSI Ps SP q` | ✅ | Blinking/steady block or underline; xterm's bar styles (5, 6) are ignored |
+| DECNCSM | `CSI ? 95 h/l` | ✅ | DECCOLM keeps page memory; margins still reset and the cursor homes |
+| VT500 private modes | `CSI ? 34…117 h/l` | 🟡 | All modes of RM520 table 5-3 are stored and reported with factory defaults; DECNCSM, DECECM, DECBBSM, DECATCUM/BM and DECKPM (reset by DECSTR) have effect so far |
+| Set-Up selections | DECSKCV DECSWBV DECSMBV DECSSCLS DECSLCK DECARR DECCRTST DECSEST DECSZS DECSPRTT DECSPPCS DECSDPT DECSDDT DECSSL DECSCP DECSCS DECSFC DECSPP DECSTRL DECSRFR | 🟡 | Validated, stored and reported with DECRQSS (factory values from RM520). Bells, click, scroll speed and zero style are not rendered yet (M7). DECSRFR is VT510 only |
+| DECTID | `CSI Ps , q` | ✅ | Selects the DA1 identity (VT100 … VT520) |
+| DECTME | `CSI Ps SP ~` | 🟡 | VT500, VT100 and VT52 operation with a soft reset; Wyse/TVI/ADDS/SCO emulations are not provided |
+| DECSR / DECSRC | `CSI Pr + p`, `CSI Pr * q` | ✅ | Reset to power-up without disconnecting; confirmation when Pr is given |
+| DECLANS DECLBAN DECLTOD | `DCS 1 v`, `DCS Ps r`, `CSI Ph;Pm , p` | ✅ | Answerback from hex pairs (30 bytes), banner and time of day stored |
+| DECSWT DECSIN | `OSC 21 ; name ST`, `OSC 2L ; name ST` | ✅ | Session name becomes the window title (30 characters); icon name stored |
+| DA1 | `CSI c` | ✅ | VT510 `?64;1;2;7;8;9;12;15;18;21;23;24;42`, VT520 `?65;1;2;7;9;12;18;21;23;24;42`, VT525 adds 22. 19 sessions, 44 PCTerm, 45 soft key mapping and 46 ASCII emulation are added when implemented |
+| Page and screen sizes | DECSLPP DECSNLS | ✅ | VT500 page lengths 24–72 (next higher value; 3/2/1 pages), screens of 26, 42 or 53 lines, one fewer with a status line. 🔎 RM520 also mentions 6 pages of 24 lines |
+| Colour (VT525) | SGR 30–37 39 40–47 49 | ✅ | Level 5 VT525 only. Bold adds 8 to the foreground index (and background with DECBBSM); blink alternates with a dimmer shade |
+| DECAC DECATC DECSTGLT | `CSI Ps1;Ps2;Ps3 , \|`, `, }`, `CSI Ps ) {` | ✅ | Normal text/window frame colours, alternate text colours per rendition combination, colour mode. The mode in effect when a character is written fixes its colours (vttest DECATC test). Reported with DECRQSS (`Ps1,\|`, `Ps1,}`, `){`). 🔎 factory map and alternate colours are not tabulated in RM520 |
+| DECCTR / DECRSTS 2 | `CSI 2 ; Pu $ u`, `DCS 2 $ p` | ✅ | 16-entry map in RGB or DEC HLS (blue at 0°) |
+| DECECM | `CSI ? 117 h/l` | ✅ | Erase to text background (factory) or screen background |
+| VT500 character sets | SCS `"?` `"4` `%0` `&4`, 96-sets `B` `F` `H` `L` `M`, NRCS `">` `%=` `%2` `%3` `&5` | 🟡 | DEC Greek, Hebrew, Turkish, Cyrillic; ISO Latin-2, Greek, Hebrew, Latin-Cyrillic, Latin-5; Greek, Hebrew, Turkish, Serbo-Croatian and Russian NRCS (NRC mode only). Tables from xterm's transcription of the RM520 figures (see THIRD-PARTY.md). DECAUPSS accepts them. Glyphs for Greek, Hebrew and Cyrillic arrive with the fonts (M7) |
+| DECKBD | `CSI Ps1;Ps2 SP }` | ✅ | Layout and language reported by DSR ?26 (type 4 LK411, 5 PC) |
+| DECELF DECLFKC DECSMKR | `+q`, `*}`, `+r` | 🟡 | DECLFKC F1–F4 local, sent to the host (🔎 `CSI 11~`–`14~`) or disabled; DECELF group 1 disables copy/paste keys; DECSMKR stored (key position mode is M6) |
+| Dual sessions | F4, `--sessions 2` | 🟡 | Two sessions per window, each with its own connection and terminal state, like sessions on separate comm lines (RM420 chapter 14, RM520 2.5). The window splits horizontally with a title bar per session (session name from DECSWT); F4 moves the keyboard. Each session is scaled to its half of the window rather than showing fewer lines. TD/SMP multiplexing over one connection is not provided |
+| DECES DECUS DECSPMA | `CSI & x`, `CSI Ps , y`, `CSI Pn;… , x` | 🟡 | DECES makes the session active (keyboard focus, window raised); DSR ?85 reports sessions on separate lines when two are open. DECUS stored and reported (inactive sessions always update). DECSPMA reported; 🔎 each session keeps its own full page memory |
+| DECPS | `CSI Pv;Pd;Pn , ~` | 🟡 | Parsed into an event; sound output arrives with bell and keyclick (M7) |
+| Key programming, PCTerm | DECPFK DECPAK DECPKA DECRQKD DECRPFK DECRPAK DECPKFMR DECRQPKFM DECEKBD DECRQKT DECPCTERM | ⬜ | M6 (keyboard) |
 
 ## Keyboard (vt-core `Key`)
 
@@ -149,10 +183,19 @@ conformance scripts in `tests/conformance/vttest`.
 | 11.3.8 DECSNLS | ✅ |
 | 11.4 VT520 | ⬜ M4 |
 
-## esctest2 (VT420 model, xterm compatibility)
+## vttest coverage (VT520/VT525 models)
 
-`cargo xtask esctest` runs the pinned esctest2 at `--max-vt-level=4`: 326 tests pass. The 212 failures are
-listed in `tests/conformance/esctest/expected-failures.txt`, each with its DEC reason — mostly xterm-only
-features (window operations, colour setting, alternate screen, reverse wrap), VT510 functions the VT420 lacks,
-and xterm's habit of checksumming some erased cells as spaces. Any other failure, or a listed test that starts
-passing, fails the task.
+| Menu | Status |
+|------|--------|
+| 11.4.2 VT520 cursor movement: HPA, CBT, CHA, CHT, HPR, VPA, CNL, CPL, VPR, with and without margins and origin mode | ✅ |
+| 11.4.5.2 DECRPM (VT500 modes) and DECRQSS for the VT510 and VT520 selections | ✅ (DECSRFR is VT510-only, so a VT520 rejects it) |
+| 11.4.6 DECNCSM, DECSCUSR, DECATC (VT525) | ✅ |
+| 11.4.3 editing, 11.4.4 keyboard | vttest has no tests |
+
+## esctest2 (VT525 model, xterm compatibility)
+
+`cargo xtask esctest` runs the pinned esctest2 at `--max-vt-level=5` against a VT525: 368 tests pass. The
+189 failures are listed in `tests/conformance/esctest/expected-failures.txt`, each with its DEC reason — mostly
+xterm-only features (window operations, colour setting, alternate screen, reverse wrap), xterm's habit of
+checksumming some erased cells as spaces, and VT420/VT500 modes esctest expects xterm to lack. Any other
+failure, or a listed test that starts passing, fails the task.

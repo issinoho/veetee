@@ -16,6 +16,10 @@ use vt_transport::{Transport, TransportWriter};
 pub enum Notice {
     Redraw,
     Bell,
+    /// The host named the session (DECSWT).
+    Title(String),
+    /// The host made this session active (DECES).
+    Activate,
     /// The connection closed; the text says why when known.
     Exited(Option<String>),
 }
@@ -196,7 +200,16 @@ fn io_loop(
                 Event::ColumnsChanged(_) | Event::LinesChanged(_) => {
                     let _ = transport.resize(rows as u16, cols as u16);
                 }
-                Event::ScreenLinesChanged(_) => {}
+                Event::TitleChanged(title) => {
+                    let _ = tx.try_send(Notice::Title(title));
+                }
+                Event::SessionActivated => {
+                    let _ = tx.try_send(Notice::Activate);
+                }
+                // Tones (DECPS) arrive with bell and keyclick sounds (M7).
+                Event::ScreenLinesChanged(_)
+                | Event::IconNameChanged(_)
+                | Event::PlaySound { .. } => {}
                 Event::LedsChanged(_) => {}
             }
         }

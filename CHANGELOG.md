@@ -5,6 +5,27 @@ milestones (0.3 = M3). The format follows [Keep a Changelog](https://keepachange
 
 ## [Unreleased]
 
+### Emulation
+
+- **VT510/VT520/VT525** (milestone M4, in progress): CHA, HPA, VPA, HPR, VPR, CNL, CPL, CHT, CBT;
+  DECST8C; cursor styles (DECSCUSR); DECNCSM; the VT500 private modes; Set-Up selections with
+  DECRQSS reports; DECTID, DECTME, DECSR; answerback, banner and time-of-day loading; session
+  names as the window title (DECSWT); VT500 page and screen sizes; keyboard language, local
+  function key and local function controls; DECES, DECUS, DECSPMA; DECPS parsing.
+- **VT525 colour**: SGR colours, DECAC, DECATC and alternate text colour modes, DECSTGLT,
+  DECCTR/DECRSTS colour tables in RGB or HLS, DECECM, DECBBSM.
+- **Dual sessions**: `--sessions 2` or *Open Second Session* splits the window into two
+  sessions with their own connections; F4 (Session) switches the keyboard, DECES activates a
+  session, session names from DECSWT label each half and title the window.
+- **VT500 character sets**: DEC Greek, Hebrew, Turkish and Cyrillic; ISO Latin-2, Greek, Hebrew,
+  Latin-Cyrillic and Latin-5; Greek, Hebrew, Turkish, Serbo-Croatian and Russian NRCS.
+- Replies sent before a reset in the same data are no longer lost.
+
+### Development
+
+- vttest 11.4 scripts; esctest2 runs at VT level 5 against a VT525. Screen snapshots show colour
+  indexes.
+
 ## [0.3.0] - 2026-09-13
 
 The first release: VT100 through VT420 emulation with local, Telnet, SSH and serial connections.

@@ -1,0 +1,74 @@
+page 24x80 cursor 23,14 visible
+modes decawm
+ 1  |Test Alternate Text Color (DECATC)
+ 2  |
+ 3  |          0  Testing  Normal text
+   f.........777777777777
+   b.........000000000000
+ 4  |          1  Testing  Bold
+   ~............111111111
+   f.........777fffffffff
+   b.........000000000000
+ 5  |          2  Testing  Reverse
+   ~............888888888
+   f.........777000000000
+   b.........000777777777
+ 6  |          3  Testing  Underline
+   ~............222222222
+   f.........777666666666
+   b.........000000000000
+ 7  |          4  Testing  Blink
+   ~............444444444
+   f.........777333333333
+   b.........000000000000
+ 8  |          5  Testing  Bold reverse
+   ~............999999999
+   f.........777000000000
+   b.........000fffffffff
+ 9  |          6  Testing  Bold underline
+   ~............333333333
+   f.........777eeeeeeeee
+   b.........000000000000
+10  |          7  Testing  Bold blink
+   ~............555555555
+   f.........777bbbbbbbbb
+   b.........000000000000
+11  |          8  Testing  Reverse underline
+   ~............aaaaaaaaa
+   f.........777000000000
+   b.........000666666666
+12  |          9  Testing  Reverse blink
+   ~............ccccccccc
+   f.........777000000000
+   b.........000333333333
+13  |         10  Testing  Underline blink
+   ~............666666666
+   f.........777555555555
+   b.........000000000000
+14  |         11  Testing  Bold reverse underline
+   ~............bbbbbbbbb
+   f.........777000000000
+   b.........000eeeeeeeee
+15  |         12  Testing  Bold reverse blink
+   ~............ddddddddd
+   f.........777000000000
+   b.........000bbbbbbbbb
+16  |         13  Testing  Bold underline blink
+   ~............777777777
+   f.........777ddddddddd
+   b.........000000000000
+17  |         14  Testing  Reverse underline blink
+   ~............eeeeeeeee
+   f.........777000000000
+   b.........000555555555
+18  |         15  Testing  Bold reverse underline blink
+   ~............fffffffff
+   f.........777000000000
+   b.........000ddddddddd
+19  |
+20  |
+21  |
+22  |
+23  |Push <RETURN>
+24  |
+status indicator

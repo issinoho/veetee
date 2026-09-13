@@ -14,6 +14,10 @@ impl Flags {
     pub const INVISIBLE: Flags = Flags(1 << 4);
     /// DECSCA: not erasable by DECSED/DECSEL/DECSERA.
     pub const PROTECTED: Flags = Flags(1 << 5);
+    /// VT525: written in alternate colour mode; fg/bg hold the DECATC colours.
+    pub const COLOR_ALTERNATE: Flags = Flags(1 << 6);
+    /// VT525: written in monochrome colour mode.
+    pub const COLOR_MONO: Flags = Flags(1 << 7);
 
     pub const fn bits(self) -> u16 {
         self.0

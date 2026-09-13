@@ -127,6 +127,7 @@ void main() {
 
     if ((v_flags & 32) != 0 || (v_flags & 8) != 0) coverage = 0.0;
     if ((v_flags & 1) != 0 && int(floor(d.y)) == u_cell.y - 1) coverage = 1.0;
+    if ((v_flags & 512) != 0 && int(floor(d.y)) >= u_cell.y - 1) coverage = 1.0 - coverage;
 
     // Each dot row is two scan lines; darken the gap in the lower half of each.
     float scan = fract(d.y * 2.0);

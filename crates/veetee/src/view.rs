@@ -18,7 +18,23 @@ const CURSOR_BLINK: Duration = Duration::from_millis(530);
 /// Character blink half-period.
 const TEXT_BLINK: Duration = Duration::from_millis(670);
 
-type Callback = Rc<dyn Fn(&str)>;
+/// How a view reports to the window that holds it.
+pub struct Callbacks {
+    /// Shows a transient message.
+    pub notify: Box<dyn Fn(&str)>,
+    /// Extra text for the window subtitle ("Hold Screen").
+    pub status: Box<dyn Fn(&str)>,
+    /// The host named the session (DECSWT).
+    pub title: Box<dyn Fn(&str)>,
+    /// The Session key (F4).
+    pub switch_session: Box<dyn Fn()>,
+    /// The host made this session active (DECES).
+    pub activate: Box<dyn Fn()>,
+    /// The view received keyboard focus.
+    pub focused: Box<dyn Fn()>,
+    /// The connection closed; the text says why when known.
+    pub exited: Box<dyn Fn(Option<String>)>,
+}
 
 struct State {
     session: Session,
@@ -28,8 +44,7 @@ struct State {
     epoch: Instant,
     focused: bool,
     last_phases: (bool, bool),
-    notify: Callback,
-    status: Callback,
+    callbacks: Rc<Callbacks>,
     /// Developer hook: save a frame to this PPM file after a delay, then exit.
     capture: Option<(std::path::PathBuf, Duration)>,
     selection: Option<Selection>,
@@ -54,13 +69,10 @@ pub struct TerminalView {
 }
 
 impl TerminalView {
-    /// `notify` shows a transient message; `status` updates the window subtitle.
     pub fn new(
         session: Session,
         notices: async_channel::Receiver<Notice>,
-        notify: impl Fn(&str) + 'static,
-        status: impl Fn(&str) + 'static,
-        on_exit: impl Fn(Option<String>) + 'static,
+        callbacks: Callbacks,
     ) -> TerminalView {
         let area = gtk::GLArea::builder()
             .hexpand(true)
@@ -78,8 +90,7 @@ impl TerminalView {
             epoch: Instant::now(),
             focused: false,
             last_phases: (true, true),
-            notify: Rc::new(notify),
-            status: Rc::new(status),
+            callbacks: Rc::new(callbacks),
             capture: std::env::var_os("VEETEE_CAPTURE").map(|path| {
                 let delay = std::env::var("VEETEE_CAPTURE_DELAY_MS")
                     .ok()
@@ -94,13 +105,17 @@ impl TerminalView {
         view.connect_gl();
         view.connect_input();
         view.connect_mouse();
-        view.connect_notices(notices, on_exit);
+        view.connect_notices(notices);
         view.start_blink_timer();
         view
     }
 
     pub fn widget(&self) -> &gtk::GLArea {
         &self.area
+    }
+
+    pub fn session(&self) -> Session {
+        self.state.borrow().session.clone()
     }
 
     pub fn set_theme(&self, theme: Theme) {
@@ -226,7 +241,12 @@ impl TerminalView {
         let focus = gtk::EventControllerFocus::new();
         let (state, area, im_in) = (self.state.clone(), self.area.clone(), im.clone());
         focus.connect_enter(move |_| {
-            state.borrow_mut().focused = true;
+            let callbacks = {
+                let mut st = state.borrow_mut();
+                st.focused = true;
+                st.callbacks.clone()
+            };
+            (callbacks.focused)();
             im_in.focus_in();
             area.queue_render();
         });
@@ -379,7 +399,7 @@ impl TerminalView {
     fn copy_to_clipboard(&self) {
         match self.selected_text() {
             Some(text) => self.area.clipboard().set_text(&text),
-            None => (self.state.borrow().notify)("Nothing is selected"),
+            None => (self.state.borrow().callbacks.notify)("Nothing is selected"),
         }
     }
 
@@ -402,22 +422,52 @@ impl TerminalView {
     }
 
     fn local_function(&self, local: Local) {
+        // DECLFKC and DECELF let the host reassign or disable local keys.
+        let key_number = match local {
+            Local::HoldScreen => Some(1),
+            Local::PrintScreen => Some(2),
+            Local::SetUp => Some(3),
+            Local::SwitchSession => Some(4),
+            _ => None,
+        };
+        {
+            let session = self.state.borrow().session.clone();
+            let term = session.terminal();
+            if let Some(n) = key_number {
+                match term.local_function_key(n) {
+                    vt_core::LocalKeyAction::Local => {}
+                    vt_core::LocalKeyAction::Disabled => return,
+                    vt_core::LocalKeyAction::SendToHost => {
+                        drop(term);
+                        session.key(vt_core::Key::Function(n));
+                        return;
+                    }
+                }
+            }
+            if matches!(local, Local::Copy | Local::Paste) && !term.copy_paste_keys_enabled() {
+                return;
+            }
+        }
         let st = self.state.borrow();
         match local {
             Local::HoldScreen => {
                 let held = !st.session.is_held();
                 st.session.set_held(held);
-                (st.status)(if held { "Hold Screen" } else { "" });
+                (st.callbacks.status)(if held { "Hold Screen" } else { "" });
                 self.area.queue_render();
             }
             Local::Answerback => st.session.send_answerback(),
             Local::Paste => self.paste(self.area.clipboard()),
-            Local::SetUp => (st.notify)("Set-Up is not available yet"),
-            Local::PrintScreen => (st.notify)("Printing is not available yet"),
-            Local::SwitchSession => (st.notify)("Dual sessions are not available yet"),
+            Local::SetUp => (st.callbacks.notify)("Set-Up is not available yet"),
+            Local::PrintScreen => (st.callbacks.notify)("Printing is not available yet"),
+            Local::SwitchSession => {
+                let callbacks = st.callbacks.clone();
+                drop(st);
+                (callbacks.switch_session)();
+            }
             Local::Break => {
                 if let Err(e) = st.session.send_break() {
-                    (st.notify)(&format!("Break: {e}"));
+                    (st.callbacks.notify)(&format!("Break: {e}"));
                 }
             }
             Local::Copy => {
@@ -427,19 +477,18 @@ impl TerminalView {
         }
     }
 
-    fn connect_notices(
-        &self,
-        notices: async_channel::Receiver<Notice>,
-        on_exit: impl Fn(Option<String>) + 'static,
-    ) {
+    fn connect_notices(&self, notices: async_channel::Receiver<Notice>) {
         let area = self.area.clone();
+        let callbacks = self.state.borrow().callbacks.clone();
         glib::spawn_future_local(async move {
             while let Ok(notice) = notices.recv().await {
                 match notice {
                     Notice::Redraw => area.queue_render(),
                     Notice::Bell => area.error_bell(),
+                    Notice::Title(name) => (callbacks.title)(&name),
+                    Notice::Activate => (callbacks.activate)(),
                     Notice::Exited(reason) => {
-                        on_exit(reason);
+                        (callbacks.exited)(reason);
                         break;
                     }
                 }

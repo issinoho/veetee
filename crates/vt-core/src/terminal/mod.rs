@@ -14,6 +14,9 @@ use crate::udk::UserKeys;
 mod dcs;
 mod rect;
 mod reports;
+mod vt520;
+
+pub use vt520::{CursorStyle, LocalKeyAction};
 
 /// Something the host application (GUI, headless driver) must act on.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -27,6 +30,18 @@ pub enum Event {
     LinesChanged(usize),
     /// DECSNLS changed the number of lines the screen displays.
     ScreenLinesChanged(usize),
+    /// DECSWT (or an xterm title with xterm compatibility) named the session.
+    TitleChanged(String),
+    /// DECSIN named the session icon.
+    IconNameChanged(String),
+    /// DECES: the host made this session the active one.
+    SessionActivated,
+    /// DECPS: play a note (1 = C5 … 25 = C7) at volume 0–7.
+    PlaySound {
+        volume: u8,
+        duration_ms: u32,
+        note: u8,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -124,6 +139,38 @@ impl Terminal {
 
     pub fn cursor(&self) -> &Cursor {
         &self.emu.cursor
+    }
+
+    /// The VT525 colour table and colour modes; `None` on monochrome models.
+    pub fn colors(&self) -> Option<(&crate::color::ColorTable, crate::color::ColorOptions)> {
+        self.emu
+            .color_terminal()
+            .then(|| (&self.emu.colors, self.emu.color_options()))
+    }
+
+    /// Tells the terminal how many sessions share its window, for DSR ?85.
+    pub fn set_sessions(&mut self, count: u8) {
+        self.emu.sessions = count.max(1);
+    }
+
+    /// DECLFKC: what local function key F1–F4 (`key` 1–4) does.
+    pub fn local_function_key(&self, key: u8) -> LocalKeyAction {
+        match key {
+            1..=4 if self.emu.level >= 5 => {
+                self.emu.setup.local_function_keys[usize::from(key) - 1]
+            }
+            _ => LocalKeyAction::Local,
+        }
+    }
+
+    /// DECELF: whether the copy and paste keys (group 1) are enabled.
+    pub fn copy_paste_keys_enabled(&self) -> bool {
+        self.emu.level < 5 || self.emu.setup.local_functions[0]
+    }
+
+    /// The cursor style selected with DECSCUSR.
+    pub fn cursor_style(&self) -> CursorStyle {
+        self.emu.setup.cursor_style
     }
 
     pub fn modes(&self) -> &Modes {
@@ -269,6 +316,10 @@ impl Terminal {
             } else if e.level >= 2 && !e.modes.national {
                 let encoded = match e.upss {
                     Charset::IsoLatin1 => charset::encode_latin1(ch),
+                    // A VT500 supplemental set as GR, with ASCII as GL.
+                    set @ Charset::Vt500(_) => (0x20..=0x7F)
+                        .find(|&c| set.map(c) == Some(ch) && ch != charset::ERROR_CHARACTER)
+                        .map(|c| c | 0x80),
                     _ => charset::encode_dec_multinational(ch),
                 };
                 bytes.extend(encoded);
@@ -356,6 +407,14 @@ struct Emulator {
     macros: Vec<Vec<u8>>,
     /// Macro text waiting to be processed as input (DECINVM).
     pending_input: Vec<u8>,
+    /// VT500 Set-Up selections and modes.
+    setup: vt520::SetUp,
+    /// VT525 colour map and colour assignments.
+    colors: crate::color::ColorTable,
+    /// OSC string being received.
+    osc: Vec<u8>,
+    /// Sessions open in the terminal window (for the multiple session report).
+    sessions: u8,
     output: Vec<u8>,
     events: Vec<Event>,
     pause: bool,
@@ -363,8 +422,18 @@ struct Emulator {
 
 const TAB_WIDTH: usize = 8;
 
-/// Pages available for a page length with one session (EK-VT420-RM table 6-1).
-fn pages_for_length(lines: usize) -> usize {
+/// Pages available for a page length with one session: EK-VT420-RM table 6-1;
+/// for the VT500s, EK-VT520-RM DECSLPP.
+// 🔎 The VT520 manual gives both "6 pages of 24 lines" and a list starting
+// "3 pages x 24 lines"; the list is used.
+fn pages_for_length(model: Model, lines: usize) -> usize {
+    if model.max_level() >= 5 {
+        return match lines {
+            0..=24 => 3,
+            25..=36 => 2,
+            _ => 1,
+        };
+    }
     match lines {
         0..=24 => 6,
         25 => 5,
@@ -375,8 +444,24 @@ fn pages_for_length(lines: usize) -> usize {
     }
 }
 
-/// Screen heights the VT420 can display (DECSNLS).
-const SCREEN_LINES: [usize; 3] = [24, 36, 48];
+/// Page lengths DECSLPP accepts.
+fn page_lengths(model: Model) -> &'static [usize] {
+    if model.max_level() >= 5 {
+        &[24, 25, 36, 41, 42, 48, 52, 53, 72]
+    } else {
+        &[24, 25, 36, 48, 72, 144]
+    }
+}
+
+/// Screen heights the terminal can display (DECSNLS): the VT420's 24, 36
+/// and 48 lines, or the VT500s' 26, 42 and 53 data lines.
+fn screen_heights(model: Model) -> &'static [usize] {
+    if model.max_level() >= 5 {
+        &[26, 42, 53]
+    } else {
+        &[24, 36, 48]
+    }
+}
 
 fn default_tabs(cols: usize) -> Vec<bool> {
     (0..cols).map(|c| c > 0 && c % TAB_WIDTH == 0).collect()
@@ -395,7 +480,7 @@ impl Emulator {
         };
         // A VT420 with one session has 6 pages of 24 lines (EK-VT420-RM, DECSLPP).
         let page_count = if model.max_level() >= 4 {
-            pages_for_length(rows)
+            pages_for_length(model, rows)
         } else {
             1
         };
@@ -452,6 +537,10 @@ impl Emulator {
             dcs: dcs::DcsState::None,
             macros: vec![Vec::new(); 64],
             pending_input: Vec::new(),
+            setup: vt520::SetUp::default(),
+            colors: crate::color::ColorTable::default(),
+            osc: Vec::new(),
+            sessions: 1,
             output: Vec::new(),
             events: Vec::new(),
             pause: false,
@@ -494,8 +583,23 @@ impl Emulator {
         self.cursor_line().width() - 1
     }
 
+    /// Attributes for newly written characters (VT525 colour modes apply).
+    fn writing_attrs(&self) -> Attrs {
+        if self.color_terminal() {
+            self.colors.attrs_for_writing(self.cursor.attrs)
+        } else {
+            self.cursor.attrs
+        }
+    }
+
+    /// The cell left by erasing or scrolling: the current text background,
+    /// or the screen background with DECECM set.
     fn blank(&self) -> Cell {
-        Cell::erased(self.cursor.attrs.bg)
+        if self.vt520_flag(vt520::DECECM) {
+            Cell::erased(Color::Default)
+        } else {
+            Cell::erased(self.cursor.attrs.bg)
+        }
     }
 
     fn region(&self, top: usize) -> Region {
@@ -597,13 +701,27 @@ impl Emulator {
     }
 
     /// DECSLPP: lines per page; the number of pages follows the page length.
-    fn set_page_length(&mut self, lines: usize) {
-        if !matches!(lines, 24 | 25 | 36 | 48 | 72 | 144) || lines == self.rows() {
+    fn set_page_length(&mut self, requested: usize) {
+        let model = self.config.model;
+        let lengths = page_lengths(model);
+        let lines = if model.max_level() >= 5 {
+            // VT500s use the next supported length, or the longest (EK-VT520-RM).
+            lengths
+                .iter()
+                .copied()
+                .find(|&l| l >= requested)
+                .unwrap_or(lengths[lengths.len() - 1])
+        } else if lengths.contains(&requested) {
+            requested
+        } else {
+            return;
+        };
+        if lines == self.rows() {
             return;
         }
         self.exit_status_line();
         let cols = self.cols();
-        let count = pages_for_length(lines);
+        let count = pages_for_length(model, lines);
         // Margins at the page limits (the default) stay at the page limits.
         let full_page = self.top == 0 && self.bottom == self.rows() - 1;
         self.for_each_page(|g| g.resize(lines, cols));
@@ -646,11 +764,16 @@ impl Emulator {
 
     /// DECSNLS: the terminal uses the next supported screen height.
     fn set_screen_lines(&mut self, requested: usize) {
-        let lines = SCREEN_LINES
+        let heights = screen_heights(self.config.model);
+        // A VT500 status line takes one of the screen's data lines.
+        let status = usize::from(
+            self.config.model.max_level() >= 5 && self.status.kind != StatusDisplay::None,
+        );
+        let lines = heights
             .iter()
-            .copied()
+            .map(|h| h - status)
             .find(|&l| l >= requested)
-            .unwrap_or(SCREEN_LINES[SCREEN_LINES.len() - 1]);
+            .unwrap_or(heights[heights.len() - 1] - status);
         if lines != self.screen_lines {
             self.screen_lines = lines;
             self.couple();
@@ -849,7 +972,7 @@ impl Emulator {
         let last = self.right_limit();
         let cell = Cell {
             ch,
-            attrs: self.cursor.attrs,
+            attrs: self.writing_attrs(),
             code: code.max(1),
         };
         let blank = self.blank();
@@ -1100,6 +1223,9 @@ impl Emulator {
                     self.right = self.cols() - 1;
                 }
             }
+            _ if self.level >= 5 => {
+                self.set_vt520_mode(mode, on);
+            }
             _ => {}
         }
     }
@@ -1109,10 +1235,13 @@ impl Emulator {
         self.exit_status_line();
         self.modes.columns_132 = cols == 132;
         let rows = self.rows();
-        // DECCOLM erases all of page memory (EK-VT420-RM).
+        // DECCOLM erases all of page memory (EK-VT420-RM) unless DECNCSM is set.
+        let clear = !self.vt520_flag(vt520::DECNCSM);
         self.for_each_page(|g| {
             g.resize(rows, cols);
-            g.clear(Cell::BLANK);
+            if clear {
+                g.clear(Cell::BLANK);
+            }
         });
         self.status_line.resize(cols, Cell::BLANK);
         // Tab stops are not reset (DEC STD 070); new columns get the default stops.
@@ -1237,9 +1366,13 @@ impl Emulator {
         let scrollback = std::mem::take(&mut self.scrollback);
         let columns_changed = self.cols() != config.cols;
         let generation = self.soft_generation + 1;
+        let output = std::mem::take(&mut self.output);
+        let events = std::mem::take(&mut self.events);
         *self = Emulator::new(Config { rows, ..config });
         self.scrollback = scrollback;
         self.soft_generation = generation;
+        self.output = output;
+        self.events = events;
         if columns_changed {
             self.events.push(Event::ColumnsChanged(self.cols()));
         }
@@ -1259,6 +1392,9 @@ impl Emulator {
         self.modes.cursor_keys_application = false;
         // DEC STD 070 also resets left/right margin mode.
         self.modes.lr_margins = false;
+        // VT520: key position mode and cursor direction (EK-VT520-RM table 5-6).
+        self.set_vt520_mode(vt520::DECKPM, false);
+        self.set_vt520_mode(vt520::DECRLM, false);
         self.reset_margins();
         self.upss = self.config.supplemental.charset();
         self.charsets = initial_charsets(self.config.model, self.upss);
@@ -1342,7 +1478,7 @@ impl Emulator {
     // ------------------------------------------------------------------ SGR
 
     fn select_graphic_rendition(&mut self, params: &Params) {
-        let colors = self.config.model.has_color() || self.config.extensions.xterm_sgr;
+        let colors = self.color_terminal() || self.config.extensions.xterm_sgr;
         let xterm = self.config.extensions.xterm_sgr;
         let vt220 = self.level >= 2;
         let a = &mut self.cursor.attrs;
@@ -1430,6 +1566,14 @@ impl Emulator {
         if level >= 2 {
             if let Some(slot) = self.soft.find(&designation, is_96) {
                 self.charsets.g[g] = Charset::Soft { slot, is_96 };
+                return;
+            }
+        }
+        if level >= 5 {
+            if let Some(set) = charset::Vt500Set::from_designator(is_96, intermediate, final_byte) {
+                if !set.is_national() || self.modes.national {
+                    self.charsets.g[g] = Charset::Vt500(set);
+                }
                 return;
             }
         }
@@ -1619,23 +1763,16 @@ impl Perform for Emulator {
         let vt420 = self.level >= 4;
         let xterm = self.config.extensions.xterm_compat;
         let vt510 = self.level >= 5;
+        if vt510 && seq.private.is_none() && self.vt520_csi(seq.intermediates, seq.final_byte, p) {
+            return;
+        }
         match (seq.private, seq.intermediates, seq.final_byte) {
             (None, [], b'@') if vt220 => self.insert_chars(n(0)),
-            (None, [], b'E') if vt510 => {
-                self.cud(n(0));
-                self.carriage_return();
+            (Some(b'?'), [], b'W') if vt510 && p.get_or(0, 0) == 5 => self.tab_every_8(),
+            (None, [b'+'], b'p') if self.config.model.max_level() >= 5 => self.secure_reset(p),
+            (None, [b' '], b'~') if self.config.model.max_level() >= 5 => {
+                self.terminal_mode_emulation(p.get_or(0, 0))
             }
-            (None, [], b'F') if vt510 => {
-                self.cuu(n(0));
-                self.carriage_return();
-            }
-            (None, [], b'G' | b'`') if vt510 => self.goto(self.cursor.row, n(0) - 1),
-            (None, [], b'd') if vt510 => {
-                let col = self.cursor.col + 1;
-                self.cup(n(0), col);
-            }
-            (None, [], b'I') if vt510 => self.tab(n(0)),
-            (None, [], b'Z') if vt510 => self.back_tab(n(0)),
             (None, [], b'S') if vt420 && !self.status.active => {
                 if self.config.extensions.xterm_compat {
                     self.scroll_up(n(0));
@@ -1709,6 +1846,9 @@ impl Perform for Emulator {
             (None, [b'*'], b'y') if vt420 => self.request_checksum(p),
             (None, [b'*'], b'z') if vt420 => self.invoke_macro(p.get_or(0, 0)),
             (None, [b'$'], b'u') if vt420 && p.get_or(0, 0) == 1 => self.terminal_state_report(),
+            (None, [b'$'], b'u') if self.color_terminal() && p.get_or(0, 0) == 2 => {
+                self.color_table_report(p.get_or(1, 0))
+            }
             (None, [b'\''], b'}') if vt420 => self.insert_columns(n(0), true),
             (None, [b'\''], b'~') if vt420 => self.insert_columns(n(0), false),
             (None, [], b'A') => self.cuu(n(0)),
@@ -1809,6 +1949,23 @@ impl Perform for Emulator {
 
     fn dcs_put(&mut self, byte: u8) {
         self.dcs.put(byte);
+    }
+
+    fn osc_start(&mut self) {
+        self.osc.clear();
+    }
+
+    fn osc_put(&mut self, byte: u8) {
+        if self.osc.len() < 512 {
+            self.osc.push(byte);
+        }
+    }
+
+    fn osc_end(&mut self, end: StringEnd) {
+        let data = std::mem::take(&mut self.osc);
+        if end == StringEnd::Terminated && self.modes.ansi {
+            self.operating_system_command(&data);
+        }
     }
 
     fn dcs_unhook(&mut self, end: StringEnd) {

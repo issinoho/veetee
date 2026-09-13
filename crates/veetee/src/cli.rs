@@ -23,6 +23,7 @@ options:
   --model MODEL          vt100 vt102 vt220 vt320 vt420 (default) vt510 vt520 vt525
   --port PORT            TCP port for --telnet or --ssh
   --record FILE          append everything the host sends to FILE
+  --sessions N           open 1 or 2 sessions (2 splits the window, F4 switches)
 
 serial line options (picocom style; defaults are DEC factory Set-Up):
   -b, --baud RATE        bits per second (9600)
@@ -74,6 +75,8 @@ impl Connection {
 pub struct Options {
     pub connection: Connection,
     pub record: Option<PathBuf>,
+    /// Sessions to open at start: 1, or 2 for a split window.
+    pub sessions: u8,
 }
 
 pub enum Parsed {
@@ -83,7 +86,10 @@ pub enum Parsed {
 
 pub fn parse_args(args: impl Iterator<Item = String>) -> Result<Parsed, String> {
     let mut config = Config::default();
-    let mut options = Options::default();
+    let mut options = Options {
+        sessions: 1,
+        ..Options::default()
+    };
     let mut line: Vec<(String, String)> = Vec::new();
     let mut port: Option<u16> = None;
     let mut chosen = 0;
@@ -98,6 +104,15 @@ pub fn parse_args(args: impl Iterator<Item = String>) -> Result<Parsed, String> 
             }
             "--record" => {
                 options.record = Some(value()?.into());
+                None
+            }
+            "--sessions" => {
+                let v = value()?;
+                options.sessions = match v.as_str() {
+                    "1" => 1,
+                    "2" => 2,
+                    _ => return Err(format!("--sessions: 1 or 2, not {v:?}")),
+                };
                 None
             }
             "--port" => {

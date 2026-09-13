@@ -182,6 +182,9 @@ pub(crate) fn encode(key: Key, cx: KeyContext, out: &mut Vec<u8>) {
                 return;
             }
             let n = match f {
+                // 🔎 F1–F4 reach the host only on VT500s whose local function
+                // keys DECLFKC has given to the host.
+                1..=4 if cx.level >= 5 => f + 10,
                 6..=10 => f + 11,
                 11..=14 => f + 12,
                 15 | 16 => f + 13,

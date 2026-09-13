@@ -4,6 +4,9 @@ mod cli;
 mod gl_loader;
 mod session;
 mod view;
+mod workspace;
+
+use std::rc::Rc;
 
 use adw::prelude::*;
 use gtk::{gio, glib};
@@ -48,6 +51,9 @@ fn build_window(app: &adw::Application, config: Config, options: Options) {
     phosphor.append(Some("Green (P1)"), Some("win.phosphor::green"));
     phosphor.append(Some("Amber (P3)"), Some("win.phosphor::amber"));
     menu.append_section(Some("Phosphor"), &phosphor);
+    let session_section = gio::Menu::new();
+    session_section.append(Some("Open Second Session"), Some("win.new-session"));
+    menu.append_section(None, &session_section);
     let window_section = gio::Menu::new();
     window_section.append(Some("Full Screen"), Some("win.fullscreen"));
     window_section.append(Some("About veetee"), Some("win.about"));
@@ -79,6 +85,7 @@ fn build_window(app: &adw::Application, config: Config, options: Options) {
         .build();
     add_window_actions(&window);
     window.present();
+    capture_window_later(&window);
 
     // Connecting can block on DNS or TCP; do it off the UI thread.
     let (tx, rx) = async_channel::bounded(1);
@@ -90,8 +97,8 @@ fn build_window(app: &adw::Application, config: Config, options: Options) {
     }
     glib::spawn_future_local(async move {
         let Ok(opened) = rx.recv().await else { return };
-        let started =
-            opened.and_then(|t| session::Session::start(config, t, options.record.as_deref()));
+        let started = opened
+            .and_then(|t| session::Session::start(config.clone(), t, options.record.as_deref()));
         let (session, notices) = match started {
             Ok(s) => s,
             Err(e) => {
@@ -103,76 +110,24 @@ fn build_window(app: &adw::Application, config: Config, options: Options) {
                 return;
             }
         };
-        attach_terminal(
-            &window,
-            &title,
-            &toasts,
-            base_subtitle,
-            &options,
-            session,
-            notices,
-        );
+        let workspace =
+            workspace::Workspace::new(&window, &title, &toasts, config, options, base_subtitle);
+        workspace.add_session(session, notices);
+        if workspace.sessions_to_open() > 1 {
+            workspace.open_session();
+        }
+        add_session_actions(&window, &workspace);
     });
 }
 
-fn attach_terminal(
-    window: &adw::ApplicationWindow,
-    title: &adw::WindowTitle,
-    toasts: &adw::ToastOverlay,
-    base_subtitle: String,
-    options: &Options,
-    session: session::Session,
-    notices: async_channel::Receiver<session::Notice>,
-) {
-    let notify = {
-        let toasts = toasts.clone();
-        move |msg: &str| toasts.add_toast(adw::Toast::new(msg))
-    };
-    let status = {
-        let title = title.clone();
-        move |extra: &str| {
-            if extra.is_empty() {
-                title.set_subtitle(&base_subtitle);
-            } else {
-                title.set_subtitle(&format!("{base_subtitle} · {extra}"));
-            }
-        }
-    };
-    let keep_open = options.connection.keep_open_on_close();
-    let label = options.connection.label();
-    let on_exit = {
-        let (window, session, toasts, title) = (
-            window.downgrade(),
-            session.clone(),
-            toasts.clone(),
-            title.clone(),
-        );
-        move |reason: Option<String>| {
-            session.close();
-            if keep_open {
-                // Keep the screen readable (and copyable) after the line drops.
-                let msg = match reason {
-                    Some(r) => format!("Connection closed: {r}"),
-                    None => format!("Connection to {label} closed"),
-                };
-                eprintln!("veetee: {msg}");
-                title.set_subtitle(&format!("{label} · Disconnected"));
-                toasts.add_toast(adw::Toast::builder().title(msg).timeout(0).build());
-            } else if let Some(w) = window.upgrade() {
-                w.close();
-            }
-        }
-    };
-    let view = view::TerminalView::new(session.clone(), notices, notify, status, on_exit);
-    toasts.set_child(Some(view.widget()));
-
+fn add_session_actions(window: &adw::ApplicationWindow, workspace: &Rc<workspace::Workspace>) {
     let phosphor_action = gio::SimpleAction::new_stateful(
         "phosphor",
         Some(glib::VariantTy::STRING),
         &"white".to_variant(),
     );
     phosphor_action.connect_activate({
-        let view = view.clone();
+        let workspace = workspace.clone();
         move |action, param| {
             let Some(name) = param.and_then(|p| p.str().map(str::to_owned)) else {
                 return;
@@ -183,16 +138,21 @@ fn attach_terminal(
                 _ => Phosphor::White,
             };
             action.set_state(&name.to_variant());
-            view.set_theme(Theme::phosphor(p));
+            workspace.set_theme(Theme::phosphor(p));
         }
     });
     window.add_action(&phosphor_action);
 
-    window.connect_close_request(move |_| {
-        session.close();
-        glib::Propagation::Proceed
+    let new_session = gio::SimpleAction::new("new-session", None);
+    new_session.connect_activate({
+        let workspace = Rc::downgrade(workspace);
+        move |_, _| {
+            if let Some(ws) = workspace.upgrade() {
+                ws.open_session();
+            }
+        }
     });
-    view.widget().grab_focus();
+    window.add_action(&new_session);
 }
 
 fn add_window_actions(window: &adw::ApplicationWindow) {
@@ -224,6 +184,41 @@ fn add_window_actions(window: &adw::ApplicationWindow) {
         }
     });
     window.add_action(&about);
+}
+
+/// Developer hook: `VEETEE_CAPTURE_WINDOW=file.png` saves the whole window
+/// after `VEETEE_CAPTURE_DELAY_MS` (default 2000) and quits.
+fn capture_window_later(window: &adw::ApplicationWindow) {
+    let Some(path) = std::env::var_os("VEETEE_CAPTURE_WINDOW") else {
+        return;
+    };
+    let delay = std::env::var("VEETEE_CAPTURE_DELAY_MS")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(2000);
+    let window = window.downgrade();
+    glib::timeout_add_local_once(std::time::Duration::from_millis(delay), move || {
+        let Some(window) = window.upgrade() else {
+            return;
+        };
+        let paintable = gtk::WidgetPaintable::new(Some(&window));
+        let (w, h) = (window.width(), window.height());
+        let snapshot = gtk::Snapshot::new();
+        paintable.snapshot(&snapshot, f64::from(w), f64::from(h));
+        let saved = snapshot
+            .to_node()
+            .zip(window.native().and_then(|n| n.renderer()))
+            .map(|(node, renderer)| renderer.render_texture(&node, None))
+            .map(|texture| texture.save_to_png(&path));
+        match saved {
+            Some(Ok(())) => eprintln!("veetee: captured window to {}", path.to_string_lossy()),
+            Some(Err(e)) => eprintln!("veetee: window capture failed: {e}"),
+            None => eprintln!("veetee: window capture failed: nothing rendered"),
+        }
+        if let Some(app) = window.application() {
+            app.quit();
+        }
+    });
 }
 
 /// Shows an error in place of a terminal and closes the window when dismissed.

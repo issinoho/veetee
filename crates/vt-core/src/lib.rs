@@ -8,6 +8,8 @@
 
 pub mod cell;
 pub mod charset;
+mod charset_tables;
+pub mod color;
 mod config;
 pub mod dump;
 pub mod grid;
@@ -22,4 +24,4 @@ pub use config::{Config, Extensions, Model, StatusDisplay, Supplemental};
 pub use keyboard::Key;
 pub use modes::Modes;
 pub use selection::{Point, Selection};
-pub use terminal::{Cursor, Event, Terminal};
+pub use terminal::{Cursor, CursorStyle, Event, LocalKeyAction, Terminal};

@@ -124,7 +124,7 @@ impl Emulator {
         };
         let fill = Cell {
             ch,
-            attrs: self.cursor.attrs,
+            attrs: self.writing_attrs(),
             code,
         };
         let page = self.page;

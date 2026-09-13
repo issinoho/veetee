@@ -12,7 +12,8 @@
 //! line size (` ` single, `W` double width, `T`/`B` double height top/bottom).
 //! A `~` line follows any row with renditions: one hex digit per cell,
 //! bold 1, underline 2, blink 4, reverse 8 (`.` for none), trimmed.
-//! Protected (DECSCA) cells get a `p` line in the same style.
+//! Protected (DECSCA) cells get a `p` line in the same style, and colour
+//! indexes `f` (foreground) and `b` (background) lines, `.` for default.
 //! When the cursor is off page 1, or the user window (DECSNLS, panning)
 //! does not show exactly the page, a `memory` line follows `modes`.
 //! Soft-font characters are shown as `▯`. When a status line is in use,
@@ -132,6 +133,25 @@ fn dump_line(out: &mut String, label: &str, line: &Line) {
     let attrs = attrs.trim_end_matches('.');
     if !attrs.is_empty() {
         let _ = writeln!(out, "   ~{attrs}");
+    }
+    // Colour indexes (VT525 and xterm colours): foreground then background,
+    // one hex digit per cell, `.` for the default colour.
+    for (tag, pick) in [("f", true), ("b", false)] {
+        let colors: String = line
+            .cells()
+            .iter()
+            .map(|c| match if pick { c.attrs.fg } else { c.attrs.bg } {
+                crate::cell::Color::Indexed(i) if i < 16 => {
+                    char::from_digit(u32::from(i), 16).unwrap_or('?')
+                }
+                crate::cell::Color::Default => '.',
+                _ => '*',
+            })
+            .collect();
+        let colors = colors.trim_end_matches('.');
+        if !colors.is_empty() {
+            let _ = writeln!(out, "   {tag}{colors}");
+        }
     }
     let protected: String = line
         .cells()

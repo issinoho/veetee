@@ -31,7 +31,9 @@ impl Emulator {
     pub(super) fn device_attributes(&mut self) {
         let da = self.config.model.primary_da();
         // In VT100 mode a VT220+ reports its VT100-compatible identity.
-        let da = if self.level == 1 && self.config.model.max_level() > 1 {
+        let da = if let Some(id) = self.terminal_id_attributes() {
+            id
+        } else if self.level == 1 && self.config.model.max_level() > 1 {
             Model::Vt102.primary_da()
         } else {
             da
@@ -73,11 +75,18 @@ impl Emulator {
                 self.reply_csi(&format!("?{locked}n"));
             }
             (Some(b'?'), 26) if level >= 2 => {
-                let language = keyboard_language_code(self.config.keyboard_language);
+                let language = match self.setup.keyboard {
+                    Some((_, language)) if level >= 5 => language,
+                    _ => u16::from(keyboard_language_code(self.config.keyboard_language)),
+                };
                 if level >= 4 {
                     // Keyboard ready; type 1 is the VT420's LK401 and 4 the
                     // VT500s' LK411/LK450 (EK-VT420-RM p. 277, EK-VT510-RM 5-166).
-                    let kind = if level >= 5 { 4 } else { 1 };
+                    let kind = match (level, self.setup.keyboard) {
+                        (5.., Some((2, _))) => 5,
+                        (5.., _) => 4,
+                        _ => 1,
+                    };
                     self.reply_csi(&format!("?27;{language};0;{kind}n"));
                 } else {
                     self.reply_csi(&format!("?27;{language}n"));
@@ -90,8 +99,12 @@ impl Emulator {
             }
             // Data integrity: no communication errors.
             (Some(b'?'), 75) if level >= 4 => self.reply_csi("?70n"),
-            // Multiple sessions: not configured.
-            (Some(b'?'), 85) if level >= 4 => self.reply_csi("?83n"),
+            // Multiple sessions: each veetee session has its own connection, like
+            // the VT420/VT520 "sessions on separate lines"; one session reports
+            // sessions not ready.
+            (Some(b'?'), 85) if level >= 4 => {
+                self.reply_csi(if self.sessions > 1 { "?87n" } else { "?83n" })
+            }
             _ => {}
         }
     }
@@ -153,6 +166,7 @@ impl Emulator {
                 64 if self.level >= 4 => on(m.page_coupling),
                 68 if self.level >= 4 => on(m.data_processing_keys),
                 69 if self.level >= 4 => on(m.lr_margins),
+                _ if self.level >= 5 => self.vt520_mode(mode).map_or(0, on),
                 _ => 0,
             },
         };
@@ -190,6 +204,7 @@ impl Emulator {
             b"*|" if level >= 4 => Some(format!("{}*|", self.screen_lines)),
             b"s" if level >= 4 => Some(format!("{};{}s", self.left + 1, self.right + 1)),
             b"*x" if level >= 4 => Some(format!("{}*x", if self.sace_rectangle { 2 } else { 0 })),
+            _ if level >= 5 => self.vt520_setting(data),
             _ => None,
         };
         match body {
@@ -456,11 +471,9 @@ impl Emulator {
 
     /// DECRQUPSS, answered with DECAUPSS.
     pub(super) fn user_preferred_supplemental_report(&mut self) {
-        let body = match self.upss {
-            Charset::IsoLatin1 => "1!uA",
-            _ => "0!u%5",
-        };
-        self.reply_dcs(body);
+        let size = u8::from(self.upss.is_96());
+        let body = format!("{size}!u{}", self.upss.designator());
+        self.reply_dcs(&body);
     }
 
     /// DECAUPSS: size 0 designates a 94-character set, 1 a 96-character set.
@@ -468,6 +481,21 @@ impl Emulator {
         match (size, data) {
             (0, b"%5") => self.upss = Charset::DecSupplemental,
             (1, b"A") => self.upss = Charset::IsoLatin1,
+            // VT520 supplemental sets; the size parameter is not reliable in
+            // the VT520 manual, so the designator decides.
+            (_, [f]) | (_, [_, f]) if self.level >= 5 => {
+                let (intermediate, is_96) = match data {
+                    [i, _] => (Some(*i), false),
+                    _ => (None, true),
+                };
+                if let Some(set) =
+                    crate::charset::Vt500Set::from_designator(is_96, intermediate, *f)
+                {
+                    if !set.is_national() {
+                        self.upss = Charset::Vt500(set);
+                    }
+                }
+            }
             _ => {}
         }
     }

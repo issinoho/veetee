@@ -29,6 +29,8 @@ pub mod flag {
     pub const SELECTED: u32 = 128;
     /// The glyph index refers to the soft (DRCS) atlas.
     pub const SOFT: u32 = 256;
+    /// Underline cursor (DECSCUSR): the bottom dot row is inverted.
+    pub const CURSOR_UNDERLINE: u32 = 512;
 }
 
 /// CPU copy of the soft glyph atlas, rebuilt when the host downloads fonts
@@ -194,11 +196,17 @@ pub fn build_instances(
     out.clear();
     let reverse_screen = term.modes().reverse_screen;
     let normal = scale(theme.foreground, theme.normal_intensity);
-    let (page_bg, text_normal, text_bold) = if reverse_screen {
+    let (mut page_bg, text_normal, text_bold) = if reverse_screen {
         (normal, theme.background, theme.background)
     } else {
         (theme.background, normal, theme.foreground)
     };
+    // A colour terminal paints the screen in the normal text background.
+    if let Some((table, _)) = term.colors() {
+        let (fg, bg) = table.normal;
+        let index = if reverse_screen { fg } else { bg };
+        page_bg = rgb100(table.map[usize::from(index)]);
+    }
 
     push(
         out,
@@ -326,30 +334,46 @@ fn draw_line(
     let y = layout.row_y(row);
     for (col, cell) in line.cells().iter().enumerate().take(line.width()) {
         let a = cell.attrs;
-        let bold = a.flags.contains(Flags::BOLD);
-        let mut fg = match a.fg {
-            Color::Default if bold => text_bold,
-            Color::Default => text_normal,
-            c => theme.color(c, text_normal),
-        };
-        let mut bg = theme.color(a.bg, page_bg);
-        if a.flags.contains(Flags::REVERSE) {
-            std::mem::swap(&mut fg, &mut bg);
-        }
-
         let mut flags = size_flag;
-        let hidden = a.flags.contains(Flags::INVISIBLE)
-            || (a.flags.contains(Flags::BLINK) && !frame.blink_on);
-        if hidden {
-            flags |= flag::HIDE_GLYPH;
-        } else if a.flags.contains(Flags::UNDERLINE) {
-            flags |= flag::UNDERLINE;
-        }
+        let (fg, bg) = if let Some((table, options)) = term.colors() {
+            // VT525: colours come from the terminal's colour map and mode.
+            let c = table.resolve(a, options, frame.blink_on);
+            if c.hidden {
+                flags |= flag::HIDE_GLYPH;
+            } else if c.underline {
+                flags |= flag::UNDERLINE;
+            }
+            (rgb100(c.fg), rgb100(c.bg))
+        } else {
+            let bold = a.flags.contains(Flags::BOLD);
+            let mut fg = match a.fg {
+                Color::Default if bold => text_bold,
+                Color::Default => text_normal,
+                c => theme.color(c, text_normal),
+            };
+            let mut bg = theme.color(a.bg, page_bg);
+            if a.flags.contains(Flags::REVERSE) {
+                std::mem::swap(&mut fg, &mut bg);
+            }
+            let hidden = a.flags.contains(Flags::INVISIBLE)
+                || (a.flags.contains(Flags::BLINK) && !frame.blink_on);
+            if hidden {
+                flags |= flag::HIDE_GLYPH;
+            } else if a.flags.contains(Flags::UNDERLINE) {
+                flags |= flag::UNDERLINE;
+            }
+            (fg, bg)
+        };
         if term.modes().cursor_visible && cursor_col == Some(col) {
+            let style = term.cursor_style();
             if !frame.focused {
                 flags |= flag::CURSOR_OUTLINE;
-            } else if frame.cursor_on {
-                flags |= flag::CURSOR;
+            } else if frame.cursor_on || !style.blinks() {
+                flags |= if style.is_block() {
+                    flag::CURSOR
+                } else {
+                    flag::CURSOR_UNDERLINE
+                };
             }
         }
         if frame.selection.is_some_and(|s| s.contains(page_row, col)) {
@@ -372,10 +396,16 @@ fn draw_line(
         } else {
             (font.index_of(cell.ch), font.width, font.height)
         };
-        let decorated =
-            flags & (flag::UNDERLINE | flag::CURSOR | flag::CURSOR_OUTLINE | flag::SELECTED) != 0;
-        let blank =
-            ((flags & flag::SOFT == 0 && glyph == space) || hidden) && bg == page_bg && !decorated;
+        let decorated = flags
+            & (flag::UNDERLINE
+                | flag::CURSOR
+                | flag::CURSOR_UNDERLINE
+                | flag::CURSOR_OUTLINE
+                | flag::SELECTED)
+            != 0;
+        let blank = ((flags & flag::SOFT == 0 && glyph == space) || flags & flag::HIDE_GLYPH != 0)
+            && bg == page_bg
+            && !decorated;
         if blank {
             continue;
         }
@@ -661,4 +691,9 @@ mod font_coverage {
             missing.join("\n")
         );
     }
+}
+
+/// A VT525 colour (components 0–100) as renderer RGB.
+fn rgb100(c: vt_core::color::Rgb100) -> [f32; 3] {
+    c.map(|v| f32::from(v) / 100.0)
 }
