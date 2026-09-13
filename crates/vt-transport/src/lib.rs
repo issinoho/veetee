@@ -5,6 +5,8 @@ use std::time::Duration;
 
 pub mod pty;
 pub mod serial;
+pub mod ssh;
+pub mod telnet;
 
 /// A byte-stream connection to a host.
 pub trait Transport: Send {

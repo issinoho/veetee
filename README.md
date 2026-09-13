@@ -14,7 +14,7 @@ top of the VT100/VT102/VT52 core. vttest VT100–VT320 menus pass headless.
 |-------|---------|
 | `crates/vt-parser` | Allocation-free DEC STD 070 / ECMA-48 control function parser (7-bit, 8-bit, UTF-8, VT52) |
 | `crates/vt-core` | The terminal model: screen, modes, character sets, reports, DEC keyboard codes |
-| `crates/vt-transport` | Host connections: local PTY and serial lines |
+| `crates/vt-transport` | Host connections: local PTY, serial lines, Telnet, SSH (via OpenSSH) |
 | `crates/vt-fonts` | Original DEC-style bitmap fonts (SIL OFL) and their parser |
 | `crates/vt-keyboard` | PC keyboard → DEC LK401 key map |
 | `crates/vt-render` | OpenGL renderer: dot stretching, scan lines, double-size lines, 132 columns |
@@ -30,9 +30,18 @@ Requires GTK 4.12+ and libadwaita 1.5+ development packages
 (`sudo apt install libgtk-4-dev libadwaita-1-dev` on Ubuntu).
 
 ```sh
-cargo run -p veetee                  # local shell, VT420
-cargo run -p veetee -- --model vt102 # emulate another model
+cargo run -p veetee                              # local shell, VT420
+cargo run -p veetee -- --telnet vms1             # Telnet (or telnet://vms1:2323)
+cargo run -p veetee -- --ssh system@vms1         # SSH via your OpenSSH client and ~/.ssh/config
+cargo run -p veetee -- --serial /dev/ttyUSB0     # serial line (see below)
+cargo run -p veetee -- --model vt102 --telnet vms1
 ```
+
+Telnet negotiates BINARY (so 8-bit DEC controls pass unchanged), terminal type (`VT420`, or the
+selected model), window size and suppress-go-ahead; F5 sends a Telnet BREAK. SSH runs the system
+`ssh -tt`, so keys, agents, `ProxyJump` and `known_hosts` behave exactly as in a shell, with
+`TERM` set to the emulated model. Network and serial sessions keep their window open when the
+connection closes, so the final screen can still be read and copied.
 
 The phosphor colour (white P4, green P1, amber P3) is in the window menu.
 
