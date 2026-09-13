@@ -78,7 +78,7 @@ jobs:
       - name: Smoke test with software OpenGL
         continue-on-error: true
         run: |
-          set -x
+          set -x +e
           pacman -Ql mingw-w64-ucrt-x86_64-mesa | grep -i '\.dll$' || true
           dir=target/dist/smoke
           rm -rf "$dir" && mkdir -p "$dir"
@@ -87,10 +87,14 @@ jobs:
           "$app/veetee.exe" --help > "$dir/help.txt"; echo "help exit $?"
           # A console build first, so GTK's own messages are visible.
           cargo build -p veetee
-          for gl in opengl32.dll libgallium_wgl.dll libglapi.dll; do
-            cp "/ucrt64/bin/$gl" target/debug/ 2>/dev/null || true
-            cp "/ucrt64/bin/$gl" "$app/" 2>/dev/null || true
+          # Mesa's software OpenGL stands in for a graphics driver; it and its
+          # own dependencies go next to both builds (never into the zip).
+          for gl in opengl32.dll libgallium_wgl.dll; do
+            cp "/ucrt64/bin/$gl" target/debug/
+            cp -n "/ucrt64/bin/$gl" "$app/"
           done
+          ldd /ucrt64/bin/libgallium_wgl.dll | awk '{ print $3 }' | grep -i '^/ucrt64/bin/' \
+            | sort -u | xargs -I{} cp -n {} "$app/"
           export GALLIUM_DRIVER=llvmpipe VEETEE_CAPTURE_DELAY_MS=8000
           command="echo veetee on Windows & ver & ping -n 60 127.0.0.1 >NUL"
           VEETEE_CAPTURE="$(cygpath -w "$PWD/$dir/debug.ppm")" \
@@ -100,6 +104,9 @@ jobs:
           VEETEE_CAPTURE="$(cygpath -w "$PWD/$dir/bundle.ppm")" PATH=/usr/bin:/c/Windows/system32:/c/Windows \
             /usr/bin/timeout 120 "$app/veetee.exe" --model vt525 --command "$command"
           echo "bundle exit $?"
+          # Without Mesa the release build must at least load every DLL it needs.
+          rm -f "$app/opengl32.dll" "$app/libgallium_wgl.dll"
+          PATH=/usr/bin:/c/Windows/system32:/c/Windows "$app/vt-headless.exe" --help > /dev/null; echo "vt-headless exit $?"
           ls -l "$dir"
       - uses: actions/upload-artifact@v4
         with:
