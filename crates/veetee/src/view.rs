@@ -60,7 +60,7 @@ impl TerminalView {
         notices: async_channel::Receiver<Notice>,
         notify: impl Fn(&str) + 'static,
         status: impl Fn(&str) + 'static,
-        on_exit: impl Fn() + 'static,
+        on_exit: impl Fn(Option<String>) + 'static,
     ) -> TerminalView {
         let area = gtk::GLArea::builder()
             .hexpand(true)
@@ -414,7 +414,11 @@ impl TerminalView {
             Local::SetUp => (st.notify)("Set-Up is not available yet"),
             Local::PrintScreen => (st.notify)("Printing is not available yet"),
             Local::SwitchSession => (st.notify)("Dual sessions are not available yet"),
-            Local::Break => (st.notify)("Break has no effect on a local shell"),
+            Local::Break => {
+                if let Err(e) = st.session.send_break() {
+                    (st.notify)(&format!("Break: {e}"));
+                }
+            }
             Local::Copy => {
                 drop(st);
                 self.copy_to_clipboard();
@@ -425,7 +429,7 @@ impl TerminalView {
     fn connect_notices(
         &self,
         notices: async_channel::Receiver<Notice>,
-        on_exit: impl Fn() + 'static,
+        on_exit: impl Fn(Option<String>) + 'static,
     ) {
         let area = self.area.clone();
         glib::spawn_future_local(async move {
@@ -433,8 +437,8 @@ impl TerminalView {
                 match notice {
                     Notice::Redraw => area.queue_render(),
                     Notice::Bell => area.error_bell(),
-                    Notice::Exited => {
-                        on_exit();
+                    Notice::Exited(reason) => {
+                        on_exit(reason);
                         break;
                     }
                 }

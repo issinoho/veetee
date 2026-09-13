@@ -14,7 +14,7 @@ top of the VT100/VT102/VT52 core. vttest VT100–VT320 menus pass headless.
 |-------|---------|
 | `crates/vt-parser` | Allocation-free DEC STD 070 / ECMA-48 control function parser (7-bit, 8-bit, UTF-8, VT52) |
 | `crates/vt-core` | The terminal model: screen, modes, character sets, reports, DEC keyboard codes |
-| `crates/vt-transport` | Host connections (local PTY so far) |
+| `crates/vt-transport` | Host connections: local PTY and serial lines |
 | `crates/vt-fonts` | Original DEC-style bitmap fonts (SIL OFL) and their parser |
 | `crates/vt-keyboard` | PC keyboard → DEC LK401 key map |
 | `crates/vt-render` | OpenGL renderer: dot stretching, scan lines, double-size lines, 132 columns |
@@ -35,6 +35,18 @@ cargo run -p veetee -- --model vt102 # emulate another model
 ```
 
 The phosphor colour (white P4, green P1, amber P3) is in the window menu.
+
+### Serial lines
+
+```sh
+cargo run -p veetee -- --serial /dev/ttyUSB0                          # 9600 8N1, XON/XOFF
+cargo run -p veetee -- --serial /dev/ttyUSB0 -b 9600 -d 8 -p n -s 1 -f n   # picocom-style options
+```
+
+Defaults are the DEC factory Set-Up values: 9600 baud, 8 data bits, no parity, 1 stop bit,
+XON/XOFF flow control. `-f h` selects RTS/CTS. F5 sends a line break; F1 (Hold Screen) stops
+reading so the line is flow-controlled. The port is opened for exclusive use; add yourself to the
+`dialout` group (`sudo usermod -aG dialout $USER`, then log in again) rather than running as root.
 
 ### Keyboard
 

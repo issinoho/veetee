@@ -18,6 +18,7 @@ use rustix::termios::{Winsize, tcsetwinsize};
 pub struct Pty {
     master: File,
     child: Child,
+    description: String,
 }
 
 impl Pty {
@@ -56,9 +57,15 @@ impl Pty {
             });
         }
         let child = cmd.spawn()?;
+        let mut description = program.to_string();
+        for arg in args {
+            description.push(' ');
+            description.push_str(&arg.as_ref().to_string_lossy());
+        }
         Ok(Pty {
             master: File::from(master),
             child,
+            description,
         })
     }
 
@@ -89,11 +96,6 @@ impl Pty {
         }
     }
 
-    /// A second handle to the PTY for writing from another thread.
-    pub fn writer(&self) -> io::Result<File> {
-        self.master.try_clone()
-    }
-
     pub fn write_all(&mut self, bytes: &[u8]) -> io::Result<()> {
         self.master.write_all(bytes)
     }
@@ -112,6 +114,38 @@ impl Pty {
         self.child.wait().map(|_| ())
     }
 }
+
+impl crate::Transport for Pty {
+    fn read_timeout(&mut self, buf: &mut [u8], timeout: Duration) -> io::Result<usize> {
+        Pty::read_timeout(self, buf, timeout)
+    }
+
+    fn writer(&self) -> io::Result<Box<dyn crate::TransportWriter>> {
+        Ok(Box::new(PtyWriter(self.master.try_clone()?)))
+    }
+
+    fn resize(&mut self, rows: u16, cols: u16) -> io::Result<()> {
+        Pty::resize(self, rows, cols)
+    }
+
+    fn description(&self) -> String {
+        self.description.clone()
+    }
+}
+
+struct PtyWriter(File);
+
+impl Write for PtyWriter {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        self.0.write(buf)
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        self.0.flush()
+    }
+}
+
+impl crate::TransportWriter for PtyWriter {}
 
 impl Drop for Pty {
     fn drop(&mut self) {

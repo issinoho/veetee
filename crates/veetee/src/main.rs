@@ -8,47 +8,40 @@ use adw::prelude::*;
 use gtk::{gio, glib};
 use vt_core::{Config, Model};
 use vt_render::{Phosphor, Theme};
+use vt_transport::Transport;
+use vt_transport::pty::Pty;
+use vt_transport::serial::{Serial, SerialConfig};
 
 const APP_ID: &str = "com.issinoho.Veetee";
 
 const USAGE: &str = "\
-usage: veetee [--model MODEL] [--command COMMAND] [--record FILE]
+usage: veetee [--model MODEL] [--record FILE] [--command COMMAND | --serial DEVICE [LINE OPTIONS]]
 
-  --model MODEL      vt100 vt102 vt220 vt320 vt420 (default) vt510 vt520 vt525
-  --command COMMAND  run COMMAND (via /bin/sh -c) instead of your shell,
-                     e.g. --command \"telnet vms1\"
-  --record FILE      append everything the host sends to FILE";
+  --model MODEL        vt100 vt102 vt220 vt320 vt420 (default) vt510 vt520 vt525
+  --record FILE        append everything the host sends to FILE
+  --command COMMAND    run COMMAND (via /bin/sh -c) instead of your shell,
+                       e.g. --command \"telnet vms1\"
+  --serial DEVICE      connect to a serial line, e.g. --serial /dev/ttyUSB0
+
+serial line options (picocom style; defaults are DEC factory Set-Up):
+  -b, --baud RATE      bits per second (9600)
+  -d, --databits N     5, 6, 7 or 8 (8)
+  -p, --parity P       n none, e even, o odd, m mark, s space (n)
+  -s, --stopbits N     1 or 2 (1)
+  -f, --flow F         x XON/XOFF, h RTS/CTS, n none (x)";
 
 fn main() -> glib::ExitCode {
-    let mut config = Config::default();
-    let mut options = Options::default();
-    let mut args = std::env::args().skip(1);
-    while let Some(arg) = args.next() {
-        match arg.as_str() {
-            "--command" | "--record" => {
-                let Some(value) = args.next() else {
-                    eprintln!("{USAGE}");
-                    return glib::ExitCode::FAILURE;
-                };
-                if arg == "--command" {
-                    options.command = Some(value);
-                } else {
-                    options.record = Some(value.into());
-                }
-            }
-            "--model" => match args.next().as_deref().and_then(parse_model) {
-                Some(model) => config.model = model,
-                None => {
-                    eprintln!("{USAGE}");
-                    return glib::ExitCode::FAILURE;
-                }
-            },
-            _ => {
-                eprintln!("{USAGE}");
-                return glib::ExitCode::FAILURE;
-            }
+    let (config, options) = match parse_args(std::env::args().skip(1)) {
+        Ok(parsed) => parsed,
+        Err(msg) if msg == "help" => {
+            println!("{USAGE}");
+            return glib::ExitCode::SUCCESS;
         }
-    }
+        Err(msg) => {
+            eprintln!("veetee: {msg}\n\n{USAGE}");
+            return glib::ExitCode::FAILURE;
+        }
+    };
 
     let app = adw::Application::builder()
         .application_id(APP_ID)
@@ -62,7 +55,74 @@ fn main() -> glib::ExitCode {
 #[derive(Debug, Clone, Default)]
 struct Options {
     command: Option<String>,
+    serial: Option<SerialConfig>,
     record: Option<std::path::PathBuf>,
+}
+
+fn parse_args(args: impl Iterator<Item = String>) -> Result<(Config, Options), String> {
+    let mut config = Config::default();
+    let mut options = Options::default();
+    let mut line: Vec<(String, String)> = Vec::new();
+    let mut args = args.peekable();
+    while let Some(arg) = args.next() {
+        let mut value = || args.next().ok_or_else(|| format!("{arg} needs a value"));
+        match arg.as_str() {
+            "--model" => {
+                let v = value()?;
+                config.model = parse_model(&v).ok_or_else(|| format!("unknown model {v:?}"))?;
+            }
+            "--command" => options.command = Some(value()?),
+            "--record" => options.record = Some(value()?.into()),
+            "--serial" => options.serial = Some(SerialConfig::new(value()?)),
+            "-b" | "--baud" | "-d" | "--databits" | "-p" | "--parity" | "-s" | "--stopbits"
+            | "-f" | "--flow" => {
+                let v = value()?;
+                line.push((arg, v));
+            }
+            "-h" | "--help" => return Err("help".into()),
+            _ => return Err(format!("unexpected argument {arg:?}")),
+        }
+    }
+    if options.command.is_some() && options.serial.is_some() {
+        return Err("use either --command or --serial, not both".into());
+    }
+    match options.serial.as_mut() {
+        Some(serial) => {
+            for (flag, v) in line {
+                let number = |v: &str| {
+                    v.parse::<u32>()
+                        .map_err(|_| format!("{flag}: not a number: {v:?}"))
+                };
+                match flag.as_str() {
+                    "-b" | "--baud" => serial.baud = number(&v)?,
+                    "-d" | "--databits" => serial.data_bits = number(&v)? as u8,
+                    "-p" | "--parity" => serial.parity = v.parse()?,
+                    "-s" | "--stopbits" => serial.stop_bits = number(&v)? as u8,
+                    _ => serial.flow = v.parse()?,
+                }
+            }
+        }
+        None if !line.is_empty() => return Err("line options need --serial DEVICE".into()),
+        None => {}
+    }
+    Ok((config, options))
+}
+
+/// Opens the connection the options ask for.
+fn open_transport(config: &Config, options: &Options) -> std::io::Result<Box<dyn Transport>> {
+    let (rows, cols, term) = (
+        config.rows as u16,
+        config.cols as u16,
+        config.model.term_name(),
+    );
+    Ok(match (&options.serial, &options.command) {
+        (Some(serial), _) => Box::new(Serial::open(serial.clone())?),
+        (None, Some(cmd)) => Box::new(Pty::spawn("/bin/sh", &["-c", cmd], rows, cols, term)?),
+        (None, None) => {
+            let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/sh".into());
+            Box::new(Pty::spawn::<&str>(&shell, &[], rows, cols, term)?)
+        }
+    })
 }
 
 fn parse_model(name: &str) -> Option<Model> {
@@ -93,7 +153,12 @@ fn model_name(model: Model) -> &'static str {
 }
 
 fn build_window(app: &adw::Application, config: Config, options: &Options) {
-    let connection = options.command.as_deref().unwrap_or("Local shell");
+    let transport = open_transport(&config, options);
+    let connection = match (&transport, &options.command) {
+        (Ok(t), _) if options.serial.is_some() => t.description(),
+        (_, Some(cmd)) => cmd.clone(),
+        _ => "Local shell".to_string(),
+    };
     let base_subtitle = format!("{} · {connection}", model_name(config.model));
     let title = adw::WindowTitle::new("veetee", &base_subtitle);
     let header = adw::HeaderBar::builder().title_widget(&title).build();
@@ -128,15 +193,16 @@ fn build_window(app: &adw::Application, config: Config, options: &Options) {
         .content(&toolbar)
         .build();
 
-    let (session, notices) = match session::Session::local(
-        config,
-        options.command.as_deref(),
-        options.record.as_deref(),
-    ) {
+    let started =
+        transport.and_then(|t| session::Session::start(config, t, options.record.as_deref()));
+    let (session, notices) = match started {
         Ok(s) => s,
         Err(e) => {
-            eprintln!("veetee: cannot start shell: {e}");
-            app.quit();
+            show_fatal_error(
+                &window,
+                &format!("Cannot connect to {connection}"),
+                &e.to_string(),
+            );
             return;
         }
     };
@@ -155,11 +221,22 @@ fn build_window(app: &adw::Application, config: Config, options: &Options) {
             }
         }
     };
+    let keep_open = options.serial.is_some();
     let on_exit = {
-        let (window, session) = (window.downgrade(), session.clone());
-        move || {
+        let (window, session, toasts) = (window.downgrade(), session.clone(), toasts.clone());
+        let connection = connection.clone();
+        move |reason: Option<String>| {
             session.close();
-            if let Some(w) = window.upgrade() {
+            if keep_open {
+                // A serial line going away (e.g. an unplugged adapter) should not
+                // throw away the screen.
+                let msg = match reason {
+                    Some(r) => format!("Connection closed: {r}"),
+                    None => format!("Connection to {connection} closed"),
+                };
+                eprintln!("veetee: {msg}");
+                toasts.add_toast(adw::Toast::builder().title(msg).timeout(0).build());
+            } else if let Some(w) = window.upgrade() {
                 w.close();
             }
         }
@@ -224,4 +301,66 @@ fn build_window(app: &adw::Application, config: Config, options: &Options) {
     });
     window.present();
     view.widget().grab_focus();
+}
+
+/// Shows an error in place of a terminal and closes the window when dismissed.
+fn show_fatal_error(window: &adw::ApplicationWindow, heading: &str, detail: &str) {
+    eprintln!("veetee: {heading}: {detail}");
+    window.present();
+    let dialog = adw::AlertDialog::new(Some(heading), Some(detail));
+    dialog.add_response("close", "Close");
+    let weak = window.downgrade();
+    dialog.connect_response(None, move |_, _| {
+        if let Some(w) = weak.upgrade() {
+            w.close();
+        }
+    });
+    dialog.present(Some(window));
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use vt_transport::serial::{FlowControl, Parity};
+
+    fn parse(args: &[&str]) -> Result<(Config, Options), String> {
+        parse_args(args.iter().map(|a| a.to_string()))
+    }
+
+    #[test]
+    fn picocom_style_serial_options() {
+        let (_, o) = parse(&[
+            "--serial",
+            "/dev/ttyUSB0",
+            "-b",
+            "19200",
+            "-d",
+            "7",
+            "-p",
+            "e",
+            "-s",
+            "2",
+            "-f",
+            "n",
+        ])
+        .unwrap();
+        let s = o.serial.unwrap();
+        assert_eq!(
+            (s.baud, s.data_bits, s.parity, s.stop_bits, s.flow),
+            (19200, 7, Parity::Even, 2, FlowControl::None)
+        );
+    }
+
+    #[test]
+    fn serial_defaults_are_dec_factory_settings() {
+        let (_, o) = parse(&["--serial", "/dev/ttyS0"]).unwrap();
+        assert_eq!(o.serial.unwrap().to_string(), "/dev/ttyS0 9600 8N1");
+    }
+
+    #[test]
+    fn rejects_conflicting_or_orphaned_options() {
+        assert!(parse(&["--serial", "/dev/ttyS0", "--command", "sh"]).is_err());
+        assert!(parse(&["-b", "9600"]).is_err());
+        assert!(parse(&["--serial", "/dev/ttyS0", "-p", "q"]).is_err());
+    }
 }
