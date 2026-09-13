@@ -110,8 +110,10 @@ fn build_window(app: &adw::Application, config: Config, options: Options) {
                 return;
             }
         };
+        let phosphor = phosphor_named(&options.phosphor);
         let workspace =
             workspace::Workspace::new(&window, &title, &toasts, config, options, base_subtitle);
+        workspace.set_theme(Theme::phosphor(phosphor));
         workspace.add_session(session, notices);
         if workspace.sessions_to_open() > 1 {
             workspace.open_session();
@@ -120,11 +122,20 @@ fn build_window(app: &adw::Application, config: Config, options: Options) {
     });
 }
 
+fn phosphor_named(name: &str) -> Phosphor {
+    match name {
+        "green" => Phosphor::Green,
+        "amber" => Phosphor::Amber,
+        _ => Phosphor::White,
+    }
+}
+
 fn add_session_actions(window: &adw::ApplicationWindow, workspace: &Rc<workspace::Workspace>) {
+    let initial = workspace.phosphor();
     let phosphor_action = gio::SimpleAction::new_stateful(
         "phosphor",
         Some(glib::VariantTy::STRING),
-        &"white".to_variant(),
+        &initial.to_variant(),
     );
     phosphor_action.connect_activate({
         let workspace = workspace.clone();
@@ -132,13 +143,8 @@ fn add_session_actions(window: &adw::ApplicationWindow, workspace: &Rc<workspace
             let Some(name) = param.and_then(|p| p.str().map(str::to_owned)) else {
                 return;
             };
-            let p = match name.as_str() {
-                "green" => Phosphor::Green,
-                "amber" => Phosphor::Amber,
-                _ => Phosphor::White,
-            };
             action.set_state(&name.to_variant());
-            workspace.set_theme(Theme::phosphor(p));
+            workspace.set_theme(Theme::phosphor(phosphor_named(&name)));
         }
     });
     window.add_action(&phosphor_action);

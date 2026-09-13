@@ -5,6 +5,10 @@ milestones (0.3 = M3). The format follows [Keep a Changelog](https://keepachange
 
 ## [Unreleased]
 
+- `--phosphor white|green|amber` selects the phosphor colour at start.
+- Project website in `site/`, published with GitHub Pages; screenshots are regenerated from
+  veetee's renderer with `site/capture/capture.sh`.
+
 ## [0.4.0] - 2026-09-13
 
 Milestone M4: the VT510, VT520 and VT525.

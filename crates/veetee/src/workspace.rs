@@ -364,6 +364,10 @@ impl Workspace {
         }
     }
 
+    pub fn phosphor(&self) -> String {
+        self.options.phosphor.clone()
+    }
+
     pub fn sessions_to_open(&self) -> u8 {
         self.options.sessions
     }

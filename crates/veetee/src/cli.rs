@@ -24,6 +24,7 @@ options:
   --port PORT            TCP port for --telnet or --ssh
   --record FILE          append everything the host sends to FILE
   --sessions N           open 1 or 2 sessions (2 splits the window, F4 switches)
+  --phosphor COLOUR      white (P4, default), green (P1) or amber (P3)
 
 serial line options (picocom style; defaults are DEC factory Set-Up):
   -b, --baud RATE        bits per second (9600)
@@ -77,6 +78,8 @@ pub struct Options {
     pub record: Option<PathBuf>,
     /// Sessions to open at start: 1, or 2 for a split window.
     pub sessions: u8,
+    /// Phosphor colour: "white", "green" or "amber".
+    pub phosphor: String,
 }
 
 pub enum Parsed {
@@ -88,6 +91,7 @@ pub fn parse_args(args: impl Iterator<Item = String>) -> Result<Parsed, String> 
     let mut config = Config::default();
     let mut options = Options {
         sessions: 1,
+        phosphor: "white".into(),
         ..Options::default()
     };
     let mut line: Vec<(String, String)> = Vec::new();
@@ -104,6 +108,14 @@ pub fn parse_args(args: impl Iterator<Item = String>) -> Result<Parsed, String> 
             }
             "--record" => {
                 options.record = Some(value()?.into());
+                None
+            }
+            "--phosphor" => {
+                let v = value()?;
+                if !matches!(v.as_str(), "white" | "green" | "amber") {
+                    return Err(format!("--phosphor: white, green or amber, not {v:?}"));
+                }
+                options.phosphor = v;
                 None
             }
             "--sessions" => {

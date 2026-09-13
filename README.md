@@ -64,7 +64,7 @@ selected model), window size and suppress-go-ahead; F5 sends a Telnet BREAK. SSH
 `TERM` set to the emulated model. Network and serial sessions keep their window open when the
 connection closes, so the final screen can still be read and copied.
 
-The phosphor colour (white P4, green P1, amber P3) and full screen are in the window menu. Below
+The phosphor colour (white P4, green P1, amber P3; `--phosphor green` at start) and full screen are in the window menu. Below
 the page is the VT420 indicator status line (reverse video: printer, Hold Screen, keyboard lock,
 page number and cursor position); hosts can switch it to a host-writable status line.
 

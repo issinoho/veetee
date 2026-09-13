@@ -1,0 +1,5 @@
+*.bin
+*.ppm
+hero.sh
+colour.sh
+graphics.sh

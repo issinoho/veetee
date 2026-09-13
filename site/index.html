@@ -1,0 +1,543 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>veetee — the DEC VT terminal, kept alive</title>
+<meta name="description" content="veetee is an open-source DEC VT52–VT525 terminal emulator for the Linux desktop, built from DEC's own manuals for OpenVMS and every host that still speaks VT.">
+<meta property="og:title" content="veetee — the DEC VT terminal, kept alive">
+<meta property="og:description" content="VT52 to VT525 for the Linux desktop. Built from the manuals. Tested against vttest and esctest2.">
+<meta property="og:image" content="img/vt420-order-entry.png">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect x='4' y='6' width='56' height='44' rx='8' fill='%23d8cfbb'/%3E%3Crect x='11' y='12' width='42' height='31' rx='5' fill='%23061208'/%3E%3Ctext x='15' y='33' font-family='monospace' font-size='16' fill='%2333ff66'%3E%3E_%3C/text%3E%3Crect x='18' y='52' width='28' height='6' rx='2' fill='%23b9ae95'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=Space+Grotesk:wght@400;500;700&family=VT323&display=swap" rel="stylesheet">
+<style>
+:root {
+  --ink: #0a0c0b;
+  --ink-2: #111513;
+  --ink-3: #1a201d;
+  --line: #26302b;
+  --text: #d9e2dc;
+  --muted: #8a978f;
+  --green: #33ff66;
+  --green-dim: #1f9a41;
+  --amber: #ffb000;
+  --white: #e8f0ff;
+  --beige: #d8cfbb;
+  --beige-dark: #b9ae95;
+  --key: #2f3130;
+  --key-top: #3c3f3d;
+  --paper: #f4f1e4;
+  --bar: #cfe6cf;
+  --radius: 14px;
+  --display: "Space Grotesk", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --term: "VT323", "IBM Plex Mono", ui-monospace, monospace;
+  --mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body {
+  margin: 0;
+  background: var(--ink);
+  color: var(--text);
+  font: 17px/1.6 var(--display);
+  -webkit-font-smoothing: antialiased;
+}
+img { max-width: 100%; display: block; }
+a { color: var(--green); text-decoration: none; }
+a:hover { text-decoration: underline; }
+.wrap { max-width: 1180px; margin: 0 auto; padding-inline: 24px; }
+section { padding-block: 96px; }
+.eyebrow {
+  font-family: var(--term);
+  font-size: 22px;
+  letter-spacing: .08em;
+  color: var(--green);
+  text-transform: uppercase;
+  margin: 0 0 12px;
+}
+h1, h2, h3 { font-family: var(--display); margin: 0; line-height: 1.1; }
+h2 { font-size: clamp(32px, 4.4vw, 52px); letter-spacing: -.02em; }
+h3 { font-size: 21px; }
+p.lead { font-size: 20px; color: var(--muted); max-width: 720px; }
+
+/* ---------------------------------------------------------------- top bar */
+.top {
+  position: sticky; top: 0; z-index: 20;
+  background: rgba(10, 12, 11, .82);
+  backdrop-filter: blur(10px);
+  border-bottom: 1px solid var(--line);
+}
+.top .wrap { display: flex; align-items: center; justify-content: space-between; height: 64px; gap: 16px; }
+.brand { display: flex; align-items: center; gap: 12px; font-family: var(--term); font-size: 30px; color: var(--text); }
+.brand:hover { text-decoration: none; }
+.brand .cursor { width: 12px; height: 22px; background: var(--green); display: inline-block; animation: blink 1.06s steps(1) infinite; margin-left: -6px; }
+@keyframes blink { 50% { opacity: 0; } }
+.top nav { display: flex; gap: 22px; font-size: 15px; }
+.top nav a { color: var(--muted); }
+.top nav a:hover { color: var(--text); text-decoration: none; }
+
+/* ------------------------------------------------------------------ hero */
+.hero { padding-block: 72px 40px; position: relative; overflow: hidden; }
+.hero::before {
+  content: ""; position: absolute; inset: -20% -10% auto -10%; height: 80%;
+  background: radial-gradient(ellipse at 70% 40%, rgba(51, 255, 102, .10), transparent 60%);
+  pointer-events: none;
+}
+.hero .wrap { display: grid; grid-template-columns: 1fr 1.1fr; gap: 56px; align-items: center; }
+.models { font-family: var(--term); font-size: 22px; color: var(--muted); letter-spacing: .06em; }
+.models b { color: var(--green); font-weight: normal; }
+.hero h1 { font-size: clamp(44px, 6.2vw, 80px); letter-spacing: -.035em; margin: 14px 0 22px; }
+.hero h1 em { font-style: normal; color: var(--green); text-shadow: 0 0 24px rgba(51, 255, 102, .45); }
+.hero p { font-size: 20px; color: #b7c3bb; margin: 0 0 32px; max-width: 540px; }
+.cta { display: flex; flex-wrap: wrap; gap: 14px; align-items: center; }
+.version { font-family: var(--mono); font-size: 14px; color: var(--muted); }
+
+/* --------------------------------------------------------------- keycaps */
+.key {
+  --cap: var(--key-top);
+  display: inline-flex; flex-direction: column; justify-content: space-between;
+  min-width: 76px; min-height: 64px; padding: 8px 12px 10px;
+  border-radius: 9px;
+  background: linear-gradient(180deg, var(--cap), var(--key));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .12), 0 5px 0 #151616, 0 7px 14px rgba(0, 0, 0, .5);
+  color: #e9e7df; font-family: var(--display); font-size: 12px; line-height: 1.15; letter-spacing: .02em;
+  transition: transform .06s, box-shadow .06s;
+  text-align: left;
+}
+.key:hover { text-decoration: none; filter: brightness(1.08); }
+.key:active { transform: translateY(4px); box-shadow: inset 0 1px 0 rgba(255, 255, 255, .12), 0 1px 0 #151616, 0 2px 6px rgba(0, 0, 0, .5); }
+.key small { font-size: 10px; color: #b8b5aa; text-transform: uppercase; }
+.key strong { font-size: 16px; font-weight: 500; }
+.key.light { --cap: #ece6d6; --key: #cfc6b1; color: #25231e; box-shadow: inset 0 1px 0 #fff8, 0 5px 0 #8f8671, 0 7px 14px rgba(0, 0, 0, .45); }
+.key.light small { color: #6d665a; }
+.key.gold { --cap: #d9a531; --key: #b8861c; color: #1c1406; box-shadow: inset 0 1px 0 #fff6, 0 5px 0 #6b4c0e, 0 7px 14px rgba(0, 0, 0, .45); }
+.key.gold small { color: #4a360d; }
+.key.wide { min-width: 170px; }
+
+/* ------------------------------------------------------------------- CRT */
+.crt {
+  position: relative;
+  padding: 26px 26px 42px;
+  border-radius: 28px 28px 34px 34px;
+  background: linear-gradient(160deg, #e4dcc9 0%, var(--beige) 45%, var(--beige-dark) 100%);
+  box-shadow: inset 0 2px 0 #fff9, inset 0 -6px 12px rgba(0, 0, 0, .18), 0 30px 60px rgba(0, 0, 0, .55);
+}
+.crt::after {
+  content: "veetee"; position: absolute; left: 34px; bottom: 12px;
+  font: 600 12px/1 var(--display); letter-spacing: .28em; text-transform: uppercase; color: #7c735f;
+}
+.crt .led { position: absolute; right: 36px; bottom: 16px; width: 9px; height: 9px; border-radius: 50%; background: #3dff72; box-shadow: 0 0 8px #3dff72; }
+.screen {
+  position: relative; overflow: hidden;
+  border-radius: 22px / 18px;
+  background: #050605;
+  box-shadow: inset 0 0 0 6px #1b1c1a, inset 0 0 40px rgba(0, 0, 0, .9);
+  aspect-ratio: 1024 / 774;
+}
+.screen img { width: 100%; height: 100%; object-fit: cover; transition: filter .35s; }
+.screen::before {
+  content: ""; position: absolute; inset: 0; z-index: 2; pointer-events: none;
+  background: repeating-linear-gradient(180deg, rgba(0, 0, 0, .0) 0 2px, rgba(0, 0, 0, .22) 2px 3px);
+  mix-blend-mode: multiply;
+}
+.screen::after {
+  content: ""; position: absolute; inset: 0; z-index: 3; pointer-events: none;
+  background: radial-gradient(ellipse at center, transparent 55%, rgba(0, 0, 0, .55) 100%);
+  box-shadow: inset 0 0 0 6px #1b1c1a;
+  border-radius: inherit;
+}
+.flicker img { animation: flicker 6s infinite; }
+@keyframes flicker { 0%, 100% { opacity: 1; } 47% { opacity: .96; } 48% { opacity: 1; } 71% { opacity: .98; } }
+.screen.p1 img { filter: sepia(1) hue-rotate(66deg) saturate(4.2) brightness(.95); }
+.screen.p3 img { filter: sepia(1) hue-rotate(-14deg) saturate(3.6) brightness(1.02); }
+
+.phosphor { display: flex; gap: 10px; align-items: center; margin-top: 18px; justify-content: center; font-size: 13px; color: var(--muted); }
+.phosphor button {
+  font: 500 13px var(--display); color: var(--text); cursor: pointer;
+  background: var(--ink-3); border: 1px solid var(--line); border-radius: 999px; padding: 6px 14px;
+  display: inline-flex; gap: 8px; align-items: center;
+}
+.phosphor button[aria-pressed="true"] { border-color: var(--green-dim); background: #13241a; }
+.phosphor i { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+
+/* -------------------------------------------------------- front panel rule */
+.panel {
+  background: linear-gradient(180deg, #2a1830, #1d1022);
+  border-block: 1px solid #3c2544;
+  padding-block: 18px;
+}
+.panel .wrap { display: flex; gap: 6px; justify-content: center; flex-wrap: wrap; }
+.switch {
+  width: 22px; height: 46px; border-radius: 4px;
+  box-shadow: inset 0 -8px 0 rgba(0, 0, 0, .25), 0 3px 0 rgba(0, 0, 0, .5);
+}
+.switch.m { background: linear-gradient(180deg, #e04d8f, #b8326f); }
+.switch.p { background: linear-gradient(180deg, #8d5ad0, #6c3fae); }
+.switch.r { background: linear-gradient(180deg, #e4503b, #b73728); }
+.switch.gap { margin-left: 14px; }
+.switch.up { box-shadow: inset 0 8px 0 rgba(255, 255, 255, .22), 0 3px 0 rgba(0, 0, 0, .5); }
+.panel .lamps { display: flex; gap: 10px; justify-content: center; margin-bottom: 14px; }
+.lamp { width: 10px; height: 10px; border-radius: 50%; background: #5a2b17; }
+.lamp.on { background: #ff9a3c; box-shadow: 0 0 10px #ff8a1c; }
+
+/* -------------------------------------------------------------- features */
+.grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 22px; margin-top: 48px; }
+.feature {
+  background: linear-gradient(180deg, var(--ink-2), var(--ink));
+  border: 1px solid var(--line); border-radius: var(--radius);
+  padding: 22px; position: relative;
+}
+.feature .key { margin-bottom: 18px; pointer-events: none; }
+.feature p { color: var(--muted); margin: 8px 0 0; font-size: 15.5px; }
+
+/* ------------------------------------------------------------- gallery */
+.gallery { display: grid; grid-template-columns: repeat(6, 1fr); gap: 28px; margin-top: 48px; }
+.shot { grid-column: span 3; margin: 0; }
+.shot.big { grid-column: span 6; }
+.shot .crt { padding: 18px 18px 34px; border-radius: 22px 22px 26px 26px; }
+.shot .crt::after { left: 26px; bottom: 10px; font-size: 10px; }
+.shot .crt .led { right: 26px; bottom: 13px; width: 7px; height: 7px; }
+.shot figcaption { margin-top: 16px; color: var(--muted); font-size: 15px; }
+.shot figcaption b { color: var(--text); font-weight: 500; }
+.window-shot { border-radius: 12px; overflow: hidden; border: 1px solid var(--line); box-shadow: 0 30px 60px rgba(0, 0, 0, .55); max-width: 1024px; margin: 0 auto; }
+.window-shot img { width: 100%; height: auto; }
+.shot.big figcaption { max-width: 1024px; margin-inline: auto; }
+
+/* ------------------------------------------------------------ green bar */
+.greenbar {
+  --hole: #0a0c0b;
+  margin-top: 48px;
+  background:
+    radial-gradient(circle at 18px 18px, var(--hole) 6px, transparent 7px) left top / 36px 36px repeat-y,
+    radial-gradient(circle at calc(100% - 18px) 18px, var(--hole) 6px, transparent 7px) right top / 36px 36px repeat-y,
+    repeating-linear-gradient(180deg, var(--bar) 0 72px, var(--paper) 72px 144px);
+  color: #20301f;
+  border-radius: 4px;
+  padding: 36px 64px;
+  font-family: var(--term);
+  font-size: 23px;
+  line-height: 36px;
+  box-shadow: 0 24px 50px rgba(0, 0, 0, .5);
+  position: relative;
+}
+.greenbar::before, .greenbar::after {
+  content: ""; position: absolute; top: 0; bottom: 0; width: 1px;
+  background: repeating-linear-gradient(180deg, #9db59d 0 6px, transparent 6px 10px);
+}
+.greenbar::before { left: 40px; }
+.greenbar::after { right: 40px; }
+.listing-head { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 8px; }
+.timeline { list-style: none; padding: 0; margin: 36px 0 0; }
+.timeline li { display: grid; grid-template-columns: 90px 170px 1fr; gap: 16px; }
+.timeline .year { color: #56704f; }
+.timeline .model { font-weight: bold; color: #10200f; }
+.timeline .note { color: #2f452e; }
+
+/* ---------------------------------------------------------- conformance */
+.stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 22px; margin-top: 48px; }
+.stat { border: 1px solid var(--line); border-radius: var(--radius); padding: 26px; background: var(--ink-2); }
+.stat .n { font-family: var(--term); font-size: 64px; line-height: 1; color: var(--green); text-shadow: 0 0 18px rgba(51, 255, 102, .35); }
+.stat .l { color: var(--muted); font-size: 15px; margin-top: 10px; }
+.manuals { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 36px; }
+.manual {
+  font-family: var(--mono); font-size: 13px; color: #1f1b14;
+  background: linear-gradient(180deg, #f1ead8, #ddd2b8); border-radius: 3px;
+  padding: 10px 14px 10px 22px; position: relative;
+  box-shadow: 0 2px 0 #9c9276, 0 6px 12px rgba(0, 0, 0, .35);
+}
+.manual::before { content: ""; position: absolute; left: 7px; top: 6px; bottom: 6px; width: 4px; background: repeating-linear-gradient(180deg, #7b1d2b 0 3px, transparent 3px 7px); }
+blockquote {
+  margin: 40px 0 0; padding: 26px 30px; border-left: 4px solid var(--green);
+  background: var(--ink-2); border-radius: 0 var(--radius) var(--radius) 0;
+  font-size: 22px; color: var(--text);
+}
+blockquote cite { display: block; margin-top: 10px; font-size: 14px; color: var(--muted); font-style: normal; }
+
+/* ------------------------------------------------------------- terminal */
+.term {
+  background: #040705; border: 1px solid var(--line); border-radius: var(--radius);
+  font-family: var(--term); font-size: 22px; line-height: 1.35; color: var(--green);
+  padding: 22px 26px; overflow-x: auto; white-space: pre;
+  text-shadow: 0 0 8px rgba(51, 255, 102, .35);
+}
+.term .c { color: var(--green-dim); }
+.term.amber { color: var(--amber); text-shadow: 0 0 8px rgba(255, 176, 0, .35); }
+.term.amber .c { color: #a8741a; }
+.two { display: grid; grid-template-columns: 1fr 1fr; gap: 40px; align-items: start; margin-top: 44px; }
+.two > div { min-width: 0; }
+.two h3 { margin-bottom: 12px; }
+.two p { color: var(--muted); }
+
+/* ------------------------------------------------------------- roadmap */
+.leds { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-top: 44px; }
+.milestone { display: flex; gap: 14px; align-items: flex-start; padding: 16px 18px; border: 1px solid var(--line); border-radius: 12px; background: var(--ink-2); }
+.milestone .dot { flex: none; width: 14px; height: 14px; margin-top: 5px; border-radius: 50%; background: #1d2a20; border: 1px solid #2c3d31; }
+.milestone.done .dot { background: var(--green); border-color: var(--green); box-shadow: 0 0 10px var(--green); }
+.milestone.next .dot { background: var(--amber); border-color: var(--amber); box-shadow: 0 0 10px var(--amber); animation: blink 1.4s steps(1) infinite; }
+.milestone b { display: block; font-weight: 500; }
+.milestone span { color: var(--muted); font-size: 14px; }
+
+footer { border-top: 1px solid var(--line); padding-block: 44px; color: var(--muted); font-size: 14px; }
+footer .wrap { display: grid; grid-template-columns: 1fr 1fr; gap: 32px; }
+footer p { margin: 0 0 8px; }
+
+@media (max-width: 900px) {
+  .hero .wrap, .two, footer .wrap { grid-template-columns: 1fr; }
+  .stats { grid-template-columns: repeat(2, 1fr); }
+  .shot, .shot.big { grid-column: span 6; }
+  .top nav { display: none; }
+  .greenbar { padding: 30px 48px; font-size: 20px; }
+  .timeline li { grid-template-columns: 64px 1fr; }
+  .timeline .note { grid-column: 1 / -1; margin-bottom: 12px; line-height: 28px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .flicker img, .brand .cursor, .milestone.next .dot { animation: none; }
+  html { scroll-behavior: auto; }
+}
+</style>
+</head>
+<body>
+
+<header class="top">
+  <div class="wrap">
+    <a class="brand" href="#top">veetee<span class="cursor" aria-hidden="true"></span></a>
+    <nav aria-label="Sections">
+      <a href="#screens">Screens</a>
+      <a href="#features">Features</a>
+      <a href="#heritage">Heritage</a>
+      <a href="#conformance">Conformance</a>
+      <a href="#install">Install</a>
+      <a href="https://github.com/issinoho/veetee">GitHub</a>
+    </nav>
+  </div>
+</header>
+
+<main id="top">
+  <section class="hero">
+    <div class="wrap">
+      <div>
+        <div class="models"><b>VT52</b> · VT100 · VT220 · VT320 · <b>VT420</b> · VT520 · VT525</div>
+        <h1>The DEC terminal,<br><em>kept alive.</em></h1>
+        <p>veetee is an open-source DEC VT terminal for the Linux desktop. It is built from DEC's own programmer references and tested screen by screen, so OpenVMS, DECforms, FMS and EDT behave exactly as they did on the glass.</p>
+        <div class="cta">
+          <a class="key gold wide" href="https://github.com/issinoho/veetee/releases/latest"><small>PF1 · Gold</small><strong>Download 0.4.0</strong></a>
+          <a class="key light" href="https://github.com/issinoho/veetee"><small>Find</small><strong>Source</strong></a>
+          <a class="key" href="https://github.com/issinoho/veetee/wiki"><small>Help</small><strong>Wiki</strong></a>
+        </div>
+        <p class="version" style="margin-top:22px">Linux · GTK 4 · MIT or Apache-2.0 · .deb and tarball</p>
+      </div>
+      <div>
+        <div class="crt">
+          <div class="screen flicker" id="hero-screen">
+            <img src="img/vt420-order-entry.png" alt="veetee emulating a VT420: an order entry form drawn with DEC Special Graphics, double-height heading, underlined fields and the indicator status line" width="1024" height="774">
+          </div>
+          <span class="led" aria-hidden="true"></span>
+        </div>
+        <div class="phosphor" role="group" aria-label="Phosphor colour">
+          <span>Phosphor</span>
+          <button type="button" data-p="p4" aria-pressed="true"><i style="background:#e8f0ff"></i>P4 white</button>
+          <button type="button" data-p="p1" aria-pressed="false"><i style="background:#33ff66"></i>P1 green</button>
+          <button type="button" data-p="p3" aria-pressed="false"><i style="background:#ffb000"></i>P3 amber</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <div class="panel" aria-hidden="true">
+    <div class="wrap">
+      <div style="width:100%">
+        <div class="lamps">
+          <span class="lamp on"></span><span class="lamp"></span><span class="lamp on"></span><span class="lamp on"></span><span class="lamp"></span><span class="lamp"></span><span class="lamp on"></span><span class="lamp"></span><span class="lamp on"></span><span class="lamp"></span><span class="lamp on"></span><span class="lamp on"></span><span class="lamp"></span><span class="lamp on"></span><span class="lamp"></span><span class="lamp"></span><span class="lamp on"></span><span class="lamp"></span>
+        </div>
+        <div class="wrap" style="padding:0">
+          <span class="switch m up"></span><span class="switch m"></span><span class="switch m up"></span>
+          <span class="switch p gap"></span><span class="switch p up"></span><span class="switch p"></span>
+          <span class="switch m gap up"></span><span class="switch m"></span><span class="switch m"></span>
+          <span class="switch p gap"></span><span class="switch p up"></span><span class="switch p up"></span>
+          <span class="switch m gap"></span><span class="switch m up"></span><span class="switch m"></span>
+          <span class="switch p gap up"></span><span class="switch p"></span><span class="switch p up"></span>
+          <span class="switch r gap"></span><span class="switch r up"></span><span class="switch r"></span><span class="switch r"></span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <section id="screens">
+    <div class="wrap">
+      <p class="eyebrow">Real screens, real renderer</p>
+      <h2>Every screenshot is veetee.</h2>
+      <p class="lead">No mock-ups: each screen was captured from veetee's own OpenGL renderer, running vttest or a demo script. DEC-style bitmap fonts are drawn dot by dot, with scan lines, double-size lines made by doubling the dots, and 132 columns that really narrow the characters.</p>
+
+      <div class="gallery">
+        <figure class="shot">
+          <div class="crt"><div class="screen"><img loading="lazy" src="img/vttest-green.png" alt="The vttest main menu running inside veetee in green phosphor" width="1024" height="774"></div><span class="led"></span></div>
+          <figcaption><b>vttest, live.</b> The classic VT100 test program, run inside veetee in P1 green. Its menus are scripted and checked on every commit.</figcaption>
+        </figure>
+        <figure class="shot">
+          <div class="crt"><div class="screen"><img loading="lazy" src="img/vt420-132-amber.png" alt="A 132-column directory listing with a column ruler and a double-height line in amber phosphor" width="1024" height="774"></div><span class="led"></span></div>
+          <figcaption><b>132 columns in P3 amber.</b> DECCOLM narrows the glyphs just like the hardware, and double-height lines are drawn by doubling the dots.</figcaption>
+        </figure>
+        <figure class="shot">
+          <div class="crt"><div class="screen"><img loading="lazy" src="img/vt420-graphics.png" alt="DEC Special Graphics tables, scan-line characters, DEC Technical symbols and double-size text" width="1024" height="774"></div><span class="led"></span></div>
+          <figcaption><b>The DEC character sets.</b> Special Graphics boxes and scan lines, DEC Technical, national replacement sets, soft fonts and every rendition combination.</figcaption>
+        </figure>
+        <figure class="shot">
+          <div class="crt"><div class="screen"><img loading="lazy" src="img/vt525-colour.png" alt="A colour status dashboard using ANSI SGR colours on the VT525 model" width="1024" height="774"></div><span class="led"></span></div>
+          <figcaption><b>VT525 colour.</b> SGR colours, alternate text colours for attribute combinations, and a host-loadable 16-colour map reported in RGB or DEC HLS.</figcaption>
+        </figure>
+        <figure class="shot big">
+          <div class="window-shot"><img loading="lazy" src="img/dual-sessions.png" alt="A veetee window split into two sessions, VMS1 order entry above and VMS2 queue monitor below, each with its own title bar" width="1024" height="820"></div>
+          <figcaption><b>Dual sessions, as on a VT520.</b> Two hosts in one window, each with its own pages, character sets and status line. F4 is the Session key, and host session names become the title bars.</figcaption>
+        </figure>
+      </div>
+    </div>
+  </section>
+
+  <section id="features" style="background:linear-gradient(180deg,var(--ink),var(--ink-2) 40%,var(--ink))">
+    <div class="wrap">
+      <p class="eyebrow">Built from the manuals</p>
+      <h2>The features legacy hosts depend on.</h2>
+      <p class="lead">General-purpose terminals stop at "mostly VT100". veetee implements the DEC functions that OpenVMS applications actually use, level by level, from VT52 to VT525.</p>
+      <div class="grid">
+        <div class="feature"><span class="key gold"><small>PF1</small><strong>Gold</strong></span><h3>A proper LK401 keypad</h3><p>PF1–PF4, the editing keypad, Help, Do and F6–F20 in their DEC positions, with application keypad modes, UDKs and 7- or 8-bit codes. EDT and EVE feel right at once.</p></div>
+        <div class="feature"><span class="key"><small>DECSCA</small><strong>Protect</strong></span><h3>DECforms and FMS fields</h3><p>Protected fields with selective erase, status lines, double-size banners, DEC Special Graphics and 132-column switching: everything a forms application expects.</p></div>
+        <div class="feature"><span class="key light"><small>DECDLD</small><strong>Soft font</strong></span><h3>Soft fonts and charsets</h3><p>Downloadable character sets, 17 national replacement sets, DEC Supplemental, DEC Technical, ISO Latin, and the VT500 Greek, Hebrew, Turkish and Cyrillic sets.</p></div>
+        <div class="feature"><span class="key"><small>DECCRA</small><strong>Rectangle</strong></span><h3>VT420 rectangles and pages</h3><p>Left/right margins, rectangular copy, fill, erase and attribute changes, checksums that match the hardware, page memory, macros and state reports.</p></div>
+        <div class="feature"><span class="key light"><small>F4</small><strong>Session</strong></span><h3>Dual sessions</h3><p>Two independent sessions in a split window, just like a VT520 on two comm lines. The host can name each session and make it active.</p></div>
+        <div class="feature"><span class="key gold"><small>F5</small><strong>Break</strong></span><h3>Telnet, SSH and serial</h3><p>Native Telnet with binary mode and BREAK, SSH through your OpenSSH setup, and serial lines at DEC factory defaults (9600 8N1 XON/XOFF). LAT is on the roadmap.</p></div>
+        <div class="feature"><span class="key"><small>F1</small><strong>Hold Screen</strong></span><h3>Power-user touches</h3><p>Hold Screen with real flow control, answerback, copy that understands VMS file specs, session recording, and phosphor, scan-line and dot-stretch rendering.</p></div>
+        <div class="feature"><span class="key light"><small>SET TERM</small><strong>Inquire</strong></span><h3>Honest identity</h3><p>Device attributes, mode reports, DECRQSS and terminal state reports answer as the chosen model, so <code>SET TERMINAL/INQUIRE</code> sees the terminal you picked.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="heritage">
+    <div class="wrap">
+      <p class="eyebrow">Heritage</p>
+      <h2>Fifty years of glass, one terminal.</h2>
+      <p class="lead">Each generation of DEC video terminal added something that applications came to rely on. veetee emulates the whole line, with each model's own identity and conformance levels.</p>
+      <div class="greenbar" role="region" aria-label="DEC terminal timeline">
+        <div class="listing-head"><span>VEETEE LINEAGE REPORT</span><span>PAGE 1</span></div>
+        <ul class="timeline">
+          <li><span class="year">1975</span><span class="model">VT52</span><span class="note">Escape-sequence cursor control; still reachable through ANSI mode reset.</span></li>
+          <li><span class="year">1978</span><span class="model">VT100</span><span class="note">ANSI X3.64 sequences, scrolling regions, double-size lines, Special Graphics.</span></li>
+          <li><span class="year">1983</span><span class="model">VT220</span><span class="note">8-bit controls, national sets, soft fonts, user-defined keys, protected fields.</span></li>
+          <li><span class="year">1987</span><span class="model">VT320</span><span class="note">ISO Latin-1, status lines, presentation and mode reports.</span></li>
+          <li><span class="year">1990</span><span class="model">VT420</span><span class="note">Left/right margins, rectangles, page memory, macros, dual sessions.</span></li>
+          <li><span class="year">1994</span><span class="model">VT520 · VT525</span><span class="note">VT500 character sets, cursor styles, framed sessions, colour on the VT525.</span></li>
+          <li><span class="year">2026</span><span class="model">veetee 0.4.0</span><span class="note">All of the above, on a Linux desktop near you. Default: VT420.</span></li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <section id="conformance" style="background:var(--ink-2)">
+    <div class="wrap">
+      <p class="eyebrow">Proof, not promises</p>
+      <h2>Tested like it was 1987.</h2>
+      <p class="lead">Behaviour comes from DEC's documentation, and every claim is checked against the test suites the terminal community has trusted for decades.</p>
+      <div class="stats">
+        <div class="stat"><div class="n">18</div><div class="l">vttest scripts across menus 1–8 and 11.1–11.4, compared with golden screens on every commit</div></div>
+        <div class="stat"><div class="n">368</div><div class="l">esctest2 tests pass at VT level 5; every other difference is written down with its DEC reason</div></div>
+        <div class="stat"><div class="n">267</div><div class="l">unit tests on the terminal model, written against the manual sections they cite</div></div>
+        <div class="stat"><div class="n">0</div><div class="l">xterm-isms by default: autowrap off at power-up, Backspace sends DEL, SU/SD pan through page memory</div></div>
+      </div>
+      <div class="manuals" aria-label="DEC manuals followed">
+        <span class="manual">DEC STD 070</span>
+        <span class="manual">EK-VT100-UG</span>
+        <span class="manual">EK-VT220-RM</span>
+        <span class="manual">EK-VT420-RM</span>
+        <span class="manual">EK-VT510-RM</span>
+        <span class="manual">EK-VT520-RM</span>
+      </div>
+      <blockquote>“DEC documentation first. Where DEC and xterm differ, the DEC behaviour is the default, and xterm behaviour is an opt-in setting.”<cite>— the veetee compatibility matrix</cite></blockquote>
+    </div>
+  </section>
+
+  <section id="install">
+    <div class="wrap">
+      <p class="eyebrow">$ INSTALL/LOG</p>
+      <h2>On the air in a minute.</h2>
+      <div class="two">
+        <div>
+          <h3>Debian and Ubuntu</h3>
+          <p>Download the package from the <a href="https://github.com/issinoho/veetee/releases/latest">latest release</a> and install it. GTK 4.12 and libadwaita 1.5 or later are required.</p>
+          <div class="term"><span class="c"># fetch and install veetee 0.4.0</span>
+$ curl -LO https://github.com/issinoho/veetee/\
+    releases/download/v0.4.0/veetee_0.4.0-1_amd64.deb
+$ sudo apt install ./veetee_0.4.0-1_amd64.deb</div>
+          <h3 style="margin-top:32px">From source</h3>
+          <div class="term"><span class="c"># Rust stable plus GTK 4 development files</span>
+$ sudo apt install libgtk-4-dev libadwaita-1-dev
+$ git clone https://github.com/issinoho/veetee.git
+$ cd veetee && cargo run --release -p veetee</div>
+        </div>
+        <div>
+          <h3>Then connect</h3>
+          <p>Telnet, SSH, serial or a local shell, as any model from VT100 to VT525.</p>
+          <div class="term amber"><span class="c"># a VT420 on your OpenVMS host</span>
+$ veetee --telnet vms1
+<span class="c"># SSH through ~/.ssh/config, green phosphor</span>
+$ veetee --ssh system@vms1 --phosphor green
+<span class="c"># the console port, DEC factory defaults</span>
+$ veetee --serial /dev/ttyUSB0
+<span class="c"># a colour VT525 with two sessions</span>
+$ veetee --model vt525 --sessions 2 --telnet vms1</div>
+          <h3 style="margin-top:32px">On the host</h3>
+          <div class="term"><span class="c">$! let OpenVMS identify the terminal</span>
+$ SET TERMINAL/INQUIRE
+$ SHOW TERMINAL</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="roadmap" style="background:var(--ink-2)">
+    <div class="wrap">
+      <p class="eyebrow">Roadmap</p>
+      <h2>The road to 1.0.</h2>
+      <p class="lead">One milestone per minor release. Lit means shipped.</p>
+      <div class="leds">
+        <div class="milestone done"><span class="dot"></span><div><b>M0 · Foundations</b><span>Parser, CI, fuzzing, headless driver</span></div></div>
+        <div class="milestone done"><span class="dot"></span><div><b>M1 · VT100 / VT52</b><span>Core screen, GL renderer, first font</span></div></div>
+        <div class="milestone done"><span class="dot"></span><div><b>M2 · VT220 / VT320</b><span>Charsets, soft fonts, UDKs, status line</span></div></div>
+        <div class="milestone done"><span class="dot"></span><div><b>M3 · VT420</b><span>Margins, rectangles, pages · 0.3.0</span></div></div>
+        <div class="milestone done"><span class="dot"></span><div><b>M4 · VT520 / VT525</b><span>Colour, sessions, VT500 sets · 0.4.0</span></div></div>
+        <div class="milestone done"><span class="dot"></span><div><b>M5 · Transports</b><span>PTY, Telnet, SSH, serial · LAT to come</span></div></div>
+        <div class="milestone next"><span class="dot"></span><div><b>M6 · Keyboard &amp; apps</b><span>Keymap editor, OpenVMS acceptance</span></div></div>
+        <div class="milestone"><span class="dot"></span><div><b>M7 · Fonts &amp; look</b><span>Full font families, CRT mode, Set-Up</span></div></div>
+        <div class="milestone"><span class="dot"></span><div><b>M8 · 1.0</b><span>Profiles, logging, Flatpak</span></div></div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <div>
+      <p><b style="color:var(--text)">veetee</b> is free software under the MIT or Apache-2.0 licence. Its fonts are original designs under the SIL Open Font License.</p>
+      <p><a href="https://github.com/issinoho/veetee">Source</a> · <a href="https://github.com/issinoho/veetee/releases">Releases</a> · <a href="https://github.com/issinoho/veetee/wiki">Wiki</a> · <a href="https://github.com/issinoho/veetee/blob/main/docs/compat-matrix.md">Compatibility matrix</a></p>
+    </div>
+    <div>
+      <p>DEC, Digital, VT52, VT100, VT220, VT320, VT420, VT520, VT525, LK201, VAX and OpenVMS are trademarks of their respective owners. veetee is an independent project and is not affiliated with or endorsed by them. The artwork on this page is original.</p>
+    </div>
+  </div>
+</footer>
+
+<script>
+(() => {
+  const screen = document.getElementById("hero-screen");
+  const buttons = document.querySelectorAll(".phosphor button");
+  buttons.forEach((button) => {
+    button.addEventListener("click", () => {
+      screen.classList.remove("p1", "p3");
+      if (button.dataset.p !== "p4") screen.classList.add(button.dataset.p);
+      buttons.forEach((b) => b.setAttribute("aria-pressed", String(b === button)));
+    });
+  });
+})();
+</script>
+</body>
+</html>
