@@ -58,7 +58,7 @@ layout(location = 5) in vec2 a_matrix;
 
 uniform vec2 u_viewport;
 
-out vec2 v_local;
+flat out vec2 v_origin;
 flat out int v_glyph;
 flat out int v_flags;
 flat out vec3 v_fg;
@@ -68,7 +68,7 @@ flat out ivec2 v_matrix;
 
 void main() {
     vec2 p = a_rect.xy + a_corner * a_rect.zw;
-    v_local = a_corner;
+    v_origin = a_rect.xy;
     v_glyph = int(a_glyph_flags.x + 0.5);
     v_flags = int(a_glyph_flags.y + 0.5);
     v_fg = a_fg;
@@ -80,7 +80,7 @@ void main() {
 "#;
 
 const FRAGMENT: &str = r#"
-in vec2 v_local;
+flat in vec2 v_origin;
 flat in int v_glyph;
 flat in int v_flags;
 flat in vec3 v_fg;
@@ -88,6 +88,7 @@ flat in vec3 v_bg;
 flat in vec2 v_size;
 flat in ivec2 v_matrix;
 
+uniform vec2 u_viewport;
 uniform sampler2D u_atlas;
 uniform sampler2D u_soft_atlas;
 uniform int u_slot;
@@ -119,6 +120,10 @@ float lit(vec2 d) {
 }
 
 void main() {
+    // Position in the cell from the pixel itself rather than an interpolated
+    // corner: the two triangles of a quad interpolate slightly differently,
+    // which showed as a step half-way along lines.
+    vec2 v_local = (vec2(gl_FragCoord.x, u_viewport.y - gl_FragCoord.y) - v_origin) / v_size;
     vec2 cell = vec2(v_matrix);
     vec2 d = v_local * cell;
     if ((v_flags & 2) != 0) d.y = v_local.y * cell.y * 0.5;
@@ -127,12 +132,16 @@ void main() {
     // Box-filter each pixel: six samples across and two down. In 132-column
     // mode a dot is narrower than a pixel, and fewer samples would drop
     // whole dot columns, giving strokes of uneven weight.
+    // Samples stay inside the cell: one falling past its edge would darken
+    // the edge pixels and break lines that run on into the next cell.
     vec2 dx = dFdx(d);
     vec2 dy = dFdy(d) * 0.25;
+    vec2 last = cell - vec2(0.001);
     float coverage = 0.0;
     for (int i = 0; i < 6; ++i) {
         vec2 offset = dx * ((float(i) + 0.5) / 6.0 - 0.5);
-        coverage += lit(d + offset - dy) + lit(d + offset + dy);
+        coverage += lit(clamp(d + offset - dy, vec2(0.0), last))
+            + lit(clamp(d + offset + dy, vec2(0.0), last));
     }
     coverage /= 12.0;
 

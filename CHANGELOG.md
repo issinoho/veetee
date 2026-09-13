@@ -5,6 +5,10 @@ milestones (0.3 = M3). The format follows [Keep a Changelog](https://keepachange
 
 ## [Unreleased]
 
+- Fixed: box-drawing and other lines that run across cells showed a faint step half-way along
+  each cell.
+- Website screenshots are recaptured with the new fonts, and the site covers the Windows build.
+
 ## [0.6.0] - 2026-09-13
 
 Milestone M6 (keyboard and OpenVMS applications) and the first part of M7 (fonts), and the first
