@@ -1,7 +1,6 @@
 //! Command-line options and opening the requested connection.
 
 use std::io;
-use std::path::PathBuf;
 
 use vt_core::{Config, Model};
 use vt_transport::Transport;
@@ -22,9 +21,13 @@ connections (default: your login shell):
 options:
   --model MODEL          vt100 vt102 vt220 vt320 vt420 (default) vt510 vt520 vt525
   --port PORT            TCP port for --telnet or --ssh
-  --record FILE          append everything the host sends to FILE
+  --record FILE          record the session to FILE (.vtrec) for replay and tests;
+                         Ctrl+Shift+M marks a checkpoint
+  --record-keys          also record typed keys (includes passwords)
   --sessions N           open 1 or 2 sessions (2 splits the window, F4 switches)
   --phosphor COLOUR      white (P4, default), green (P1) or amber (P3)
+  --keymap FILE          PC-to-DEC keymap (default: ~/.config/veetee/keymap.toml,
+                         else the built-in LK401 map)
 
 serial line options (picocom style; defaults are DEC factory Set-Up):
   -b, --baud RATE        bits per second (9600)
@@ -75,11 +78,13 @@ impl Connection {
 #[derive(Debug, Clone, Default)]
 pub struct Options {
     pub connection: Connection,
-    pub record: Option<PathBuf>,
+    pub record: Option<crate::session::RecordOptions>,
     /// Sessions to open at start: 1, or 2 for a split window.
     pub sessions: u8,
     /// Phosphor colour: "white", "green" or "amber".
     pub phosphor: String,
+    /// Keymap file to use instead of the saved or built-in keymap.
+    pub keymap: Option<std::path::PathBuf>,
 }
 
 pub enum Parsed {
@@ -97,6 +102,7 @@ pub fn parse_args(args: impl Iterator<Item = String>) -> Result<Parsed, String> 
     let mut line: Vec<(String, String)> = Vec::new();
     let mut port: Option<u16> = None;
     let mut chosen = 0;
+    let mut record_keys = false;
     let mut args = args.peekable();
     while let Some(arg) = args.next() {
         let mut value = || args.next().ok_or_else(|| format!("{arg} needs a value"));
@@ -107,7 +113,19 @@ pub fn parse_args(args: impl Iterator<Item = String>) -> Result<Parsed, String> 
                 None
             }
             "--record" => {
-                options.record = Some(value()?.into());
+                let keys = options.record.as_ref().is_some_and(|r| r.keys);
+                options.record = Some(crate::session::RecordOptions {
+                    path: value()?.into(),
+                    keys,
+                });
+                None
+            }
+            "--record-keys" => {
+                record_keys = true;
+                None
+            }
+            "--keymap" => {
+                options.keymap = Some(value()?.into());
                 None
             }
             "--phosphor" => {
@@ -157,6 +175,12 @@ pub fn parse_args(args: impl Iterator<Item = String>) -> Result<Parsed, String> 
         if let Some(c) = connection {
             chosen += 1;
             options.connection = c;
+        }
+    }
+    if record_keys {
+        match options.record.as_mut() {
+            Some(r) => r.keys = true,
+            None => return Err("--record-keys needs --record FILE".into()),
         }
     }
     if chosen > 1 {

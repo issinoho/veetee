@@ -46,6 +46,11 @@ pub(super) enum DcsState {
         encoding: u16,
         data: Vec<u8>,
     },
+    /// DECPFK (`x`), DECPAK (`y`) or DECCKD (`z`).
+    ProgramKeys {
+        kind: u8,
+        data: Vec<u8>,
+    },
     LoadBanner {
         encoding: u16,
         data: Vec<u8>,
@@ -99,6 +104,9 @@ impl DcsState {
             (None, [b'$'], b'p') if level >= 5 && p.get_or(0, 0) == 2 => {
                 DcsState::RestoreColorTable { data }
             }
+            (None, [b'"'], kind @ (b'x' | b'y' | b'z')) if level >= 1 => {
+                DcsState::ProgramKeys { kind, data }
+            }
             (None, [], b'v') if level >= 5 => DcsState::LoadAnswerback {
                 encoding: p.get_or(0, 0),
                 data,
@@ -123,6 +131,7 @@ impl DcsState {
             | DcsState::RestoreTerminalState { data }
             | DcsState::RestoreColorTable { data }
             | DcsState::LoadAnswerback { data, .. }
+            | DcsState::ProgramKeys { data, .. }
             | DcsState::LoadBanner { data, .. } => data,
         };
         if data.len() < LIMIT {
@@ -166,6 +175,14 @@ impl Emulator {
             }
             DcsState::RestoreColorTable { .. } => {}
             DcsState::LoadAnswerback { encoding, data } => self.load_answerback(encoding, &data),
+            DcsState::ProgramKeys { kind, data } if self.config.model.max_level() >= 5 => {
+                match kind {
+                    b'x' => self.keyprog.program_function_keys(&data),
+                    b'y' => self.keyprog.program_alphanumeric_keys(&data),
+                    _ => self.keyprog.copy_key_defaults(&data),
+                };
+            }
+            DcsState::ProgramKeys { .. } => {}
             DcsState::LoadBanner { encoding, data } => self.load_banner(encoding, &data),
         }
     }

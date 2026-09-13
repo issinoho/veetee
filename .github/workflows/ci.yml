@@ -24,6 +24,7 @@ jobs:
       - uses: taiki-e/install-action@nextest
       - run: cargo nextest run --workspace
       - run: cargo test --workspace --doc
+      - run: cargo xtask openvms
 
   vttest:
     runs-on: ubuntu-latest

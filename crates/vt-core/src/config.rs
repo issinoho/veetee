@@ -73,6 +73,36 @@ impl Model {
         }
     }
 
+    /// The model's own name in lower case (`vt510`), unlike [`Model::term_name`].
+    pub const fn term_name_exact(self) -> &'static str {
+        match self {
+            Model::Vt100 => "vt100",
+            Model::Vt102 => "vt102",
+            Model::Vt220 => "vt220",
+            Model::Vt320 => "vt320",
+            Model::Vt420 => "vt420",
+            Model::Vt510 => "vt510",
+            Model::Vt520 => "vt520",
+            Model::Vt525 => "vt525",
+        }
+    }
+
+    /// Parses a model name such as `vt420` (any case).
+    pub fn from_name(name: &str) -> Option<Model> {
+        [
+            Model::Vt100,
+            Model::Vt102,
+            Model::Vt220,
+            Model::Vt320,
+            Model::Vt420,
+            Model::Vt510,
+            Model::Vt520,
+            Model::Vt525,
+        ]
+        .into_iter()
+        .find(|m| m.term_name_exact().eq_ignore_ascii_case(name))
+    }
+
     /// VT320 and later have a status line.
     pub const fn has_status_line(self) -> bool {
         self.max_level() >= 3

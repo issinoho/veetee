@@ -8,6 +8,9 @@ use std::collections::HashMap;
 /// The default 80/132-column font, drawn on a 10×10 dot cell.
 pub const VEETEE_10X10: &str = include_str!("../fonts/veetee-10x10.vtfont");
 
+/// Cell width of the condensed 132-column glyphs.
+pub const CONDENSED_WIDTH: u8 = 6;
+
 /// A parsed bitmap font. Glyph rows are bit masks, bit 0 = leftmost dot.
 #[derive(Debug, Clone)]
 pub struct Font {
@@ -126,6 +129,47 @@ impl Font {
         Ok(font)
     }
 
+    /// The narrow variant drawn in 132-column mode, like the separate
+    /// 132-column fonts of DEC terminals. A 10-dot cell becomes 6 dots by
+    /// merging dot columns in pairs around the centre column: 0+1, 2+3, 4,
+    /// 5+6, 7, 8+9. Letters (columns 1–7) keep their stems, bars and centre
+    /// strokes, and line-drawing characters still meet at the centre and
+    /// reach both edges. Returns `None` for other cell widths.
+    // 🔎 Hand-drawn 132-column glyphs are planned (milestone M7).
+    pub fn condensed(&self) -> Option<Font> {
+        if self.width != 10 {
+            return None;
+        }
+        const GROUPS: [&[usize]; CONDENSED_WIDTH as usize] =
+            [&[0, 1], &[2, 3], &[4], &[5, 6], &[7], &[8, 9]];
+        let glyphs = self
+            .glyphs
+            .iter()
+            .map(|g| Glyph {
+                ch: g.ch,
+                rows: g
+                    .rows
+                    .iter()
+                    .map(|&row| {
+                        GROUPS.iter().enumerate().fold(0u16, |acc, (x, group)| {
+                            if group.iter().any(|&c| row & (1 << c) != 0) {
+                                acc | 1 << x
+                            } else {
+                                acc
+                            }
+                        })
+                    })
+                    .collect(),
+            })
+            .collect();
+        Some(Font {
+            width: CONDENSED_WIDTH,
+            height: self.height,
+            glyphs,
+            index: self.index.clone(),
+        })
+    }
+
     pub fn glyphs(&self) -> &[Glyph] {
         &self.glyphs
     }
@@ -197,5 +241,29 @@ mod tests {
         let e = Font::parse("cell 3 2\nU+0041\n#.#\n##\n").unwrap_err();
         assert_eq!(e.line, 4);
         assert!(Font::parse("cell 3 1\nU+0041\n#.#\nU+0041\n###\n").is_err());
+    }
+    #[test]
+    fn condensed_glyphs_keep_their_strokes() {
+        let font = builtin();
+        let narrow = font.condensed().unwrap();
+        assert_eq!(
+            (narrow.width, narrow.glyphs().len()),
+            (6, font.glyphs().len())
+        );
+        let row = |ch: char, y: usize| {
+            let g = &narrow.glyphs()[usize::from(narrow.index_of(ch))];
+            (0..6)
+                .map(|x| if g.dot(x, y) { '#' } else { '.' })
+                .collect::<String>()
+        };
+        // Horizontal line-drawing strokes still reach both edges.
+        let line_row = (0..10).find(|&y| {
+            let g = &font.glyphs()[usize::from(font.index_of('─'))];
+            g.dot(0, y)
+        });
+        assert_eq!(row('─', line_row.unwrap()), "######");
+        // A capital H keeps both stems.
+        let h = &narrow.glyphs()[usize::from(narrow.index_of('H'))];
+        assert!((0..10).any(|y| h.dot(0, y) && h.dot(4, y) && !h.dot(2, y)));
     }
 }

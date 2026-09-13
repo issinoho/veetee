@@ -1,0 +1,29 @@
+page 24x80 cursor 23,14 visible
+modes decawm
+ 1  |Test Backarrow key (DECBKM)
+ 2  |Press the backspace key
+ 3  |          <8>  ok
+   ~.........88888
+ 4  |
+ 5  |Press the backspace key again
+ 6  |          <127>  ok
+   ~.........8888888
+ 7  |
+ 8  |
+ 9  |
+10  |
+11  |
+12  |
+13  |
+14  |
+15  |
+16  |
+17  |
+18  |
+19  |
+20  |
+21  |
+22  |
+23  |Push <RETURN>
+24  |
+status indicator

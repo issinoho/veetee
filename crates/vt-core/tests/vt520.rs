@@ -519,3 +519,207 @@ fn multiple_session_status_report() {
     t.advance(b"\x1b[?85n");
     assert_eq!(reply(&mut t), "\x1b[?87n", "sessions on separate lines");
 }
+
+// ------------------------------------------------ modified keys (DECFNK)
+
+mod decfnk {
+    use super::*;
+    use vt_core::{Key, KeyMods};
+
+    const SHIFT: KeyMods = KeyMods {
+        shift: true,
+        ctrl: false,
+        alt: false,
+    };
+    const CTRL: KeyMods = KeyMods {
+        shift: false,
+        ctrl: true,
+        alt: false,
+    };
+    const ALT: KeyMods = KeyMods {
+        shift: false,
+        ctrl: false,
+        alt: true,
+    };
+
+    fn press(t: &mut Terminal, key: Key, mods: KeyMods) -> String {
+        t.key_with(key, mods);
+        reply(t)
+    }
+
+    #[test]
+    fn modified_function_keys() {
+        let mut t = vt520();
+        assert_eq!(press(&mut t, Key::Function(6), KeyMods::NONE), "\x1b[17~");
+        assert_eq!(press(&mut t, Key::Function(6), CTRL), "\x1b[17;5~");
+        assert_eq!(
+            press(&mut t, Key::Function(15), ALT),
+            "\x1b[28;3~",
+            "Alt+Help"
+        );
+        let all = KeyMods {
+            shift: true,
+            ctrl: true,
+            alt: true,
+        };
+        assert_eq!(press(&mut t, Key::Function(20), all), "\x1b[34;8~");
+    }
+
+    #[test]
+    fn modified_editing_and_cursor_keys_ignore_shift() {
+        let mut t = vt520();
+        let ctrl_shift = KeyMods {
+            shift: true,
+            ..CTRL
+        };
+        assert_eq!(press(&mut t, Key::Find, ctrl_shift), "\x1b[1;5~");
+        assert_eq!(press(&mut t, Key::Select, ALT), "\x1b[4;3~");
+        assert_eq!(press(&mut t, Key::NextScreen, ALT), "\x1b[6;3~");
+        assert_eq!(
+            press(&mut t, Key::NextScreen, CTRL),
+            "\x1b[6~",
+            "Ctrl+Next pans locally"
+        );
+        assert_eq!(press(&mut t, Key::Up, ALT), "\x1b[9;3~");
+        assert_eq!(press(&mut t, Key::Up, SHIFT), "\x1b[A");
+    }
+
+    #[test]
+    fn shifted_function_keys_default_to_decfnk() {
+        let mut t = vt520();
+        assert_eq!(
+            press(&mut t, Key::UserDefined(6), KeyMods::NONE),
+            "\x1b[17;2~"
+        );
+        t.advance(b"\x1bP1;1|17/4142\x1b\\");
+        assert_eq!(press(&mut t, Key::UserDefined(6), KeyMods::NONE), "AB");
+    }
+
+    #[test]
+    fn vt420_ignores_modifiers() {
+        let mut t = Terminal::new(Config::default());
+        assert_eq!(press(&mut t, Key::Function(6), CTRL), "\x1b[17~");
+        assert_eq!(press(&mut t, Key::UserDefined(6), KeyMods::NONE), "");
+    }
+
+    #[test]
+    fn local_panning() {
+        let mut t = vt520();
+        t.advance(b"\x1b[72t\x1b[?61l");
+        t.pan_view(10);
+        assert_eq!(t.window().0, 10);
+        t.pan_view(-4);
+        assert_eq!(t.window().0, 6);
+        t.advance(b"\x1b[36t\x1b[1;1H");
+        t.view_page(1);
+        assert!(!t.cursor_on_display());
+        t.view_page(-5);
+        assert!(t.cursor_on_display());
+    }
+}
+
+// -------------------------------------------------- key programming
+
+mod keyprog {
+    use super::*;
+    use vt_core::{Key, KeyMods, KeyOutcome};
+
+    const CTRL: KeyMods = KeyMods {
+        shift: false,
+        ctrl: true,
+        alt: false,
+    };
+
+    #[test]
+    fn decpfk_sequences_and_local_functions() {
+        let mut t = vt520();
+        // F6 sends "LOGOUT\r" to the host; Ctrl+Find becomes Hold Screen (function 1).
+        t.advance(b"\x1bP\"x117/1/100/4C4F474F55540D/2;75/5/1//0\x1b\\");
+        assert_eq!(
+            t.key_with(Key::Function(6), KeyMods::NONE),
+            KeyOutcome::Handled
+        );
+        assert_eq!(reply(&mut t), "LOGOUT\r");
+        assert_eq!(t.key_with(Key::Find, CTRL), KeyOutcome::LocalFunction(1));
+        assert_eq!(t.key_with(Key::Find, KeyMods::NONE), KeyOutcome::Handled);
+        assert_eq!(reply(&mut t), "\x1b[1~");
+    }
+
+    #[test]
+    fn local_direction_writes_to_the_screen() {
+        let mut t = vt520();
+        t.advance(b"\x1bP\"x118/1/100/4869/1\x1b\\");
+        t.key(Key::Function(7));
+        assert_eq!(reply(&mut t), "");
+        assert_eq!(row(&t, 1), "Hi");
+    }
+
+    #[test]
+    fn shifted_function_key_programs() {
+        let mut t = vt520();
+        t.advance(b"\x1bP\"x117/2/94//0\x1b\\");
+        t.key(Key::UserDefined(6));
+        assert_eq!(reply(&mut t), "\x7f", "DEL (function 94)");
+    }
+
+    #[test]
+    fn decpak_alphanumeric_codes() {
+        let mut t = vt520();
+        t.advance(b"\x1bP\"y31/78 58 . . . . 18\x1b\\");
+        assert_eq!(
+            t.alphanumeric_key(31, KeyMods::NONE, false),
+            KeyOutcome::Handled
+        );
+        let shift = KeyMods {
+            shift: true,
+            ..KeyMods::NONE
+        };
+        assert_eq!(t.alphanumeric_key(31, shift, false), KeyOutcome::Handled);
+        assert_eq!(t.alphanumeric_key(31, CTRL, false), KeyOutcome::Handled);
+        assert_eq!(reply(&mut t), "xX\x18");
+        assert_eq!(
+            t.alphanumeric_key(32, KeyMods::NONE, false),
+            KeyOutcome::NotProgrammed
+        );
+    }
+
+    #[test]
+    fn reports_and_free_memory() {
+        let mut t = vt520();
+        t.advance(b"\x1b[+x");
+        assert_eq!(reply(&mut t), "\x1b[768;768+y");
+        t.advance(b"\x1bP\"x117/1/100/41/0\x1b\\\x1b[117;1,w\x1b[118;5,w\x1b[31,w");
+        assert_eq!(
+            reply(&mut t),
+            "\x1bP\"}117/1/100/41/0\x1b\\\x1bP\"}118/5//1B5B31383B357E/0\x1b\\\x1bP\"~31/. . . . . . .\x1b\\"
+        );
+        t.advance(b"\x1b[117,u\x1b[31,u");
+        assert_eq!(reply(&mut t), "\x1b[117;1,v\x1b[31;0,v");
+    }
+
+    #[test]
+    fn deckd_and_decpka() {
+        let mut t = vt520();
+        t.advance(b"\x1bP\"z118/117\x1b\\");
+        t.key(Key::Function(6));
+        assert_eq!(reply(&mut t), "\x1b[18~", "F6 now sends F7's default");
+        t.advance(b"\x1b[2+z");
+        t.key(Key::Function(6));
+        assert_eq!(reply(&mut t), "\x1b[17~");
+        t.advance(b"\x1b[1+z\x1bP\"x117/1/0//0\x1b\\");
+        t.key(Key::Function(6));
+        assert_eq!(
+            reply(&mut t),
+            "\x1b[17~",
+            "locked keys cannot be programmed"
+        );
+    }
+
+    #[test]
+    fn vt420_ignores_key_programming() {
+        let mut t = Terminal::new(Config::default());
+        t.advance(b"\x1bP\"x117/1/100/41/0\x1b\\");
+        t.key(Key::Function(6));
+        assert_eq!(reply(&mut t), "\x1b[17~");
+    }
+}

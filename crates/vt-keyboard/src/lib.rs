@@ -23,13 +23,11 @@
 
 use vt_core::Key;
 
+pub mod keymap;
+pub use keymap::{Keymap, Target};
+
 /// Modifier state for a key press.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub struct Mods {
-    pub shift: bool,
-    pub ctrl: bool,
-    pub alt: bool,
-}
+pub use vt_core::KeyMods as Mods;
 
 /// DEC local functions: handled by the terminal itself, not sent as key codes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -43,11 +41,20 @@ pub enum Local {
     Answerback,
     Copy,
     Paste,
+    /// Adds a checkpoint to the session recording.
+    MarkCheckpoint,
+    /// Local panning through page memory (Ctrl with ⇑ ⇓ Prev Next).
+    PanUp,
+    PanDown,
+    PanPrevPage,
+    PanNextPage,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Action {
     Key(Key),
+    /// A DEC key held with DEC modifiers (VT500 DECFNK sequences).
+    ModifiedKey(Key, Mods),
     /// Characters to type, e.g. a control character from Ctrl+letter.
     Text(String),
     Local(Local),
@@ -98,89 +105,44 @@ pub mod keysym {
     pub const DELETE: u32 = 0xffff;
 }
 
-/// Maps a key press. `ch` is the character the key produces (if any), used
-/// for Ctrl combinations. Returns `None` for keys that should go through
-/// normal text input (input methods, compose, dead keys).
-pub fn map_key(sym: u32, ch: Option<char>, mods: Mods) -> Option<Action> {
-    use Action::{Key as K, Local as L};
-    use keysym::*;
-
-    if let Some(action) = function_key(sym, mods) {
-        return Some(action);
-    }
-
-    Some(match sym {
-        UP => K(Key::Up),
-        DOWN => K(Key::Down),
-        LEFT => K(Key::Left),
-        RIGHT => K(Key::Right),
-
-        INSERT => K(Key::Find),
-        HOME => K(Key::InsertHere),
-        PAGE_UP => K(Key::Remove),
-        DELETE => K(Key::Select),
-        END => K(Key::PrevScreen),
-        PAGE_DOWN => K(Key::NextScreen),
-
-        NUM_LOCK => K(Key::Pf1),
-        KP_DIVIDE => K(Key::Pf2),
-        KP_MULTIPLY => K(Key::Pf3),
-        KP_SUBTRACT => K(Key::Pf4),
-        KP_ADD if mods.shift => K(Key::KeypadMinus),
-        KP_ADD | KP_SEPARATOR => K(Key::KeypadComma),
-        KP_DECIMAL | KP_DELETE => K(Key::KeypadPeriod),
-        KP_ENTER => K(Key::KeypadEnter),
-        KP_0..=KP_9 => K(Key::Keypad((sym - KP_0) as u8)),
-        // Keypad with NumLock off reports navigation keysyms; keep them digits.
-        KP_INSERT => K(Key::Keypad(0)),
-        KP_END => K(Key::Keypad(1)),
-        KP_DOWN => K(Key::Keypad(2)),
-        KP_PAGE_DOWN => K(Key::Keypad(3)),
-        KP_LEFT => K(Key::Keypad(4)),
-        KP_BEGIN => K(Key::Keypad(5)),
-        KP_RIGHT => K(Key::Keypad(6)),
-        KP_HOME => K(Key::Keypad(7)),
-        KP_UP => K(Key::Keypad(8)),
-        KP_PAGE_UP => K(Key::Keypad(9)),
-
-        RETURN => K(Key::Return),
-        BACKSPACE => K(Key::Delete),
-        TAB | ISO_LEFT_TAB => K(Key::Tab),
-        ESCAPE => K(Key::Escape),
-
-        PAUSE => L(Local::HoldScreen),
-        PRINT => L(Local::PrintScreen),
-        BREAK if mods.ctrl => L(Local::Answerback),
-        BREAK => L(Local::Break),
-
-        _ => return control_character(ch?, mods),
+/// The LK411 key station (EK-VT520-RM figure 8-4) at a PC main-keypad
+/// position, from the X11/GDK hardware keycode (Linux evdev code + 8).
+pub fn station_for_keycode(keycode: u32) -> Option<u8> {
+    let evdev = keycode.checked_sub(8)?;
+    Some(match evdev {
+        41 => 1,                    // ` ~
+        2..=11 => evdev as u8,      // 1 … 0
+        12 => 12,                   // - _
+        13 => 13,                   // = +
+        16..=25 => evdev as u8 + 1, // Q … P
+        26 => 27,                   // [ {
+        27 => 28,                   // ] }
+        30..=38 => evdev as u8 + 1, // A … L
+        39 => 40,                   // ; :
+        40 => 41,                   // ' "
+        43 => 42,                   // \ |
+        86 => 45,                   // < > (ISO key)
+        44..=50 => evdev as u8 + 2, // Z … M
+        51 => 53,                   // , <
+        52 => 54,                   // . >
+        53 => 55,                   // / ?
+        57 => 61,                   // space
+        _ => return None,
     })
 }
 
-fn function_key(sym: u32, mods: Mods) -> Option<Action> {
-    use keysym::{F1, F20};
-    if !(F1..=F20).contains(&sym) {
-        return None;
-    }
-    let n = (sym - F1 + 1) as u8;
-    Some(match (n, mods.shift, mods.ctrl) {
-        (5, false, true) => Action::Local(Local::Answerback),
-        // User-defined keys are shifted F6–F20 on a DEC keyboard.
-        (1..=10, true, true) => Action::Key(Key::UserDefined(n + 10)),
-        (6..=12, false, true) => Action::Key(Key::UserDefined(n)),
-        (1..=10, true, _) => Action::Key(Key::Function(n + 10)),
-        (1, ..) => Action::Local(Local::HoldScreen),
-        (2, ..) => Action::Local(Local::PrintScreen),
-        (3, ..) => Action::Local(Local::SetUp),
-        (4, ..) => Action::Local(Local::SwitchSession),
-        (5, ..) => Action::Local(Local::Break),
-        _ => Action::Key(Key::Function(n)),
-    })
+/// Maps a key press with the built-in keymap. `ch` is the character the
+/// key produces (if any), used for Ctrl combinations. Returns `None` for
+/// keys that should go through normal text input (input methods, compose,
+/// dead keys).
+pub fn map_key(sym: u32, ch: Option<char>, mods: Mods) -> Option<Action> {
+    static DEFAULT: std::sync::OnceLock<Keymap> = std::sync::OnceLock::new();
+    DEFAULT.get_or_init(Keymap::default).map(sym, ch, mods)
 }
 
 /// Ctrl combinations on the main keypad, following the LK201: Ctrl+Space or
 /// Ctrl+2 is NUL, Ctrl+3–7 are ESC FS GS RS US, Ctrl+8 is DEL.
-fn control_character(ch: char, mods: Mods) -> Option<Action> {
+pub(crate) fn control_character(ch: char, mods: Mods) -> Option<Action> {
     if !mods.ctrl || mods.alt {
         return None;
     }
@@ -188,6 +150,7 @@ fn control_character(ch: char, mods: Mods) -> Option<Action> {
         match ch.to_ascii_lowercase() {
             'c' => return Some(Action::Local(Local::Copy)),
             'v' => return Some(Action::Local(Local::Paste)),
+            'm' => return Some(Action::Local(Local::MarkCheckpoint)),
             _ => {}
         }
     }
@@ -297,6 +260,48 @@ mod tests {
             ),
             Some(Action::Key(Key::UserDefined(16))),
             "Ctrl+Shift+F6 is the Do key's UDK"
+        );
+    }
+
+    #[test]
+    fn modified_editing_cursor_and_function_keys() {
+        const ALT: Mods = Mods {
+            shift: false,
+            ctrl: false,
+            alt: true,
+        };
+        assert_eq!(
+            key(INSERT, CTRL),
+            Some(Action::ModifiedKey(Key::Find, CTRL))
+        );
+        assert_eq!(key(LEFT, ALT), Some(Action::ModifiedKey(Key::Left, ALT)));
+        assert_eq!(key(UP, CTRL), Some(Action::Local(Local::PanUp)));
+        assert_eq!(
+            key(PAGE_DOWN, CTRL),
+            Some(Action::Local(Local::PanNextPage))
+        );
+        assert_eq!(
+            key(F1 + 5, ALT),
+            Some(Action::ModifiedKey(Key::Function(6), ALT))
+        );
+        assert_eq!(
+            key(F1 + 1, Mods { shift: true, ..ALT }),
+            Some(Action::ModifiedKey(Key::Function(12), ALT)),
+            "Alt+Shift+F2 is Alt+F12"
+        );
+    }
+
+    #[test]
+    fn main_keypad_stations() {
+        // evdev KEY_A = 30, KEY_Z = 44, KEY_1 = 2, KEY_SPACE = 57.
+        assert_eq!(station_for_keycode(30 + 8), Some(31));
+        assert_eq!(station_for_keycode(44 + 8), Some(46));
+        assert_eq!(station_for_keycode(2 + 8), Some(2));
+        assert_eq!(station_for_keycode(57 + 8), Some(61));
+        assert_eq!(
+            station_for_keycode(1 + 8),
+            None,
+            "Escape is not a main keypad station"
         );
     }
 

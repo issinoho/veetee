@@ -330,34 +330,8 @@ impl Session {
             .term
             .as_ref()
             .ok_or_else(|| invalid("no program spawned".into()))?;
-        let actual = dump(term);
-        let path = self.golden.join(format!("{name}.screen"));
-        let expected = fs::read_to_string(&path).ok();
-        if expected.as_deref() == Some(actual.as_str()) {
-            return Ok(());
-        }
-        if self.bless {
-            fs::create_dir_all(&self.golden)?;
-            fs::write(&path, &actual)?;
-            eprintln!("blessed {}", path.display());
-            return Ok(());
-        }
-        self.failures += 1;
-        match expected {
-            None => eprintln!(
-                "MISSING {} (run with --bless to create)\n{actual}",
-                path.display()
-            ),
-            Some(expected) => {
-                eprintln!("DIFFERS {}", path.display());
-                for (i, (e, a)) in expected.lines().zip(actual.lines()).enumerate() {
-                    if e != a {
-                        eprintln!("  line {:3} expected: {e}\n             actual: {a}", i + 1);
-                    }
-                }
-                let new = path.with_extension("screen.new");
-                fs::write(&new, &actual)?;
-            }
+        if !crate::golden::compare(&self.golden, name, &dump(term), self.bless)? {
+            self.failures += 1;
         }
         Ok(())
     }

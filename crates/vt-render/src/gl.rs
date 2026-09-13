@@ -120,10 +120,17 @@ void main() {
     if ((v_flags & 2) != 0) d.y = v_local.y * cell.y * 0.5;
     if ((v_flags & 4) != 0) d.y = (1.0 + v_local.y) * cell.y * 0.5;
 
-    // 2x2 supersampling in pixel space.
-    vec2 dx = dFdx(d) * 0.25;
+    // Box-filter each pixel: six samples across and two down. In 132-column
+    // mode a dot is narrower than a pixel, and fewer samples would drop
+    // whole dot columns, giving strokes of uneven weight.
+    vec2 dx = dFdx(d);
     vec2 dy = dFdy(d) * 0.25;
-    float coverage = 0.25 * (lit(d - dx - dy) + lit(d + dx - dy) + lit(d - dx + dy) + lit(d + dx + dy));
+    float coverage = 0.0;
+    for (int i = 0; i < 6; ++i) {
+        vec2 offset = dx * ((float(i) + 0.5) / 6.0 - 0.5);
+        coverage += lit(d + offset - dy) + lit(d + offset + dy);
+    }
+    coverage /= 12.0;
 
     if ((v_flags & 32) != 0 || (v_flags & 8) != 0) coverage = 0.0;
     if ((v_flags & 1) != 0 && int(floor(d.y)) == u_cell.y - 1) coverage = 1.0;
@@ -368,13 +375,20 @@ unsafe fn link(gl: &glow::Context, vs: &str, fs: &str) -> Result<glow::Program, 
     }
 }
 
+/// Uploads the font, followed by its condensed 132-column variant.
 unsafe fn upload_atlas(gl: &glow::Context, font: &Font) -> Result<glow::Texture, String> {
     let (cw, ch) = (i32::from(font.width), i32::from(font.height));
-    let count = font.glyphs().len() as i32;
+    let condensed = font.condensed();
+    let glyphs: Vec<&vt_fonts::Glyph> = font
+        .glyphs()
+        .iter()
+        .chain(condensed.iter().flat_map(|c| c.glyphs().iter()))
+        .collect();
+    let count = glyphs.len() as i32;
     let rows = (count + ATLAS_COLUMNS - 1) / ATLAS_COLUMNS;
     let (w, h) = (ATLAS_COLUMNS * cw, rows * ch);
     let mut pixels = vec![0u8; (w * h) as usize];
-    for (i, glyph) in font.glyphs().iter().enumerate() {
+    for (i, glyph) in glyphs.into_iter().enumerate() {
         let (gx, gy) = (i as i32 % ATLAS_COLUMNS * cw, i as i32 / ATLAS_COLUMNS * ch);
         for y in 0..ch {
             for x in 0..cw {

@@ -3,3 +3,6 @@
 /fuzz/corpus
 /fuzz/artifacts
 /fuzz/coverage
+
+# Session recordings made in the working tree (may contain private host output)
+/*.vtrec

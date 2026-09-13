@@ -1,0 +1,58 @@
+# vttest menu 11.3.4: VT420 keyboard control — terminal model VT420.
+# DECKPM, DECELF, DECLFKC and DECSMKR are not tested by vttest.
+model vt420
+size 24 80
+spawn ${VTTEST} 24x80.132
+prompt "Enter choice number (0 - 12): "
+send "11\r"
+prompt "Enter choice number (0 - 8): "
+send "3\r"
+prompt "Enter choice number (0 - 8): "
+send "4\r"
+
+# DECBKM: the <X] key sends BS when set and DEL when reset.
+prompt "Enter choice number (0 - 7): "
+send "1\r"
+wait-text "Press the backspace key"
+settle
+key delete
+wait-text "Press the backspace key again"
+settle
+key delete
+walk vt420-kbd-decbkm "Enter choice number (0 - 7): "
+
+# DECNKM: keypad 5 sends "5", then SS3 u.
+send "2\r"
+wait-text "They should generate numeric codes."
+settle
+key kp5
+settle
+key kp5
+wait-text "They should generate control codes."
+settle
+key kp5
+settle
+key kp5
+walk vt420-kbd-decnkm "Enter choice number (0 - 7): "
+
+# DECKBUM: typewriter keys send the same codes on a North American keyboard.
+send "3\r"
+wait-text "set for data processing."
+settle
+type "a"
+settle
+type "a"
+wait-text "normal (typewriter) processing."
+settle
+type "a"
+settle
+type "a"
+walk vt420-kbd-deckbum "Enter choice number (0 - 7): "
+send "0\r"
+prompt "Enter choice number (0 - 8): "
+send "0\r"
+prompt "Enter choice number (0 - 8): "
+send "0\r"
+prompt "Enter choice number (0 - 12): "
+send "0\r"
+expect-exit

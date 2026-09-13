@@ -1,0 +1,336 @@
+# veetee keymap: PC keys to DEC LK401 keys.
+#
+# Each binding names a PC key (a GDK key name, with Ctrl+, Shift+ and Alt+
+# prefixes) and the DEC key or local function it produces. When a DEC key is
+# pressed with extra modifiers they are passed on, so Ctrl+Insert is Ctrl+Find.
+# Local functions only match their exact modifiers.
+
+name = "veetee default (PC to LK401)"
+
+# Top row: F1–F5 are local functions, F6–F20 function keys.
+[[bind]]
+pc = "F1"
+dec = "hold-screen"
+[[bind]]
+pc = "Pause"
+dec = "hold-screen"
+[[bind]]
+pc = "F2"
+dec = "print-screen"
+[[bind]]
+pc = "Print"
+dec = "print-screen"
+[[bind]]
+pc = "F3"
+dec = "set-up"
+[[bind]]
+pc = "F4"
+dec = "session"
+[[bind]]
+pc = "F5"
+dec = "break"
+[[bind]]
+pc = "Break"
+dec = "break"
+[[bind]]
+pc = "Ctrl+F5"
+dec = "answerback"
+[[bind]]
+pc = "Ctrl+Break"
+dec = "answerback"
+[[bind]]
+pc = "F6"
+dec = "f6"
+[[bind]]
+pc = "F7"
+dec = "f7"
+[[bind]]
+pc = "F8"
+dec = "f8"
+[[bind]]
+pc = "F9"
+dec = "f9"
+[[bind]]
+pc = "F10"
+dec = "f10"
+[[bind]]
+pc = "F11"
+dec = "f11"
+[[bind]]
+pc = "F12"
+dec = "f12"
+# Keyboards with F13–F20 keys.
+[[bind]]
+pc = "F13"
+dec = "f13"
+[[bind]]
+pc = "F14"
+dec = "f14"
+[[bind]]
+pc = "F15"
+dec = "help"
+[[bind]]
+pc = "F16"
+dec = "do"
+[[bind]]
+pc = "F17"
+dec = "f17"
+[[bind]]
+pc = "F18"
+dec = "f18"
+[[bind]]
+pc = "F19"
+dec = "f19"
+[[bind]]
+pc = "F20"
+dec = "f20"
+[[bind]]
+pc = "Shift+F1"
+dec = "f11"
+[[bind]]
+pc = "Shift+F2"
+dec = "f12"
+[[bind]]
+pc = "Shift+F3"
+dec = "f13"
+[[bind]]
+pc = "Shift+F4"
+dec = "f14"
+[[bind]]
+pc = "Shift+F5"
+dec = "help"
+[[bind]]
+pc = "Shift+F6"
+dec = "do"
+[[bind]]
+pc = "Shift+F7"
+dec = "f17"
+[[bind]]
+pc = "Shift+F8"
+dec = "f18"
+[[bind]]
+pc = "Shift+F9"
+dec = "f19"
+[[bind]]
+pc = "Shift+F10"
+dec = "f20"
+
+# User-defined keys: DEC Shift+F6–F20.
+[[bind]]
+pc = "Ctrl+F6"
+dec = "udk6"
+[[bind]]
+pc = "Ctrl+F7"
+dec = "udk7"
+[[bind]]
+pc = "Ctrl+F8"
+dec = "udk8"
+[[bind]]
+pc = "Ctrl+F9"
+dec = "udk9"
+[[bind]]
+pc = "Ctrl+F10"
+dec = "udk10"
+[[bind]]
+pc = "Ctrl+F11"
+dec = "udk11"
+[[bind]]
+pc = "Ctrl+F12"
+dec = "udk12"
+[[bind]]
+pc = "Ctrl+Shift+F1"
+dec = "udk11"
+[[bind]]
+pc = "Ctrl+Shift+F2"
+dec = "udk12"
+[[bind]]
+pc = "Ctrl+Shift+F3"
+dec = "udk13"
+[[bind]]
+pc = "Ctrl+Shift+F4"
+dec = "udk14"
+[[bind]]
+pc = "Ctrl+Shift+F5"
+dec = "udk15"
+[[bind]]
+pc = "Ctrl+Shift+F6"
+dec = "udk16"
+[[bind]]
+pc = "Ctrl+Shift+F7"
+dec = "udk17"
+[[bind]]
+pc = "Ctrl+Shift+F8"
+dec = "udk18"
+[[bind]]
+pc = "Ctrl+Shift+F9"
+dec = "udk19"
+[[bind]]
+pc = "Ctrl+Shift+F10"
+dec = "udk20"
+
+# Editing keypad, by position.
+[[bind]]
+pc = "Insert"
+dec = "find"
+[[bind]]
+pc = "Home"
+dec = "insert-here"
+[[bind]]
+pc = "Page_Up"
+dec = "remove"
+[[bind]]
+pc = "Delete"
+dec = "select"
+[[bind]]
+pc = "End"
+dec = "prev-screen"
+[[bind]]
+pc = "Page_Down"
+dec = "next-screen"
+
+# Cursor keys, and local panning with Ctrl.
+[[bind]]
+pc = "Up"
+dec = "up"
+[[bind]]
+pc = "Down"
+dec = "down"
+[[bind]]
+pc = "Left"
+dec = "left"
+[[bind]]
+pc = "Right"
+dec = "right"
+[[bind]]
+pc = "Ctrl+Up"
+dec = "pan-up"
+[[bind]]
+pc = "Ctrl+Down"
+dec = "pan-down"
+[[bind]]
+pc = "Ctrl+End"
+dec = "pan-prev-page"
+[[bind]]
+pc = "Ctrl+Page_Down"
+dec = "pan-next-page"
+
+# Numeric keypad: Num Lock / * - are PF1–PF4.
+[[bind]]
+pc = "Num_Lock"
+dec = "pf1"
+[[bind]]
+pc = "KP_Divide"
+dec = "pf2"
+[[bind]]
+pc = "KP_Multiply"
+dec = "pf3"
+[[bind]]
+pc = "KP_Subtract"
+dec = "pf4"
+[[bind]]
+pc = "KP_Add"
+dec = "kp-comma"
+[[bind]]
+pc = "KP_Separator"
+dec = "kp-comma"
+[[bind]]
+pc = "Shift+KP_Add"
+dec = "kp-minus"
+[[bind]]
+pc = "KP_Decimal"
+dec = "kp-period"
+[[bind]]
+pc = "KP_Delete"
+dec = "kp-period"
+[[bind]]
+pc = "KP_Enter"
+dec = "kp-enter"
+[[bind]]
+pc = "KP_0"
+dec = "kp0"
+[[bind]]
+pc = "KP_1"
+dec = "kp1"
+[[bind]]
+pc = "KP_2"
+dec = "kp2"
+[[bind]]
+pc = "KP_3"
+dec = "kp3"
+[[bind]]
+pc = "KP_4"
+dec = "kp4"
+[[bind]]
+pc = "KP_5"
+dec = "kp5"
+[[bind]]
+pc = "KP_6"
+dec = "kp6"
+[[bind]]
+pc = "KP_7"
+dec = "kp7"
+[[bind]]
+pc = "KP_8"
+dec = "kp8"
+[[bind]]
+pc = "KP_9"
+dec = "kp9"
+# With Num Lock off the keypad reports navigation keys; keep them digits.
+[[bind]]
+pc = "KP_Insert"
+dec = "kp0"
+[[bind]]
+pc = "KP_End"
+dec = "kp1"
+[[bind]]
+pc = "KP_Down"
+dec = "kp2"
+[[bind]]
+pc = "KP_Page_Down"
+dec = "kp3"
+[[bind]]
+pc = "KP_Left"
+dec = "kp4"
+[[bind]]
+pc = "KP_Begin"
+dec = "kp5"
+[[bind]]
+pc = "KP_Right"
+dec = "kp6"
+[[bind]]
+pc = "KP_Home"
+dec = "kp7"
+[[bind]]
+pc = "KP_Up"
+dec = "kp8"
+[[bind]]
+pc = "KP_Page_Up"
+dec = "kp9"
+
+# Main keypad.
+[[bind]]
+pc = "Return"
+dec = "return"
+[[bind]]
+pc = "BackSpace"
+dec = "delete"
+[[bind]]
+pc = "Tab"
+dec = "tab"
+[[bind]]
+pc = "ISO_Left_Tab"
+dec = "tab"
+[[bind]]
+pc = "Escape"
+dec = "escape"
+
+# veetee functions.
+[[bind]]
+pc = "Ctrl+Shift+c"
+dec = "copy"
+[[bind]]
+pc = "Ctrl+Shift+v"
+dec = "paste"
+[[bind]]
+pc = "Ctrl+Shift+m"
+dec = "mark-checkpoint"

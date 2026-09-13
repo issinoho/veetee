@@ -2,6 +2,8 @@
 
 use std::process::ExitCode;
 
+mod golden;
+mod replay;
 mod script;
 mod trace;
 
@@ -12,13 +14,19 @@ usage:
 
   vt-headless run SCRIPT [--golden DIR] [--bless] [--record FILE]
       Run a session script against the emulator on a PTY. Snapshots are
-      compared with DIR/NAME.screen; --bless rewrites them.";
+      compared with DIR/NAME.screen; --bless rewrites them.
+
+  vt-headless replay FILE.vtrec [--golden DIR] [--bless]
+      Play a veetee session recording through the emulator and compare the
+      screen at each checkpoint, and at the end as `final`, with DIR (default:
+      the recording's name without .vtrec).";
 
 fn main() -> ExitCode {
     let mut args = std::env::args().skip(1);
     let result = match args.next().as_deref() {
         Some("trace") => trace::trace(args).map(|()| true),
         Some("run") => script::run(args),
+        Some("replay") => replay::replay(args),
         _ => {
             eprintln!("{USAGE}");
             return ExitCode::from(2);

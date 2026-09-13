@@ -14,14 +14,16 @@ mod config;
 pub mod dump;
 pub mod grid;
 mod keyboard;
+pub mod keyprog;
 mod modes;
+pub mod recording;
 mod selection;
 pub mod softfont;
 mod terminal;
 pub mod udk;
 
 pub use config::{Config, Extensions, Model, StatusDisplay, Supplemental};
-pub use keyboard::Key;
+pub use keyboard::{Key, KeyMods};
 pub use modes::Modes;
 pub use selection::{Point, Selection};
-pub use terminal::{Cursor, CursorStyle, Event, LocalKeyAction, Terminal};
+pub use terminal::{Cursor, CursorStyle, Event, KeyOutcome, LocalKeyAction, Terminal};

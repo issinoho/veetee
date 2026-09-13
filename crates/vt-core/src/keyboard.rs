@@ -45,6 +45,40 @@ pub enum Key {
     UserDefined(u8),
 }
 
+/// Modifier keys held with a DEC key.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Hash)]
+pub struct KeyMods {
+    pub shift: bool,
+    pub ctrl: bool,
+    pub alt: bool,
+}
+
+impl KeyMods {
+    pub const NONE: KeyMods = KeyMods {
+        shift: false,
+        ctrl: false,
+        alt: false,
+    };
+
+    /// The DECFNK modifier parameter: 1 none, 2 Shift, 3 Alt, 4 Alt+Shift,
+    /// 5 Ctrl, 6 Ctrl+Shift, 7 Alt+Ctrl, 8 all three (EK-VT510-RM DECFNK).
+    pub const fn decfnk(self) -> u8 {
+        1 + self.shift as u8 + 2 * self.alt as u8 + 4 * self.ctrl as u8
+    }
+}
+
+/// The DECFNK key number of a top-row function key F1–F20.
+pub(crate) const fn function_key_number(f: u8) -> Option<u8> {
+    Some(match f {
+        1..=5 => f + 10,
+        6..=10 => f + 11,
+        11..=14 => f + 12,
+        15 | 16 => f + 13,
+        17..=20 => f + 14,
+        _ => return None,
+    })
+}
+
 /// Terminal state that affects the codes a key sends.
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct KeyContext {
@@ -73,6 +107,52 @@ impl KeyContext {
             out.extend_from_slice(b"\x1bO");
         }
     }
+}
+
+/// Appends the codes for `key` held with `mods`. On VT500s, modified
+/// function, editing and cursor keys send DECFNK sequences (EK-VT510-RM
+/// DECFNK); otherwise modifiers do not change the codes.
+pub(crate) fn encode_with(key: Key, mods: KeyMods, cx: KeyContext, out: &mut Vec<u8>) {
+    use Key::*;
+    if cx.level >= 5 && cx.ansi {
+        // Shift is not distinguished on the editing and cursor keys.
+        let unshifted = KeyMods {
+            shift: false,
+            ..mods
+        };
+        let decfnk = match key {
+            Function(f) if mods != KeyMods::NONE => function_key_number(f).map(|n| (n, mods)),
+            Find | InsertHere | Remove | Select if mods.ctrl || mods.alt => {
+                let n = match key {
+                    Find => 1,
+                    InsertHere => 2,
+                    Remove => 3,
+                    _ => 4,
+                };
+                Some((n, unshifted))
+            }
+            // Ctrl with Prev, Next and the vertical cursor keys pans locally.
+            PrevScreen | NextScreen if mods.alt => {
+                Some((if key == PrevScreen { 5 } else { 6 }, unshifted))
+            }
+            Left | Down | Up | Right if mods.alt => {
+                let n = match key {
+                    Left => 7,
+                    Down => 8,
+                    Up => 9,
+                    _ => 10,
+                };
+                Some((n, unshifted))
+            }
+            _ => None,
+        };
+        if let Some((n, m)) = decfnk {
+            cx.csi(out);
+            out.extend_from_slice(format!("{n};{}~", m.decfnk()).as_bytes());
+            return;
+        }
+    }
+    encode(key, cx, out);
 }
 
 /// Appends the codes for `key` to `out`. Keys that send nothing in the

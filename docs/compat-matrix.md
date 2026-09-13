@@ -136,11 +136,18 @@ conformance scripts in `tests/conformance/vttest`.
 | DECECM | `CSI ? 117 h/l` | ✅ | Erase to text background (factory) or screen background |
 | VT500 character sets | SCS `"?` `"4` `%0` `&4`, 96-sets `B` `F` `H` `L` `M`, NRCS `">` `%=` `%2` `%3` `&5` | 🟡 | DEC Greek, Hebrew, Turkish, Cyrillic; ISO Latin-2, Greek, Hebrew, Latin-Cyrillic, Latin-5; Greek, Hebrew, Turkish, Serbo-Croatian and Russian NRCS (NRC mode only). Tables from xterm's transcription of the RM520 figures (see THIRD-PARTY.md). DECAUPSS accepts them. Glyphs for Greek, Hebrew and Cyrillic arrive with the fonts (M7) |
 | DECKBD | `CSI Ps1;Ps2 SP }` | ✅ | Layout and language reported by DSR ?26 (type 4 LK411, 5 PC) |
-| DECELF DECLFKC DECSMKR | `+q`, `*}`, `+r` | 🟡 | DECLFKC F1–F4 local, sent to the host (🔎 `CSI 11~`–`14~`) or disabled; DECELF group 1 disables copy/paste keys; DECSMKR stored (key position mode is M6) |
+| DECELF DECLFKC DECSMKR | `+q`, `*}`, `+r` | 🟡 | DECLFKC F1–F4 local, sent to the host (`CSI 11~`–`14~`, as DECFNK numbers them) or disabled; DECELF group 1 disables copy/paste keys; DECSMKR stored (key position mode is M6) |
+| DECFNK | `CSI Ps1;Ps2 ~` | ✅ | VT500 level: Shift/Ctrl/Alt with F1–F20 send `CSI n;m~`; Ctrl/Alt with the editing keys (Shift ignored), Alt with Prev/Next and the cursor keys (RM510 DECFNK). Undefined shifted F6–F20 send `CSI n;2~`. Ctrl with ⇑ ⇓ Prev Next pan locally through page memory |
 | Dual sessions | F4, `--sessions 2` | 🟡 | Two sessions per window, each with its own connection and terminal state, like sessions on separate comm lines (RM420 chapter 14, RM520 2.5). The window splits horizontally with a title bar per session (session name from DECSWT); F4 moves the keyboard. Each session is scaled to its half of the window rather than showing fewer lines. TD/SMP multiplexing over one connection is not provided |
 | DECES DECUS DECSPMA | `CSI & x`, `CSI Ps , y`, `CSI Pn;… , x` | 🟡 | DECES makes the session active (keyboard focus, window raised); DSR ?85 reports sessions on separate lines when two are open. DECUS stored and reported (inactive sessions always update). DECSPMA reported; 🔎 each session keeps its own full page memory |
 | DECPS | `CSI Pv;Pd;Pn , ~` | 🟡 | Parsed into an event; sound output arrives with bell and keyclick (M7) |
-| Key programming, PCTerm | DECPFK DECPAK DECPKA DECRQKD DECRPFK DECRPAK DECPKFMR DECRQPKFM DECEKBD DECRQKT DECPCTERM | ⬜ | M6 (keyboard) |
+| DECPFK | `DCS " x Key/Mod/Fn/UDS/Dir ST` | ✅ | Function, editing, cursor and keypad keys by LK411 station (RM520 figure 8-4) and modifier: a local function (table 8-6: Hold, Print, Set-Up, Session, Break, Answerback, panning, Paste, BS/CAN/ESC/DEL) or a sequence sent to the host, the screen or both. Break (F5) cannot be programmed; 768 bytes shared; a bad definition ends the string |
+| DECPAK | `DCS " y Key/Codes/Fn/UDS/Dir ST` | 🟡 | Main keypad keys by physical position: codes for the modifier states (`.` undefined) and an Alt function. 🔎 separators of the code list; group 2 (AltGr) states are not used because GTK 4 does not report AltGr |
+| DECCKD DECPKA | `DCS " z Ks/Kd ST`, `CSI Ps + z` | ✅ | Copy a key's default (same key restores it); lock, restore defaults, recall (= restore; no NVR) |
+| DECRQKD DECRPFK DECRPAK | `CSI Ps1;Ps2 , w` | ✅ | Unprogrammed function keys report their default sequence as the UDS |
+| DECRQPKFM DECPKFMR DECRQKT DECRPKT | `CSI + x`, `CSI Ps , u` | ✅ | `768;free+y`; key type 1 function, 0 alphanumeric |
+| DECKPM DECEKBD DECSMKR effects | `CSI ? 81 h`, `APC : ppp mm ST` | ⬜ | Key position reports need the ISO key-position figure of RM520, which is only an image; stored and reported for now |
+| DECPCTERM | `CSI ? Ps1;Ps2 r` | ⬜ | PC scan-code terminal mode with PC code pages; not planned for 1.0 (no OpenVMS use) |
 
 ## Keyboard (vt-core `Key`)
 
@@ -187,6 +194,7 @@ conformance scripts in `tests/conformance/vttest`.
 
 | Menu | Status |
 |------|--------|
+| 11.3.4 VT420 keyboard control: DECBKM, DECNKM, DECKBUM (DECKPM, DECELF, DECLFKC, DECSMKR untested by vttest) | ✅ |
 | 11.4.2 VT520 cursor movement: HPA, CBT, CHA, CHT, HPR, VPA, CNL, CPL, VPR, with and without margins and origin mode | ✅ |
 | 11.4.5.2 DECRPM (VT500 modes) and DECRQSS for the VT510 and VT520 selections | ✅ (DECSRFR is VT510-only, so a VT520 rejects it) |
 | 11.4.6 DECNCSM, DECSCUSR, DECATC (VT525) | ✅ |

@@ -1,13 +1,14 @@
 //! A host session: a transport plus the terminal it drives, run on an I/O thread.
 
-use std::fs::{File, OpenOptions};
-use std::io::{self, Write};
-use std::path::Path;
+use std::fs::File;
+use std::io::{self, LineWriter, Write};
+use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Condvar, Mutex, MutexGuard};
 use std::thread;
 use std::time::Duration;
 
+use vt_core::recording::Recorder;
 use vt_core::{Config, Event, Key, Terminal};
 use vt_transport::{Transport, TransportWriter};
 
@@ -24,8 +25,19 @@ pub enum Notice {
     Exited(Option<String>),
 }
 
+/// Where and how to record a session.
+#[derive(Debug, Clone)]
+pub struct RecordOptions {
+    pub path: PathBuf,
+    /// Also record typed keys (which include passwords).
+    pub keys: bool,
+}
+
+type SessionRecorder = Recorder<LineWriter<File>>;
+
 struct Shared {
     term: Mutex<Terminal>,
+    recorder: Mutex<Option<SessionRecorder>>,
     writer: Mutex<Box<dyn TransportWriter>>,
     redraw_pending: AtomicBool,
     /// Hold Screen: the I/O thread stops reading, so the host is flow-controlled.
@@ -42,21 +54,26 @@ pub struct Session {
 }
 
 impl Session {
-    /// Starts driving `transport`. With `record`, every byte received from
-    /// the host is appended to that file for replay with `vt-headless trace`.
+    /// Starts driving `transport`. With `record`, the session is written as
+    /// a `.vtrec` recording for `vt-headless replay`.
     pub fn start(
         config: Config,
         transport: Box<dyn Transport>,
-        record: Option<&Path>,
+        record: Option<&RecordOptions>,
     ) -> io::Result<(Session, async_channel::Receiver<Notice>)> {
         let recorder = match record {
-            Some(path) => Some(OpenOptions::new().create(true).append(true).open(path)?),
+            Some(r) => Some(Recorder::new(
+                LineWriter::new(File::create(&r.path)?),
+                &config,
+                r.keys,
+            )?),
             None => None,
         };
         let (tx, rx) = async_channel::unbounded();
         let shared = Arc::new(Shared {
             writer: Mutex::new(transport.writer()?),
             term: Mutex::new(Terminal::new(config)),
+            recorder: Mutex::new(recorder),
             redraw_pending: AtomicBool::new(false),
             held: Mutex::new(false),
             resume: Condvar::new(),
@@ -68,7 +85,7 @@ impl Session {
         };
         thread::Builder::new()
             .name("veetee-io".into())
-            .spawn(move || io_loop(transport, shared, tx, recorder))?;
+            .spawn(move || io_loop(transport, shared, tx))?;
         Ok((session, rx))
     }
 
@@ -77,13 +94,34 @@ impl Session {
         self.shared.term.lock().unwrap_or_else(|e| e.into_inner())
     }
 
-    pub fn key(&self, key: Key) {
-        let output = {
+    pub fn key(&self, key: Key) -> vt_core::KeyOutcome {
+        self.key_with(key, vt_core::KeyMods::NONE)
+    }
+
+    pub fn key_with(&self, key: Key, mods: vt_core::KeyMods) -> vt_core::KeyOutcome {
+        let (outcome, output) = {
             let mut term = self.terminal();
-            term.key(key);
-            term.take_output()
+            let outcome = term.key_with(key, mods);
+            (outcome, term.take_output())
         };
         self.send(&output);
+        outcome
+    }
+
+    /// A main keypad key the host may have programmed (DECPAK).
+    pub fn alphanumeric_key(
+        &self,
+        station: u8,
+        mods: vt_core::KeyMods,
+        alt_graph: bool,
+    ) -> vt_core::KeyOutcome {
+        let (outcome, output) = {
+            let mut term = self.terminal();
+            let outcome = term.alphanumeric_key(station, mods, alt_graph);
+            (outcome, term.take_output())
+        };
+        self.send(&output);
+        outcome
     }
 
     pub fn type_text(&self, text: &str) {
@@ -119,7 +157,35 @@ impl Session {
         self.shared.resume.notify_all();
     }
 
+    /// Whether this session is being recorded.
+    pub fn is_recording(&self) -> bool {
+        self.shared
+            .recorder
+            .lock()
+            .map(|r| r.is_some())
+            .unwrap_or(false)
+    }
+
+    /// Adds a checkpoint to the recording and returns its name.
+    pub fn mark_checkpoint(&self) -> Option<String> {
+        let mut recorder = self
+            .shared
+            .recorder
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        recorder.as_mut().and_then(|r| r.mark(None).ok())
+    }
+
     pub fn close(&self) {
+        if let Some(r) = self
+            .shared
+            .recorder
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .as_mut()
+        {
+            let _ = r.flush();
+        }
         self.shared.closed.store(true, Ordering::Relaxed);
         self.set_held(false);
     }
@@ -128,6 +194,7 @@ impl Session {
         if bytes.is_empty() {
             return;
         }
+        record(&self.shared, |r| r.keys(bytes));
         let mut writer = self.shared.writer.lock().unwrap_or_else(|e| e.into_inner());
         if let Err(e) = writer.write_all(bytes) {
             let _ = self.notices.try_send(Notice::Exited(Some(e.to_string())));
@@ -151,11 +218,21 @@ pub fn frame_drawn(session: &Session) {
         .store(false, Ordering::Release);
 }
 
+/// Writes to the recording, dropping it if the file cannot be written.
+fn record(shared: &Shared, f: impl FnOnce(&mut SessionRecorder) -> io::Result<()>) {
+    let mut recorder = shared.recorder.lock().unwrap_or_else(|e| e.into_inner());
+    if let Some(r) = recorder.as_mut() {
+        if let Err(e) = f(r) {
+            eprintln!("veetee: recording stopped: {e}");
+            *recorder = None;
+        }
+    }
+}
+
 fn io_loop(
     mut transport: Box<dyn Transport>,
     shared: Arc<Shared>,
     tx: async_channel::Sender<Notice>,
-    mut recorder: Option<File>,
 ) {
     let mut buf = vec![0u8; 64 * 1024];
     let reason = loop {
@@ -176,11 +253,7 @@ fn io_loop(
             }
             Err(e) => break Some(e.to_string()),
         };
-        if let Some(file) = recorder.as_mut() {
-            if file.write_all(&buf[..n]).is_err() {
-                recorder = None;
-            }
-        }
+        record(&shared, |r| r.host(&buf[..n]));
         let (reply, events, rows, cols) = {
             let mut term = shared.term.lock().unwrap_or_else(|e| e.into_inner());
             term.advance(&buf[..n]);
@@ -188,6 +261,7 @@ fn io_loop(
             (term.take_output(), term.take_events(), rows, cols)
         };
         if !reply.is_empty() {
+            record(&shared, |r| r.reply(&reply));
             let mut writer = shared.writer.lock().unwrap_or_else(|e| e.into_inner());
             let _ = writer.write_all(&reply);
         }

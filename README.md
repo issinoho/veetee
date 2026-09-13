@@ -53,7 +53,7 @@ cargo run -p veetee -- --ssh system@vms1         # SSH via your OpenSSH client a
 cargo run -p veetee -- --serial /dev/ttyUSB0     # serial line (see below)
 cargo run -p veetee -- --model vt525 --telnet vms1   # colour VT525 (vt100 … vt525)
 cargo run -p veetee -- --command 'vttest'        # any program, via /bin/sh -c
-cargo run -p veetee -- --record session.bin --telnet vms1   # keep the host output for replay
+cargo run -p veetee -- --record session.vtrec --telnet vms1  # record for replay and tests
 cargo run -p veetee -- --sessions 2 --telnet vms1   # two sessions in a split window; F4 switches
 ```
 
@@ -105,8 +105,23 @@ The PC keyboard is mapped to LK401 key positions:
 | Backspace | `<X]` (sends DEL) |
 | Pause, Print Screen, Break (Ctrl+Break) | Hold Screen, Print Screen, Break (Answerback) |
 | Ctrl+Shift+C, Ctrl+Shift+V | Copy, Paste |
+| Ctrl+↑ ↓, Ctrl+End, Ctrl+PgDn | Pan the view through page memory (lines, pages) |
+| Ctrl+Shift+M | Mark a checkpoint in the session recording |
 
-Set-Up (F3), Print Screen and Data/Talk are not implemented yet.
+Ctrl and Alt with the editing, cursor and function keys pass on to the DEC key, so a VT520
+receives its DECFNK sequences (Ctrl+Insert is Ctrl+Find, `CSI 1;5~`).
+
+The map is a TOML file. *Keyboard Map…* in the window menu opens an LK401 keyboard to rebind
+keys; Save writes `~/.config/veetee/keymap.toml`, and `--keymap FILE` uses another map. Set-Up
+(F3) and Print Screen are not implemented yet.
+
+### Recording sessions
+
+`--record FILE.vtrec` records a session: what the host sent, the terminal's replies and named
+checkpoints (Ctrl+Shift+M). Typed keys are left out unless `--record-keys` is given, so passwords
+stay out of the file. `vt-headless replay FILE.vtrec` plays a recording through the emulator
+and compares the screen at each checkpoint; the OpenVMS acceptance suite in
+`tests/conformance/openvms` works this way.
 
 ## Development
 
@@ -115,6 +130,7 @@ cargo test --workspace
 cargo xtask vttest                    # vttest conformance (needs curl, a C compiler, make)
 cargo xtask vttest --bless vt102/menu2  # re-record snapshots after reviewing a change
 cargo xtask esctest                   # esctest2 against expected-failures.txt (needs git, python3)
+cargo xtask openvms                   # replay OpenVMS session recordings
 cargo xtask dist                      # release tarball, .deb (needs cargo-deb) and SHA256SUMS
 cargo run -p vt-headless -- trace --utf8 some-capture.bin
 cargo +nightly fuzz run parser        # requires cargo-fuzz

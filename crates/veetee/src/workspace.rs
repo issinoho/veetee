@@ -13,7 +13,7 @@ use vt_render::Theme;
 
 use crate::cli::{self, Options};
 use crate::session::{self, Notice, Session};
-use crate::view::{Callbacks, TerminalView};
+use crate::view::{Callbacks, SharedKeymap, TerminalView};
 
 /// The most sessions a window holds.
 pub const MAX_SESSIONS: usize = 2;
@@ -42,6 +42,7 @@ pub struct Workspace {
     next_id: Cell<u64>,
     theme: RefCell<Theme>,
     opening: Cell<bool>,
+    keymap: SharedKeymap,
 }
 
 impl Workspace {
@@ -53,6 +54,7 @@ impl Workspace {
         options: Options,
         base_subtitle: String,
     ) -> Rc<Workspace> {
+        let options_keymap = options.keymap.clone();
         let paned = gtk::Paned::builder()
             .orientation(gtk::Orientation::Vertical)
             .wide_handle(true)
@@ -74,6 +76,9 @@ impl Workspace {
             next_id: Cell::new(1),
             theme: RefCell::new(Theme::default()),
             opening: Cell::new(false),
+            keymap: Rc::new(RefCell::new(crate::keymaps::load(
+                options_keymap.as_deref(),
+            ))),
         });
         let weak = Rc::downgrade(&workspace);
         window.connect_close_request(move |_| {
@@ -145,7 +150,7 @@ impl Workspace {
                 }
             }),
         };
-        let view = TerminalView::new(session, notices, callbacks);
+        let view = TerminalView::new(session, notices, callbacks, self.keymap.clone());
         view.set_theme(self.theme.borrow().clone());
         let header = gtk::Label::builder()
             .xalign(0.0)
@@ -351,6 +356,9 @@ impl Workspace {
             let n = panes.iter().position(|p| p.id == active.id).unwrap_or(0) + 1;
             subtitle.push_str(&format!(" · Session {n}"));
         }
+        if active.view.session().is_recording() {
+            subtitle.push_str(" · Recording");
+        }
         if !status.is_empty() {
             subtitle.push_str(&format!(" · {status}"));
         }
@@ -362,6 +370,25 @@ impl Workspace {
         for pane in self.panes.borrow().iter() {
             pane.view.set_theme(theme.clone());
         }
+    }
+
+    /// Adds a checkpoint to the active session's recording.
+    pub fn mark_checkpoint(&self) {
+        let session = self
+            .panes
+            .borrow()
+            .iter()
+            .find(|p| p.id == self.active.get())
+            .map(|p| p.view.session());
+        let message = match session.and_then(|s| s.mark_checkpoint()) {
+            Some(name) => format!("Recorded checkpoint {name}"),
+            None => "This session is not being recorded (--record FILE)".into(),
+        };
+        self.notify(&message);
+    }
+
+    pub fn keymap(&self) -> SharedKeymap {
+        self.keymap.clone()
     }
 
     pub fn phosphor(&self) -> String {

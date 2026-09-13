@@ -2,6 +2,8 @@
 
 mod cli;
 mod gl_loader;
+mod keymap_editor;
+mod keymaps;
 mod session;
 mod view;
 mod workspace;
@@ -53,6 +55,8 @@ fn build_window(app: &adw::Application, config: Config, options: Options) {
     menu.append_section(Some("Phosphor"), &phosphor);
     let session_section = gio::Menu::new();
     session_section.append(Some("Open Second Session"), Some("win.new-session"));
+    session_section.append(Some("Mark Checkpoint"), Some("win.mark-checkpoint"));
+    session_section.append(Some("Keyboard Map…"), Some("win.keymap"));
     menu.append_section(None, &session_section);
     let window_section = gio::Menu::new();
     window_section.append(Some("Full Screen"), Some("win.fullscreen"));
@@ -98,7 +102,7 @@ fn build_window(app: &adw::Application, config: Config, options: Options) {
     glib::spawn_future_local(async move {
         let Ok(opened) = rx.recv().await else { return };
         let started = opened
-            .and_then(|t| session::Session::start(config.clone(), t, options.record.as_deref()));
+            .and_then(|t| session::Session::start(config.clone(), t, options.record.as_ref()));
         let (session, notices) = match started {
             Ok(s) => s,
             Err(e) => {
@@ -119,6 +123,10 @@ fn build_window(app: &adw::Application, config: Config, options: Options) {
             workspace.open_session();
         }
         add_session_actions(&window, &workspace);
+        // Developer hook for screenshots: VEETEE_STARTUP_ACTION=keymap.
+        if let Ok(action) = std::env::var("VEETEE_STARTUP_ACTION") {
+            gtk::prelude::ActionGroupExt::activate_action(&window, &action, None);
+        }
     });
 }
 
@@ -159,6 +167,28 @@ fn add_session_actions(window: &adw::ApplicationWindow, workspace: &Rc<workspace
         }
     });
     window.add_action(&new_session);
+
+    let mark = gio::SimpleAction::new("mark-checkpoint", None);
+    mark.connect_activate({
+        let workspace = Rc::downgrade(workspace);
+        move |_, _| {
+            if let Some(ws) = workspace.upgrade() {
+                ws.mark_checkpoint();
+            }
+        }
+    });
+    window.add_action(&mark);
+
+    let keymap = gio::SimpleAction::new("keymap", None);
+    keymap.connect_activate({
+        let (workspace, window) = (Rc::downgrade(workspace), window.downgrade());
+        move |_, _| {
+            if let (Some(ws), Some(w)) = (workspace.upgrade(), window.upgrade()) {
+                keymap_editor::open(&w, ws.keymap());
+            }
+        }
+    });
+    window.add_action(&keymap);
 }
 
 fn add_window_actions(window: &adw::ApplicationWindow) {
@@ -204,9 +234,15 @@ fn capture_window_later(window: &adw::ApplicationWindow) {
         .unwrap_or(2000);
     let window = window.downgrade();
     glib::timeout_add_local_once(std::time::Duration::from_millis(delay), move || {
-        let Some(window) = window.upgrade() else {
+        let Some(main) = window.upgrade() else {
             return;
         };
+        // The active window: a dialog, if one is open.
+        let window: gtk::Window = gtk::Window::list_toplevels()
+            .into_iter()
+            .filter_map(|w| w.downcast::<gtk::Window>().ok())
+            .find(|w| w.is_active())
+            .unwrap_or_else(|| main.clone().upcast());
         let paintable = gtk::WidgetPaintable::new(Some(&window));
         let (w, h) = (window.width(), window.height());
         let snapshot = gtk::Snapshot::new();
@@ -221,7 +257,7 @@ fn capture_window_later(window: &adw::ApplicationWindow) {
             Some(Err(e)) => eprintln!("veetee: window capture failed: {e}"),
             None => eprintln!("veetee: window capture failed: nothing rendered"),
         }
-        if let Some(app) = window.application() {
+        if let Some(app) = main.application() {
             app.quit();
         }
     });

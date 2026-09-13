@@ -384,6 +384,43 @@ impl Emulator {
         Some(())
     }
 
+    // ----------------------------------------------------- programmed keys
+
+    /// DECRQKD, answered with DECRPFK or DECRPAK.
+    pub(super) fn key_definition_report(&mut self, station: u16, modifier: u16) {
+        let Ok(station) = u8::try_from(station) else {
+            return;
+        };
+        if crate::keyprog::is_alphanumeric(station) {
+            let body = self.keyprog.report_alphanumeric(station);
+            self.reply_dcs(&format!("\"~{body}"));
+            return;
+        }
+        let (Some(key), modifier @ 0..=8) = (crate::keyprog::key_at(station), modifier) else {
+            return;
+        };
+        let mods = crate::keyboard::KeyMods {
+            shift: matches!(modifier, 2 | 4 | 6 | 8),
+            alt: matches!(modifier, 3 | 4 | 7 | 8),
+            ctrl: matches!(modifier, 5..=8),
+        };
+        let cx = crate::keyboard::KeyContext {
+            ansi: self.modes.ansi,
+            level: self.level,
+            eight_bit: self.c1_8bit,
+            cursor_app: self.modes.cursor_keys_application,
+            keypad_app: self.modes.keypad_application,
+            new_line: self.modes.new_line,
+            backarrow_bs: self.modes.backarrow_sends_bs,
+        };
+        let mut default = Vec::new();
+        crate::keyboard::encode_with(key, mods, cx, &mut default);
+        let body = self
+            .keyprog
+            .report_function(station, modifier as u8, &default);
+        self.reply_dcs(&format!("\"}}{body}"));
+    }
+
     // -------------------------------------------------- terminal state
 
     /// DECTSR. DEC documents the data string as model-specific; veetee's is

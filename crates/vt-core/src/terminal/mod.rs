@@ -6,7 +6,7 @@ use crate::cell::{Attrs, Cell, Color, Flags};
 use crate::charset::{self, Charset, CharsetState};
 use crate::config::{Config, Model, StatusDisplay};
 use crate::grid::{Grid, Line, LineSize, Region};
-use crate::keyboard::{self, Key, KeyContext};
+use crate::keyboard::{self, Key, KeyContext, KeyMods};
 use crate::modes::Modes;
 use crate::softfont::{SoftFonts, SoftGlyph};
 use crate::udk::UserKeys;
@@ -42,6 +42,18 @@ pub enum Event {
         duration_ms: u32,
         note: u8,
     },
+}
+
+/// What a key press did.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum KeyOutcome {
+    /// Codes were sent (or nothing needed to be).
+    Handled,
+    /// The host programmed the key to perform local function `n`
+    /// (EK-VT520-RM table 8-6), which the frontend carries out.
+    LocalFunction(u16),
+    /// An alphanumeric key without a program: type as usual.
+    NotProgrammed,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -146,6 +158,20 @@ impl Terminal {
         self.emu
             .color_terminal()
             .then(|| (&self.emu.colors, self.emu.color_options()))
+    }
+
+    /// Local panning (Ctrl with the cursor keys): moves the user window
+    /// `lines` down (negative: up) within the displayed page.
+    pub fn pan_view(&mut self, lines: isize) {
+        self.emu.pan(lines);
+    }
+
+    /// Local page view (Ctrl with Prev/Next): shows another page without
+    /// moving the cursor.
+    pub fn view_page(&mut self, delta: isize) {
+        let count = self.emu.page_count() as isize;
+        let page = (self.emu.display_page as isize + delta).clamp(0, count - 1);
+        self.emu.display_page = page as usize;
     }
 
     /// Tells the terminal how many sessions share its window, for DSR ?85.
@@ -264,18 +290,71 @@ impl Terminal {
     /// A DEC key was pressed. Its codes are queued for the host (see
     /// [`Terminal::take_output`]) and echoed locally when SRM is reset.
     pub fn key(&mut self, key: Key) {
+        self.key_with(key, KeyMods::NONE);
+    }
+
+    /// A DEC key pressed with modifiers. A VT520 key the host has programmed
+    /// (DECPFK) sends its sequence or asks for a local function instead.
+    pub fn key_with(&mut self, key: Key, mods: KeyMods) -> KeyOutcome {
         if self.emu.modes.keyboard_locked {
-            return;
+            return KeyOutcome::Handled;
         }
+        let vt500 = self.emu.config.model.max_level() >= 5 && self.emu.modes.ansi;
+        let station = crate::keyprog::station_of(key).filter(|_| vt500);
+        // Shifted F6–F20 are the function keys with Shift.
+        let (key, mods) = match key {
+            Key::UserDefined(n) if station.is_some() => (
+                Key::UserDefined(n),
+                KeyMods {
+                    shift: true,
+                    ..mods
+                },
+            ),
+            k => (k, mods),
+        };
+        if let Some(station) = station {
+            if let Some(program) = self.emu.keyprog.function(station, mods).cloned() {
+                return self.run_program(&program);
+            }
+            // DECCKD: the key behaves as another key's default.
+            let source = self.emu.keyprog.default_source(station);
+            if source != station {
+                if let Some(other) = crate::keyprog::key_at(source) {
+                    let bytes = self.key_bytes(other, mods);
+                    self.transmit(&bytes);
+                    return KeyOutcome::Handled;
+                }
+            }
+        }
+        let bytes = self.key_bytes(key, mods);
+        self.transmit(&bytes);
+        KeyOutcome::Handled
+    }
+
+    /// The codes a key sends by default in the current modes.
+    fn key_bytes(&self, key: Key, mods: KeyMods) -> Vec<u8> {
         let mut bytes = Vec::new();
+        let e = &self.emu;
         if let Key::UserDefined(f) = key {
-            if self.emu.level >= 2 {
-                if let Some(s) = self.emu.udk.get(f) {
-                    bytes.extend_from_slice(s);
+            if e.level >= 2 {
+                match e.udk.get(f) {
+                    Some(s) => bytes.extend_from_slice(s),
+                    // A VT500's undefined shifted F6–F20 send their DECFNK
+                    // sequence (EK-VT510-RM DECFNK notes).
+                    None if e.level >= 5 && e.modes.ansi => {
+                        if let Some(n) = keyboard::function_key_number(f) {
+                            if e.c1_8bit {
+                                bytes.push(0x9B);
+                            } else {
+                                bytes.extend_from_slice(b"\x1b[");
+                            }
+                            bytes.extend_from_slice(format!("{n};2~").as_bytes());
+                        }
+                    }
+                    None => {}
                 }
             }
         } else {
-            let e = &self.emu;
             let cx = KeyContext {
                 ansi: e.modes.ansi,
                 level: e.level,
@@ -285,9 +364,68 @@ impl Terminal {
                 new_line: e.modes.new_line,
                 backarrow_bs: e.modes.backarrow_sends_bs,
             };
-            keyboard::encode(key, cx, &mut bytes);
+            keyboard::encode_with(key, mods, cx, &mut bytes);
         }
-        self.transmit(&bytes);
+        bytes
+    }
+
+    fn run_program(&mut self, program: &crate::keyprog::Program) -> KeyOutcome {
+        use crate::keyprog::{Direction, SEND_SEQUENCE};
+        match program.function {
+            0 => KeyOutcome::Handled,
+            SEND_SEQUENCE => {
+                match program.direction {
+                    Direction::Local => self.advance(&program.uds),
+                    Direction::Remote => self.emu.output.extend_from_slice(&program.uds),
+                    Direction::Normal => self.transmit(&program.uds),
+                }
+                KeyOutcome::Handled
+            }
+            // BS, CAN, ESC and DEL (EK-VT520-RM table 8-6).
+            91 => self.send_code(0x08),
+            92 => self.send_code(0x18),
+            93 => self.send_code(0x1B),
+            94 => self.send_code(0x7F),
+            n => KeyOutcome::LocalFunction(n),
+        }
+    }
+
+    fn send_code(&mut self, code: u8) -> KeyOutcome {
+        self.transmit(&[code]);
+        KeyOutcome::Handled
+    }
+
+    /// A key on the main keypad, by LK411 station. When the host has
+    /// programmed it (DECPAK) the programmed codes are sent and `Handled`
+    /// is returned; otherwise `NotProgrammed` lets typing proceed normally.
+    pub fn alphanumeric_key(&mut self, station: u8, mods: KeyMods, alt_graph: bool) -> KeyOutcome {
+        if self.emu.config.model.max_level() < 5 || !self.emu.modes.ansi {
+            return KeyOutcome::NotProgrammed;
+        }
+        let Some(definition) = self.emu.keyprog.alphanumeric(station).cloned() else {
+            return KeyOutcome::NotProgrammed;
+        };
+        if mods.alt && !alt_graph {
+            return match definition.alt {
+                Some(program) => self.run_program(&program),
+                None => KeyOutcome::NotProgrammed,
+            };
+        }
+        let state = match (mods.ctrl, alt_graph, mods.shift) {
+            (true, _, _) => 6,
+            (false, false, false) => 0,
+            (false, false, true) => 1,
+            (false, true, false) => 3,
+            (false, true, true) => 4,
+        };
+        match &definition.codes[state] {
+            Some(codes) => {
+                let codes = codes.clone();
+                self.transmit(&codes);
+                KeyOutcome::Handled
+            }
+            None => KeyOutcome::NotProgrammed,
+        }
     }
 
     /// Characters typed on the main keypad, including C0 controls produced
@@ -415,6 +553,8 @@ struct Emulator {
     osc: Vec<u8>,
     /// Sessions open in the terminal window (for the multiple session report).
     sessions: u8,
+    /// VT520 programmed keys.
+    keyprog: crate::keyprog::KeyPrograms,
     output: Vec<u8>,
     events: Vec<Event>,
     pause: bool,
@@ -541,6 +681,7 @@ impl Emulator {
             colors: crate::color::ColorTable::default(),
             osc: Vec::new(),
             sessions: 1,
+            keyprog: crate::keyprog::KeyPrograms::default(),
             output: Vec::new(),
             events: Vec::new(),
             pause: false,
@@ -1770,6 +1911,25 @@ impl Perform for Emulator {
             (None, [], b'@') if vt220 => self.insert_chars(n(0)),
             (Some(b'?'), [], b'W') if vt510 && p.get_or(0, 0) == 5 => self.tab_every_8(),
             (None, [b'+'], b'p') if self.config.model.max_level() >= 5 => self.secure_reset(p),
+            (None, [b'+'], b'z') if self.config.model.max_level() >= 5 => {
+                self.keyprog.key_action(p.get_or(0, 0))
+            }
+            (None, [b'+'], b'x') if self.config.model.max_level() >= 5 => {
+                let free = self.keyprog.free();
+                self.reply_csi(&format!("{};{free}+y", crate::keyprog::MEMORY));
+            }
+            (None, [b','], b'w') if self.config.model.max_level() >= 5 => {
+                self.key_definition_report(p.get_or(0, 0), p.get_or(1, 0))
+            }
+            (None, [b','], b'u') if self.config.model.max_level() >= 5 => {
+                let station = p.get_or(0, 0);
+                let kind = match u8::try_from(station) {
+                    Ok(s) if crate::keyprog::key_at(s).is_some() => 1,
+                    Ok(s) if crate::keyprog::is_alphanumeric(s) => 0,
+                    _ => return,
+                };
+                self.reply_csi(&format!("{station};{kind},v"));
+            }
             (None, [b' '], b'~') if self.config.model.max_level() >= 5 => {
                 self.terminal_mode_emulation(p.get_or(0, 0))
             }

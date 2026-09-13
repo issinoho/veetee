@@ -19,6 +19,9 @@ tasks:
       tests/conformance/esctest/expected-failures.txt, where every entry
       gives the DEC reason for the difference. --update rewrites the list,
       keeping existing reasons.
+  openvms [--bless] [NAME ...]
+      Replay the session recordings in tests/conformance/openvms and compare
+      each checkpoint screen with NAME/CHECKPOINT.screen.
   dist [--no-deb]
       Build release binaries and package them under target/dist: a
       veetee-VERSION-x86_64-linux.tar.gz, a Debian package (needs cargo-deb)
@@ -40,6 +43,7 @@ fn main() -> ExitCode {
         Some("vttest") => vttest(&args[1..]),
         Some("esctest") => esctest(&args[1..]),
         Some("dist") => dist(&args[1..]),
+        Some("openvms") => openvms(&args[1..]),
         _ => Err(USAGE.to_string()),
     };
     match result {
@@ -403,4 +407,48 @@ fn dist(args: &[String]) -> Result<()> {
         println!("{}", dist.join(file).display());
     }
     Ok(())
+}
+
+fn openvms(args: &[String]) -> Result<()> {
+    let bless = args.iter().any(|a| a == "--bless");
+    let filters: Vec<&str> = args
+        .iter()
+        .filter(|a| !a.starts_with("--"))
+        .map(String::as_str)
+        .collect();
+    run(Command::new(env!("CARGO"))
+        .args(["build", "--quiet", "-p", "vt-headless"])
+        .current_dir(root()))?;
+    let headless = root().join("target/debug/vt-headless");
+    let suite = root().join("tests/conformance/openvms");
+    let mut failed = Vec::new();
+    let mut count = 0;
+    for recording in read_dir_sorted(&suite)? {
+        if !recording.extension().is_some_and(|e| e == "vtrec") {
+            continue;
+        }
+        let name = recording
+            .file_stem()
+            .unwrap()
+            .to_string_lossy()
+            .into_owned();
+        if !filters.is_empty() && !filters.iter().any(|f| name.contains(f)) {
+            continue;
+        }
+        count += 1;
+        let mut cmd = Command::new(&headless);
+        cmd.arg("replay").arg(&recording);
+        if bless {
+            cmd.arg("--bless");
+        }
+        if !cmd.status().map_err(|e| e.to_string())?.success() {
+            failed.push(name);
+        }
+    }
+    println!("openvms: {count} recordings, {} failed", failed.len());
+    if failed.is_empty() {
+        Ok(())
+    } else {
+        Err(format!("recording replay failures: {}", failed.join(", ")))
+    }
 }

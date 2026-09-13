@@ -324,7 +324,12 @@ fn draw_line(
         text_normal,
         text_bold,
     } = *colors;
-    let space = font.index_of(' ');
+    let columns_132 = term.modes().columns_132;
+    let space = if columns_132 && font.width == 10 {
+        font.glyphs().len() as u16 + font.index_of(' ')
+    } else {
+        font.index_of(' ')
+    };
     let (mult, size_flag) = match line.size {
         LineSize::Single => (1, 0),
         LineSize::DoubleWidth => (2, 0),
@@ -393,6 +398,14 @@ fn draw_line(
                     font.height,
                 ),
             }
+        } else if columns_132 && font.width == 10 {
+            // The condensed variant follows the font in the atlas.
+            let offset = font.glyphs().len() as u16;
+            (
+                offset + font.index_of(cell.ch),
+                vt_fonts::CONDENSED_WIDTH,
+                font.height,
+            )
         } else {
             (font.index_of(cell.ch), font.width, font.height)
         };

@@ -6,6 +6,16 @@ milestones (0.3 = M3). The format follows [Keep a Changelog](https://keepachange
 ## [Unreleased]
 
 - `--phosphor white|green|amber` selects the phosphor colour at start.
+- **Keyboard (M6)**: the PC-to-LK401 map is a TOML keymap with a visual *Keyboard Map* editor
+  (`~/.config/veetee/keymap.toml`, `--keymap FILE`); VT500 modified function, editing and cursor
+  keys send DECFNK sequences; Ctrl with the cursor and Prev/Next keys pans through page memory.
+- **VT520 key programming**: DECPFK, DECPAK, DECCKD, DECPKA, DECRQKD with DECRPFK/DECRPAK,
+  DECRQPKFM and DECRQKT, by LK411 key station; programmed local functions run veetee's own.
+- **Session recordings**: `--record` writes `.vtrec` recordings with checkpoints (Ctrl+Shift+M),
+  leaving typed keys out unless `--record-keys` is given; `vt-headless replay` and
+  `cargo xtask openvms` compare checkpoint screens.
+- 132-column mode draws a condensed six-dot font instead of squeezing the 80-column glyphs, and
+  glyph dots are box-filtered, so strokes keep an even weight.
 - Project website in `site/`, published with GitHub Pages; screenshots are regenerated from
   veetee's renderer with `site/capture/capture.sh`.
 

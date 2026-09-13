@@ -36,6 +36,9 @@ pub struct Callbacks {
     pub exited: Box<dyn Fn(Option<String>)>,
 }
 
+/// The keymap shared by the views in a window.
+pub type SharedKeymap = Rc<RefCell<vt_keyboard::Keymap>>;
+
 struct State {
     session: Session,
     gl: Option<glow::Context>,
@@ -73,6 +76,7 @@ impl TerminalView {
         session: Session,
         notices: async_channel::Receiver<Notice>,
         callbacks: Callbacks,
+        keymap: SharedKeymap,
     ) -> TerminalView {
         let area = gtk::GLArea::builder()
             .hexpand(true)
@@ -103,7 +107,7 @@ impl TerminalView {
         }));
         let view = TerminalView { area, state };
         view.connect_gl();
-        view.connect_input();
+        view.connect_input(keymap);
         view.connect_mouse();
         view.connect_notices(notices);
         view.start_blink_timer();
@@ -207,7 +211,7 @@ impl TerminalView {
         });
     }
 
-    fn connect_input(&self) {
+    fn connect_input(&self, keymap: SharedKeymap) {
         let keys = gtk::EventControllerKey::new();
         let im = gtk::IMMulticontext::new();
         keys.set_im_context(Some(&im));
@@ -218,21 +222,47 @@ impl TerminalView {
         });
 
         let view = self.clone();
-        keys.connect_key_pressed(move |_, keyval, _keycode, modifiers| {
+        keys.connect_key_pressed(move |_, keyval, keycode, modifiers| {
             let mods = Mods {
                 shift: modifiers.contains(gtk::gdk::ModifierType::SHIFT_MASK),
                 ctrl: modifiers.contains(gtk::gdk::ModifierType::CONTROL_MASK),
                 alt: modifiers.contains(gtk::gdk::ModifierType::ALT_MASK),
             };
-            let Some(action) = vt_keyboard::map_key(keyval.into_glib(), keyval.to_unicode(), mods)
-            else {
+            // A main keypad key the host programmed (DECPAK) takes priority.
+            if let Some(station) = vt_keyboard::station_for_keycode(keycode) {
+                // 🔎 GTK 4 does not report AltGr separately, so group 2 codes are not used yet.
+                let alt_graph = false;
+                let session = view.state.borrow().session.clone();
+                match session.alphanumeric_key(station, mods, alt_graph) {
+                    vt_core::KeyOutcome::Handled => return glib::Propagation::Stop,
+                    vt_core::KeyOutcome::LocalFunction(n) => {
+                        view.programmed_local_function(n);
+                        return glib::Propagation::Stop;
+                    }
+                    vt_core::KeyOutcome::NotProgrammed => {}
+                }
+            }
+            let action = keymap
+                .borrow()
+                .map(keyval.into_glib(), keyval.to_unicode(), mods);
+            let Some(action) = action else {
                 return glib::Propagation::Proceed;
             };
             let session = view.state.borrow().session.clone();
-            match action {
+            let outcome = match action {
                 Action::Key(key) => session.key(key),
-                Action::Text(text) => session.type_text(&text),
-                Action::Local(local) => view.local_function(local),
+                Action::ModifiedKey(key, mods) => session.key_with(key, mods),
+                Action::Text(text) => {
+                    session.type_text(&text);
+                    vt_core::KeyOutcome::Handled
+                }
+                Action::Local(local) => {
+                    view.local_function(local);
+                    vt_core::KeyOutcome::Handled
+                }
+            };
+            if let vt_core::KeyOutcome::LocalFunction(n) = outcome {
+                view.programmed_local_function(n);
             }
             glib::Propagation::Stop
         });
@@ -421,6 +451,29 @@ impl TerminalView {
         });
     }
 
+    /// A local function the host assigned to a key (EK-VT520-RM table 8-6).
+    fn programmed_local_function(&self, number: u16) {
+        let local = match number {
+            1 | 30 => Local::HoldScreen,
+            2 => Local::PrintScreen,
+            3 => Local::SetUp,
+            4 | 12 => Local::SwitchSession,
+            5 => Local::Break,
+            10 => Local::Answerback,
+            20 => Local::PanUp,
+            21 => Local::PanDown,
+            24 => Local::PanPrevPage,
+            25 => Local::PanNextPage,
+            37 => Local::Paste,
+            _ => {
+                let st = self.state.borrow();
+                (st.callbacks.notify)(&format!("Local function {number} is not available"));
+                return;
+            }
+        };
+        self.local_function(local);
+    }
+
     fn local_function(&self, local: Local) {
         // DECLFKC and DECELF let the host reassign or disable local keys.
         let key_number = match local {
@@ -459,6 +512,22 @@ impl TerminalView {
             Local::Answerback => st.session.send_answerback(),
             Local::Paste => self.paste(self.area.clipboard()),
             Local::SetUp => (st.callbacks.notify)("Set-Up is not available yet"),
+            Local::PanUp | Local::PanDown | Local::PanPrevPage | Local::PanNextPage => {
+                {
+                    let mut term = st.session.terminal();
+                    match local {
+                        Local::PanUp => term.pan_view(-1),
+                        Local::PanDown => term.pan_view(1),
+                        Local::PanPrevPage => term.view_page(-1),
+                        _ => term.view_page(1),
+                    }
+                }
+                self.area.queue_render();
+            }
+            Local::MarkCheckpoint => match st.session.mark_checkpoint() {
+                Some(name) => (st.callbacks.notify)(&format!("Recorded checkpoint {name}")),
+                None => (st.callbacks.notify)("This session is not being recorded (--record FILE)"),
+            },
             Local::PrintScreen => (st.callbacks.notify)("Printing is not available yet"),
             Local::SwitchSession => {
                 let callbacks = st.callbacks.clone();
