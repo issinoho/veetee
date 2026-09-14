@@ -5,6 +5,10 @@ milestones (0.3 = M3). The format follows [Keep a Changelog](https://keepachange
 
 ## [Unreleased]
 
+## [0.8.2] - 2026-09-14
+
+Fixes local shells and SSH in the Flatpak, and adds signing of Windows releases.
+
 - **Fixed (Flatpak)**: local shells started as `/bin/sh` without job control ("can't access tty"),
   and `--ssh` could not ask for a password (it tried `ssh-askpass` instead). The host program now
   gets the terminal as its controlling terminal, and the local shell is the user's login shell
@@ -226,7 +230,8 @@ The first release: VT100 through VT420 emulation with local, Telnet, SSH and ser
   `cargo deny` licence checks and parser fuzzing.
 - `cargo xtask dist` builds the release tarball and Debian package.
 
-[Unreleased]: https://github.com/issinoho/veetee/compare/v0.8.1...HEAD
+[Unreleased]: https://github.com/issinoho/veetee/compare/v0.8.2...HEAD
+[0.8.2]: https://github.com/issinoho/veetee/compare/v0.8.1...v0.8.2
 [0.8.1]: https://github.com/issinoho/veetee/compare/v0.8.0...v0.8.1
 [0.8.0]: https://github.com/issinoho/veetee/compare/v0.7.1...v0.8.0
 [0.7.1]: https://github.com/issinoho/veetee/compare/v0.7.0...v0.7.1

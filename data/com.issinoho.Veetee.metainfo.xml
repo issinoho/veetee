@@ -61,6 +61,11 @@
   </supports>
   <content_rating type="oars-1.1"/>
   <releases>
+    <release version="0.8.2" date="2026-09-14">
+      <description>
+        <p>Local shells and SSH work properly in the Flatpak: shells get job control and SSH can ask for passwords.</p>
+      </description>
+    </release>
     <release version="0.8.1" date="2026-09-14">
       <description>
         <p>Screen reader support, output about three times faster, and a Flatpak bundle.</p>
