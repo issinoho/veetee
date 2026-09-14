@@ -1,18 +1,51 @@
 # Signing the Windows build
 
-Release builds are signed when the repository has a code-signing certificate. Without one the
-release still builds, unsigned, and SmartScreen asks users to confirm the first run.
+veetee's Windows executables are signed with a Certum code-signing certificate held in Certum's
+SimplySign cloud. The key cannot be exported, so signing happens on a Windows computer signed in to
+SimplySign, after the Release workflow has published the unsigned build.
 
-1. Obtain an Authenticode code-signing certificate (OV or EV) from a certificate authority, as a
-   `.pfx` file with its password. (EV certificates on hardware tokens cannot be exported; use a
-   cloud signing service such as Azure Trusted Signing instead and adapt the signing step.)
-2. In the GitHub repository settings, under *Secrets and variables → Actions*, add:
-   - `WINDOWS_CERTIFICATE`: the `.pfx` file encoded as base64, for example
-     `base64 -w0 veetee.pfx` on Linux or
-     `[Convert]::ToBase64String([IO.File]::ReadAllBytes("veetee.pfx"))` in PowerShell;
-   - `WINDOWS_CERTIFICATE_PASSWORD`: its password.
-3. Tag a release. The *Sign the executables* step of `.github/workflows/release.yml` signs
-   `veetee.exe` and `vt-headless.exe` with SHA-256 and a DigiCert timestamp before the zip is made.
+## Signing a release
 
-To check a downloaded build: right-click `bin\veetee.exe` → *Properties* → *Digital Signatures*,
-or run `signtool verify /pa bin\veetee.exe`.
+On Windows, with:
+
+- **SimplySign Desktop** installed, running and signed in with a code from the SimplySign mobile
+  app. It presents the certificate in the *Personal* certificate store through a virtual card.
+- **signtool** from the Windows SDK
+  (`winget install Microsoft.WindowsSDK.10.0.26100`, or the SDK installer with *Signing Tools*).
+- **PowerShell 7** (`winget install Microsoft.PowerShell`).
+- The **GitHub CLI**, signed in with access to the repository
+  (`winget install GitHub.cli`, then `gh auth login`).
+
+Once the Release workflow has finished, from a clone of the repository:
+
+```powershell
+pwsh -File packaging\windows\sign-release.ps1 -Version 0.8.1
+```
+
+The script:
+
+1. downloads `veetee-0.8.1-x86_64-windows.zip` and `SHA256SUMS` from the GitHub release and checks
+   the zip against the published checksum;
+2. signs `bin\veetee.exe` and `bin\vt-headless.exe` with SHA-256 and a Certum timestamp
+   (`http://time.certum.pl`), then verifies both signatures;
+3. rebuilds the zip with exactly the same contents and layout;
+4. replaces the zip and `SHA256SUMS` on the release.
+
+SimplySign may ask for approval on the phone while signing. Use `-NoUpload` to sign and rebuild
+the zip locally without changing the release, and `-Thumbprint` to choose a certificate when the
+store holds more than one code-signing certificate.
+
+The GTK and other DLLs in the zip are third-party libraries and are left as they are.
+
+## Checking a signature
+
+Right-click `bin\veetee.exe` → *Properties* → *Digital Signatures*, or run
+`signtool verify /pa /v bin\veetee.exe`. SmartScreen may still warn about a newly signed program
+until it has been downloaded enough times to build a reputation.
+
+## Signing in CI instead
+
+For a certificate that can be exported as a `.pfx` file (not SimplySign or a hardware token), the
+Release workflow can sign unattended: add the repository secrets `WINDOWS_CERTIFICATE` (the `.pfx`
+encoded as base64) and `WINDOWS_CERTIFICATE_PASSWORD`, and its *Sign the executables* step signs
+before the zip is made. Without those secrets the step is skipped.

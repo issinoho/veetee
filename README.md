@@ -32,7 +32,7 @@ documentation.
 | `docs/compat-matrix.md` | Per-function DEC compatibility status and sources |
 | `data/` | Desktop entry, AppStream metadata and application icon |
 | `packaging/flatpak` | Flatpak manifest and vendored crate sources |
-| `packaging/windows` | Windows zip bundling (MSYS2 GTK runtime) and code signing |
+| `packaging/windows` | Windows zip bundling (MSYS2 GTK runtime) and release signing |
 | `fuzz/` | cargo-fuzz targets (nightly) |
 
 ## Installing
@@ -58,8 +58,8 @@ they see your own shell, files and `~/.ssh`; settings are kept in
 `flatpak-builder --user --install --force-clean build packaging/flatpak/com.issinoho.Veetee.yml`.
 
 For Windows 10 (1809) or later, unzip `veetee-0.8.1-x86_64-windows.zip` and run
-`bin\veetee.exe`; the GTK runtime is included. Release builds are code-signed once the project
-has a certificate (see `packaging/windows/SIGNING.md`). Local command windows use the Windows pseudo
+`bin\veetee.exe`; the GTK runtime is included. Release builds are signed with a Certum code-signing
+certificate after publishing (see `packaging/windows/SIGNING.md`). Local command windows use the Windows pseudo
 console, `--ssh` uses Windows' OpenSSH client and `--serial COM3` opens a COM port.
 
 Changes are listed in [CHANGELOG.md](CHANGELOG.md).

@@ -5,6 +5,10 @@ milestones (0.3 = M3). The format follows [Keep a Changelog](https://keepachange
 
 ## [Unreleased]
 
+- **Signing Windows releases**: `packaging/windows/sign-release.ps1` signs a published release's
+  executables with the project's Certum SimplySign certificate on a Windows computer, rebuilds the
+  zip with identical contents and replaces it and `SHA256SUMS` on the release.
+
 ## [0.8.1] - 2026-09-14
 
 Completes the planned work of milestone M8: screen reader support, much faster output, a Flatpak
