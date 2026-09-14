@@ -376,6 +376,18 @@ pub fn open_transport(config: &Config, connection: &Connection) -> io::Result<Bo
         config.model.term_name(),
     );
     Ok(match connection {
+        // In Flatpak the shell runs on the host: the user's shell from the
+        // host's password database, since the sandbox has no $SHELL.
+        Connection::Shell if vt_transport::pty::in_flatpak() => Box::new(Pty::spawn(
+            "sh",
+            &[
+                "-c",
+                r#"s=$(getent passwd "$(id -un)" | cut -d: -f7); exec "${s:-/bin/sh}""#,
+            ],
+            rows,
+            cols,
+            term,
+        )?),
         Connection::Shell => Box::new(Pty::spawn::<&str>(&login_shell(), &[], rows, cols, term)?),
         Connection::Command(cmd) => {
             let (shell, flag) = command_shell();

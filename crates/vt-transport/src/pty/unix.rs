@@ -63,6 +63,7 @@ impl Pty {
         let slave: OwnedFd = open(name.as_c_str(), OFlags::RDWR | OFlags::NOCTTY, 0.into())?;
         tcsetwinsize(&slave, winsize(rows, cols))?;
 
+        let flatpak = in_flatpak();
         let mut cmd = host_command(program, args, term);
         cmd.env("TERM", term)
             .stdin(Stdio::from(slave.try_clone()?))
@@ -74,9 +75,15 @@ impl Pty {
         // SAFETY: the closure only makes async-signal-safe system calls.
         unsafe {
             use std::os::unix::process::CommandExt;
-            cmd.pre_exec(|| {
+            cmd.pre_exec(move || {
                 rustix::process::setsid()?;
-                rustix::process::ioctl_tiocsctty(rustix::stdio::stdin())?;
+                // Inside Flatpak the host's program must make the PTY its
+                // controlling terminal, which it cannot do if flatpak-spawn
+                // already has; otherwise shells lose job control and ssh
+                // cannot ask for a password.
+                if !flatpak {
+                    rustix::process::ioctl_tiocsctty(rustix::stdio::stdin())?;
+                }
                 Ok(())
             });
         }

@@ -5,6 +5,11 @@ milestones (0.3 = M3). The format follows [Keep a Changelog](https://keepachange
 
 ## [Unreleased]
 
+- **Fixed (Flatpak)**: local shells started as `/bin/sh` without job control ("can't access tty"),
+  and `--ssh` could not ask for a password (it tried `ssh-askpass` instead). The host program now
+  gets the terminal as its controlling terminal, and the local shell is the user's login shell
+  from the host.
+
 - **Signing Windows releases**: `packaging/windows/sign-release.ps1` signs a published release's
   executables with the project's Certum SimplySign certificate on a Windows computer, rebuilds the
   zip with identical contents and replaces it and `SHA256SUMS` on the release.
