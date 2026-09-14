@@ -132,6 +132,9 @@ fn other_keys() -> Vec<Vec<KeyCap>> {
             l("Pan ↓", Local::PanDown),
             wide(l("Prev\nPage", Local::PanPrevPage), 1.2),
             wide(l("Next\nPage", Local::PanNextPage), 1.2),
+            wide(l("Review\nBack", Local::ReviewBack), 1.2),
+            wide(l("Review\nForward", Local::ReviewForward), 1.2),
+            l("Search", Local::Search),
         ],
     ]
 }

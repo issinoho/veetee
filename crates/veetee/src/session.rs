@@ -56,6 +56,7 @@ impl ScrollAnimation {
 struct Shared {
     term: Mutex<Terminal>,
     recorder: Mutex<Option<SessionRecorder>>,
+    logger: Mutex<Option<crate::log::Logger>>,
     writer: Mutex<Box<dyn TransportWriter>>,
     redraw_pending: AtomicBool,
     /// The line scrolling smoothly now, set together with the scroll itself.
@@ -80,6 +81,7 @@ impl Session {
         config: Config,
         transport: Box<dyn Transport>,
         record: Option<&RecordOptions>,
+        log: Option<&crate::log::LogOptions>,
     ) -> io::Result<(Session, async_channel::Receiver<Notice>)> {
         let recorder = match record {
             Some(r) => Some(Recorder::new(
@@ -89,11 +91,15 @@ impl Session {
             )?),
             None => None,
         };
+        let logger = log.map(crate::log::Logger::open).transpose()?;
+        let mut term = Terminal::new(config);
+        term.set_capture(logger.as_ref().is_some_and(|l| !l.is_raw()));
         let (tx, rx) = async_channel::unbounded();
         let shared = Arc::new(Shared {
             writer: Mutex::new(transport.writer()?),
-            term: Mutex::new(Terminal::new(config)),
+            term: Mutex::new(term),
             recorder: Mutex::new(recorder),
+            logger: Mutex::new(logger),
             redraw_pending: AtomicBool::new(false),
             scroll: Mutex::new(None),
             held: Mutex::new(false),
@@ -194,6 +200,33 @@ impl Session {
             .unwrap_or(false)
     }
 
+    /// The file this session is logged to, if any.
+    pub fn log_path(&self) -> Option<PathBuf> {
+        let logger = self.shared.logger.lock().unwrap_or_else(|e| e.into_inner());
+        logger.as_ref().map(|l| l.path().to_path_buf())
+    }
+
+    /// Starts logging to a file, replacing any log in progress.
+    pub fn start_log(&self, options: &crate::log::LogOptions) -> io::Result<()> {
+        let logger = crate::log::Logger::open(options)?;
+        let mut term = self.terminal();
+        let mut current = self.shared.logger.lock().unwrap_or_else(|e| e.into_inner());
+        term.set_capture(!logger.is_raw());
+        *current = Some(logger);
+        Ok(())
+    }
+
+    /// Stops logging, writing out what the terminal has shown so far.
+    pub fn stop_log(&self) {
+        let mut term = self.terminal();
+        let text = term.take_captured_text();
+        term.set_capture(false);
+        let mut current = self.shared.logger.lock().unwrap_or_else(|e| e.into_inner());
+        if let Some(mut logger) = current.take() {
+            let _ = logger.text(&text);
+        }
+    }
+
     /// Adds a checkpoint to the recording and returns its name.
     pub fn mark_checkpoint(&self) -> Option<String> {
         let mut recorder = self
@@ -267,6 +300,17 @@ fn record(shared: &Shared, f: impl FnOnce(&mut SessionRecorder) -> io::Result<()
     }
 }
 
+/// Writes to the log, stopping it if the file cannot be written.
+fn log(shared: &Shared, f: impl FnOnce(&mut crate::log::Logger) -> io::Result<()>) {
+    let mut logger = shared.logger.lock().unwrap_or_else(|e| e.into_inner());
+    if let Some(l) = logger.as_mut() {
+        if let Err(e) = f(l) {
+            eprintln!("veetee: log {} stopped: {e}", l.path().display());
+            *logger = None;
+        }
+    }
+}
+
 /// Waits while the session is held; returns false once it is closed.
 fn wait_while_held(shared: &Shared) -> bool {
     let mut held = shared.held.lock().unwrap_or_else(|e| e.into_inner());
@@ -295,6 +339,7 @@ fn io_loop(
         };
         if n > 0 {
             record(&shared, |r| r.host(&buf[..n]));
+            log(&shared, |l| l.host(&buf[..n]));
         }
         let mut rest = &buf[..n];
         loop {
@@ -317,6 +362,7 @@ fn io_loop(
                         });
                 }
                 Step {
+                    text: term.take_captured_text(),
                     reply: term.take_output(),
                     events: term.take_events(),
                     rows: term.grid().rows(),
@@ -352,6 +398,7 @@ fn io_loop(
 
 /// What one step of processing produced.
 struct Step {
+    text: String,
     reply: Vec<u8>,
     events: Vec<Event>,
     rows: usize,
@@ -367,6 +414,9 @@ fn handle_step(
     transport: &mut dyn Transport,
     tx: &async_channel::Sender<Notice>,
 ) {
+    if !step.text.is_empty() {
+        log(shared, |l| l.text(&step.text));
+    }
     if !step.reply.is_empty() {
         record(shared, |r| r.reply(&step.reply));
         let mut writer = shared.writer.lock().unwrap_or_else(|e| e.into_inner());
@@ -409,5 +459,50 @@ fn handle_step(
             Event::ScreenLinesChanged(_) | Event::IconNameChanged(_) => {}
             Event::LedsChanged(_) => {}
         }
+    }
+}
+
+#[cfg(all(test, unix))]
+mod tests {
+    use super::*;
+    use vt_transport::pty::Pty;
+
+    #[test]
+    fn a_log_started_later_gets_the_text_from_then_on() {
+        let dir = std::env::temp_dir().join(format!("veetee-session-log-{}", std::process::id()));
+        let path = dir.join("later.log");
+        let pty = Pty::spawn(
+            "/bin/sh",
+            &[
+                "-c",
+                "printf 'before\\r\\n'; sleep 1; printf 'after \\033[1mbold\\033[m\\r\\n'; sleep 1",
+            ],
+            24,
+            80,
+            "vt420",
+        )
+        .unwrap();
+        let (session, notices) =
+            Session::start(Config::default(), Box::new(pty), None, None).unwrap();
+        std::thread::sleep(Duration::from_millis(500));
+        session
+            .start_log(&crate::log::LogOptions {
+                path: path.clone(),
+                raw: false,
+                timestamps: false,
+                append: false,
+            })
+            .unwrap();
+        assert_eq!(session.log_path().as_deref(), Some(path.as_path()));
+        // Wait for the program to finish.
+        while let Ok(notice) = notices.recv_blocking() {
+            if matches!(notice, Notice::Exited(_)) {
+                break;
+            }
+        }
+        session.stop_log();
+        assert_eq!(session.log_path(), None);
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), "after bold\n");
+        let _ = std::fs::remove_dir_all(dir);
     }
 }

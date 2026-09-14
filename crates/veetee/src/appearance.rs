@@ -11,6 +11,8 @@ pub struct Appearance {
     pub effects: Effects,
     /// Flash "Bell" on the status line when the bell sounds.
     pub visible_bell: bool,
+    /// Logs started from the window menu stamp each line.
+    pub log_timestamps: bool,
 }
 
 fn path() -> PathBuf {
@@ -34,6 +36,7 @@ pub fn load() -> Appearance {
             "afterglow" => a.effects.afterglow = on,
             "curvature" => a.effects.curvature = on,
             "visible-bell" => a.visible_bell = on,
+            "log-timestamps" => a.log_timestamps = on,
             _ => {}
         }
     }
@@ -43,11 +46,12 @@ pub fn load() -> Appearance {
 pub fn save(a: &Appearance) {
     let b = |v: bool| u8::from(v);
     let text = format!(
-        "# veetee display preferences\nglow={}\nafterglow={}\ncurvature={}\nvisible-bell={}\n",
+        "# veetee display preferences\nglow={}\nafterglow={}\ncurvature={}\nvisible-bell={}\nlog-timestamps={}\n",
         b(a.effects.glow),
         b(a.effects.afterglow),
         b(a.effects.curvature),
-        b(a.visible_bell)
+        b(a.visible_bell),
+        b(a.log_timestamps)
     );
     let path = path();
     if let Some(dir) = path.parent() {

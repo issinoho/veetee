@@ -184,6 +184,10 @@ pub struct FrameState {
     pub focused: bool,
     /// Text selected with the mouse, drawn in reverse.
     pub selection: Option<vt_core::Selection>,
+    /// Lines of history the screen is moved back to show (0 is the page).
+    pub review: usize,
+    /// Search text found in the history, drawn in reverse.
+    pub found: Option<vt_core::Found>,
 }
 
 /// A scrolling region drawn part-way through a smooth scroll.
@@ -277,28 +281,59 @@ pub fn build_instances(
     let cursor_shown = !status_active && term.cursor_on_display();
     // A smooth scroll in view: its region is drawn afterwards, displaced
     // and clipped (DECSCLM).
-    let region = scroll.filter(|_| term.cursor_on_display()).and_then(|f| {
-        let s = f.scroll;
-        let visible = s.top >= window_top && s.bottom < window_top + screen_lines;
-        visible.then(|| {
-            // DEC terminals move the text a few scan lines at a time.
-            let steps = 8.0;
-            let moved = (f.progress * steps).floor() / steps;
-            let offset = (1.0 - moved) * layout.cell_height;
-            (
-                s,
-                s.top - window_top,
-                s.bottom - window_top,
-                if s.up { offset } else { -offset },
-            )
-        })
-    });
+    let region = scroll
+        .filter(|_| term.cursor_on_display() && frame.review == 0)
+        .and_then(|f| {
+            let s = f.scroll;
+            let visible = s.top >= window_top && s.bottom < window_top + screen_lines;
+            visible.then(|| {
+                // DEC terminals move the text a few scan lines at a time.
+                let steps = 8.0;
+                let moved = (f.progress * steps).floor() / steps;
+                let offset = (1.0 - moved) * layout.cell_height;
+                (
+                    s,
+                    s.top - window_top,
+                    s.bottom - window_top,
+                    if s.up { offset } else { -offset },
+                )
+            })
+        });
+    let back = term.scrollback_len();
+    let review = frame.review.min(back + window_top);
+    if review > 0 {
+        // Reviewing history: scrollback lines above the page, no cursor.
+        let top = back + window_top - review;
+        for screen_row in 0..screen_lines.min(layout.rows) {
+            let index = top + screen_row;
+            let Some(line) = term.history_line(index) else {
+                continue;
+            };
+            draw_line(
+                out,
+                term,
+                layout,
+                frame,
+                theme,
+                font,
+                soft,
+                &colors,
+                (Some(index), index.checked_sub(back).unwrap_or(usize::MAX)),
+                line,
+                None,
+                Placement {
+                    y: layout.row_y(screen_row),
+                    columns: None,
+                },
+            );
+        }
+    }
     let visible = grid
         .lines()
         .iter()
         .enumerate()
         .skip(window_top)
-        .take(screen_lines);
+        .take(if review > 0 { 0 } else { screen_lines });
     for (screen_row, (row, line)) in visible.enumerate().take(layout.rows) {
         let cursor_col = (cursor_shown && row == cursor.row).then_some(cursor.col);
         let columns = region
@@ -313,7 +348,7 @@ pub fn build_instances(
             font,
             soft,
             &colors,
-            (screen_row, row),
+            (Some(back + row), row),
             line,
             cursor_col,
             Placement {
@@ -338,7 +373,7 @@ pub fn build_instances(
                     font,
                     soft,
                     &colors,
-                    (status_row, usize::MAX),
+                    (None, usize::MAX),
                     term.status_line(),
                     cursor_col,
                     Placement {
@@ -364,7 +399,7 @@ pub fn build_instances(
                     font,
                     soft,
                     &colors,
-                    (status_row, usize::MAX),
+                    (None, usize::MAX),
                     &line,
                     None,
                     Placement {
@@ -389,7 +424,7 @@ pub fn build_instances(
             font,
             soft,
             &colors,
-            (screen_row, row),
+            (Some(back + row), row),
             grid.line(row),
             cursor_col,
             Placement {
@@ -413,7 +448,7 @@ pub fn build_instances(
         font,
         soft,
         &colors,
-        (top, usize::MAX),
+        (None, usize::MAX),
         &s.outgoing,
         None,
         Placement {
@@ -472,7 +507,7 @@ fn draw_line(
     font: &Glyphs,
     soft: &mut SoftAtlas,
     colors: &Colors,
-    (row, page_row): (usize, usize),
+    (history, page_row): (Option<usize>, usize),
     line: &Line,
     cursor_col: Option<usize>,
     placement: Placement,
@@ -490,7 +525,6 @@ fn draw_line(
         LineSize::DoubleHeightBottom => (2, flag::DOUBLE_BOTTOM),
     };
     let y = placement.y;
-    let _ = row;
     for (col, cell) in line.cells().iter().enumerate().take(line.width()) {
         if let Some((left, right, only)) = placement.columns {
             if (left..=right).contains(&col) != only {
@@ -543,7 +577,10 @@ fn draw_line(
                 };
             }
         }
-        if frame.selection.is_some_and(|s| s.contains(page_row, col)) {
+        let found = frame
+            .found
+            .is_some_and(|f| history == Some(f.line) && (f.col..f.col + f.len).contains(&col));
+        if found || frame.selection.is_some_and(|s| s.contains(page_row, col)) {
             flags |= flag::SELECTED;
         }
 
@@ -624,6 +661,8 @@ mod tests {
 
     const FOCUSED: FrameState = FrameState {
         selection: None,
+        review: 0,
+        found: None,
         blink_on: true,
         cursor_on: true,
         focused: true,
@@ -661,6 +700,39 @@ mod tests {
         assert!((wide.cell_width - wide.width / 132.0).abs() < 1e-4);
         assert_eq!(wide.cell_at(wide.x + 1.0, wide.y + 1.0), Some((0, 0)));
         assert_eq!(wide.cell_at(0.0, 0.0), None);
+    }
+
+    #[test]
+    fn review_shows_scrollback_and_the_found_text() {
+        let mut term = Terminal::new(Config {
+            rows: 3,
+            ..Config::default()
+        });
+        term.advance(b"old\r\nA\r\nB\r\nC");
+        assert_eq!(term.scrollback_len(), 1);
+        let frame = FrameState {
+            cursor_on: false,
+            review: 1,
+            found: term.find_text("old", None, true),
+            ..FOCUSED
+        };
+        let inst = instances(&term, frame);
+        // Fill, "old" on the top line (selected), then "A" and "B"; no cursor.
+        let glyphs: Vec<_> = inst[1..].iter().map(|i| (i[1], i[5] as u32)).collect();
+        assert_eq!(glyphs.len(), 5);
+        assert!(
+            glyphs[..3]
+                .iter()
+                .all(|(y, f)| *y == glyphs[0].0 && f & flag::SELECTED != 0)
+        );
+        assert!(
+            glyphs[3..]
+                .iter()
+                .all(|(_, f)| f & (flag::SELECTED | flag::CURSOR) == 0)
+        );
+        // Back on the page, "C" is on the bottom line with the cursor after it.
+        let live = instances(&term, FOCUSED);
+        assert_eq!(live.len(), 5, "fill, A, B, C and the cursor");
     }
 
     #[test]

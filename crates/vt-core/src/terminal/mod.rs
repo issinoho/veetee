@@ -11,11 +11,14 @@ use crate::modes::Modes;
 use crate::softfont::{SoftFonts, SoftGlyph};
 use crate::udk::UserKeys;
 
+mod capture;
 mod crm;
 mod dcs;
+mod history;
 mod rect;
 mod reports;
 mod setup;
+pub use history::Found;
 pub use setup::SoundVolumes;
 mod vt520;
 
@@ -633,6 +636,8 @@ struct Emulator {
     smooth: Option<SmoothScroll>,
     /// The last bytes shown in Display Controls mode, to recognise DECSR.
     crm_tail: Vec<u8>,
+    /// Text written to the page, for a session log.
+    capture: Option<String>,
     output: Vec<u8>,
     events: Vec<Event>,
     pause: bool,
@@ -766,6 +771,7 @@ impl Emulator {
             stored: crate::setup::Features::factory(model),
             smooth: None,
             crm_tail: Vec::new(),
+            capture: None,
             output: Vec::new(),
             events: Vec::new(),
             pause: false,
@@ -1042,6 +1048,9 @@ impl Emulator {
             return;
         }
         let row = row.min(self.rows() - 1);
+        if row != self.cursor.row {
+            self.capture_line_break();
+        }
         self.cursor.row = row;
         self.cursor.col = col.min(self.line_width(row) - 1);
         self.cursor.pending_wrap = false;
@@ -1220,6 +1229,9 @@ impl Emulator {
         }
         let col = self.cursor.col;
         let last = self.right_limit();
+        if !self.status.active {
+            self.capture_text(ch);
+        }
         let cell = Cell {
             ch,
             attrs: self.writing_attrs(),
@@ -1621,7 +1633,9 @@ impl Emulator {
         let generation = self.soft_generation + 1;
         let output = std::mem::take(&mut self.output);
         let events = std::mem::take(&mut self.events);
+        let capture = self.capture.take();
         *self = Emulator::new(Config { rows, ..config });
+        self.capture = capture;
         self.scrollback = scrollback;
         self.soft_generation = generation;
         self.output = output;
@@ -1918,9 +1932,18 @@ impl Perform for Emulator {
                 self.output.extend_from_slice(&answerback);
             }
             0x07 => self.events.push(Event::Bell),
-            0x08 => self.cub(1),
-            0x09 => self.tab(1),
-            0x0A..=0x0C => self.line_feed(),
+            0x08 => {
+                self.capture_backspace();
+                self.cub(1);
+            }
+            0x09 => {
+                self.capture_text('\t');
+                self.tab(1);
+            }
+            0x0A..=0x0C => {
+                self.capture_newline();
+                self.line_feed();
+            }
             0x0D => self.carriage_return(),
             0x0E => self.charsets.gl = 1,
             0x0F => self.charsets.gl = 0,
@@ -1934,8 +1957,12 @@ impl Perform for Emulator {
                 };
                 self.put_char(error, b'?');
             }
-            0x84 => self.index(),
+            0x84 => {
+                self.capture_newline();
+                self.index();
+            }
             0x85 => {
+                self.capture_newline();
                 self.index();
                 self.carriage_return();
             }

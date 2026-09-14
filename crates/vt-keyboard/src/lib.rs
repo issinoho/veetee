@@ -48,6 +48,11 @@ pub enum Local {
     PanDown,
     PanPrevPage,
     PanNextPage,
+    /// Reviews the session's history: back or forward a screen.
+    ReviewBack,
+    ReviewForward,
+    /// Opens the find bar to search the history.
+    Search,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -188,6 +193,7 @@ pub(crate) fn control_character(ch: char, mods: Mods) -> Option<Action> {
             'c' => return Some(Action::Local(Local::Copy)),
             'v' => return Some(Action::Local(Local::Paste)),
             'm' => return Some(Action::Local(Local::MarkCheckpoint)),
+            'f' => return Some(Action::Local(Local::Search)),
             _ => {}
         }
     }

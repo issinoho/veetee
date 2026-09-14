@@ -288,6 +288,9 @@ const LOCAL_NAMES: &[(&str, Local)] = &[
     ("pan-down", Local::PanDown),
     ("pan-prev-page", Local::PanPrevPage),
     ("pan-next-page", Local::PanNextPage),
+    ("review-back", Local::ReviewBack),
+    ("review-forward", Local::ReviewForward),
+    ("search", Local::Search),
 ];
 
 const KEY_TARGETS: &[(&str, Key)] = &[

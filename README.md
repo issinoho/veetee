@@ -97,6 +97,23 @@ phosphor = "green"
 `veetee --profile vms1` opens one from the command line (other options override it, e.g.
 `--profile vms1 --model vt520`), and `veetee --list-profiles` lists them.
 
+### History and search
+
+Lines that scroll off the top of the page are kept (10,000 of them). The mouse wheel or
+Shift+PgUp/Shift+PgDn moves the screen back through them, as a VT520 reviews previous lines;
+typing or new output from the host returns to the page. *Find…* in the window menu (Ctrl+Shift+F)
+opens a find bar that searches the history and the page, newest first: Enter finds the next older
+match, Shift+Enter the next newer, and Esc closes it.
+
+### Session logs
+
+*Log to File…* in the window menu writes the active session's text to a file as it arrives —
+with DEC line drawing and national characters as Unicode — until it is chosen again; *Timestamp
+Log Lines* starts each line with the date and time. From the command line, `--log FILE` adds to a
+file (`~` and `%Y %m %d %H %M %S` are expanded, e.g. `--log ~/logs/vms1-%Y%m%d.log`),
+`--log-timestamps` stamps the lines and `--log-raw` keeps the host's bytes exactly as received.
+Saved connections can log too (`log = "…"`, `log-timestamps = true`).
+
 ### Copy and paste
 
 Drag to select (double-click selects a word, including whole VMS file specifications such as
@@ -134,6 +151,8 @@ The PC keyboard is mapped to LK401 key positions:
 | Ctrl+Shift+C, Ctrl+Shift+V | Copy, Paste |
 | Ctrl+↑ ↓, Ctrl+End, Ctrl+PgDn | Pan the view through page memory (lines, pages) |
 | Ctrl+Shift+M | Mark a checkpoint in the session recording |
+| Shift+PgUp, Shift+PgDn, mouse wheel | Review the session's history (scrollback) |
+| Ctrl+Shift+F | Find in the history |
 
 Keys click, BEL rings the warning bell and hosts can play notes (DECPS), as on the terminal;
 Keyboard Set-Up (F3) turns the keyclick and bells down or off. A VT420 scrolls smoothly at nine

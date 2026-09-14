@@ -13,6 +13,18 @@ Milestone M8 begins.
   in `profiles.toml` in the configuration directory. `--profile NAME` opens one from the command
   line, with other options overriding it, and `--list-profiles` lists them. A window opened from a
   saved connection is titled with its name.
+- **History review and search (M8)**: the mouse wheel and Shift+PgUp/PgDn move the screen back
+  through the lines that scrolled off the page; typing or host output returns to the page, as
+  with the VT520's review of previous lines. *Find…* (Ctrl+Shift+F) searches the history and page
+  newest first, highlighting and scrolling to each match, and keeps its place while output
+  continues. A saved keymap from an earlier version needs Shift+Page_Up and Shift+Page_Down bound
+  to *Review Back* and *Review Forward* in *Keyboard Map…* (or *Restore Defaults*).
+- **Session logs (M8)**: *Log to File…* in the window menu logs the active session's text as it
+  is shown — character sets translated to Unicode, a line break for each new line, the status
+  line left out — with optional timestamps on each line (*Timestamp Log Lines*). `--log FILE`
+  (with `~` and date placeholders), `--log-timestamps` and `--log-raw` (the host's bytes as
+  received) do the same from the command line, and saved connections can log every time they
+  open.
 
 ## [0.7.1] - 2026-09-14
 

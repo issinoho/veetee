@@ -25,6 +25,10 @@ pub struct Profile {
     /// 1, or 2 for a split window.
     pub sessions: u8,
     pub keymap: Option<PathBuf>,
+    /// A log file template (see [`crate::log::expand_path`]).
+    pub log: Option<String>,
+    pub log_timestamps: bool,
+    pub log_raw: bool,
 }
 
 impl Profile {
@@ -37,6 +41,9 @@ impl Profile {
             phosphor: options.phosphor.clone(),
             sessions: options.sessions.clamp(1, 2),
             keymap: options.keymap.clone(),
+            log: None,
+            log_timestamps: false,
+            log_raw: false,
         }
     }
 
@@ -48,6 +55,12 @@ impl Profile {
         options.sessions = self.sessions;
         options.keymap = self.keymap.clone();
         options.profile = Some(self.name.clone());
+        options.log = self.log.as_deref().map(|template| crate::log::LogOptions {
+            path: crate::log::expand_path(template),
+            raw: self.log_raw,
+            timestamps: self.log_timestamps,
+            append: true,
+        });
     }
 
     /// "VT420 · telnet vms1", for lists.
@@ -99,6 +112,16 @@ struct Entry {
     sessions: Option<u8>,
     #[serde(skip_serializing_if = "Option::is_none")]
     keymap: Option<PathBuf>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    log: Option<String>,
+    #[serde(default, skip_serializing_if = "is_false")]
+    log_timestamps: bool,
+    #[serde(default, skip_serializing_if = "is_false")]
+    log_raw: bool,
+}
+
+fn is_false(v: &bool) -> bool {
+    !*v
 }
 
 impl Entry {
@@ -167,6 +190,9 @@ impl Entry {
             phosphor,
             sessions: self.sessions.unwrap_or(1).clamp(1, 2),
             keymap: self.keymap.clone(),
+            log: self.log.clone().filter(|l| !l.trim().is_empty()),
+            log_timestamps: self.log_timestamps,
+            log_raw: self.log_raw,
         })
     }
 
@@ -177,6 +203,9 @@ impl Entry {
             phosphor: (p.phosphor != "white").then(|| p.phosphor.clone()),
             sessions: (p.sessions != 1).then_some(p.sessions),
             keymap: p.keymap.clone(),
+            log: p.log.clone(),
+            log_timestamps: p.log_timestamps,
+            log_raw: p.log_raw,
             ..Entry::default()
         };
         match &p.connection {
@@ -318,6 +347,8 @@ name = "alpha"
 connection = "ssh"
 host = "system@alpha"
 port = 2222
+log = "~/logs/alpha-%Y%m%d.log"
+log-timestamps = true
 "#;
 
     #[test]
@@ -329,6 +360,11 @@ port = 2222
         assert_eq!(p[1].summary(), "VT420 · /dev/ttyUSB0 19200 7E1");
         assert_eq!(p[1].sessions, 2);
         assert_eq!(p[2].summary(), "VT420 · ssh system@alpha:2222");
+        let (mut config, mut options) = (Config::default(), Options::default());
+        p[2].apply(&mut config, &mut options);
+        let log = options.log.unwrap();
+        assert!(log.timestamps && log.append && !log.raw);
+        assert!(log.path.to_string_lossy().contains("/logs/alpha-2"));
     }
 
     #[test]

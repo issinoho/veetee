@@ -14,6 +14,8 @@ use vt_render::{FrameState, Renderer, Theme};
 
 use crate::session::{self, Notice, Session};
 
+mod review;
+
 /// Cursor blink half-period.
 const CURSOR_BLINK: Duration = Duration::from_millis(530);
 /// Character blink half-period.
@@ -69,6 +71,17 @@ struct State {
     visible_bell: bool,
     /// When the visible bell started flashing.
     bell_flash: Option<Instant>,
+    /// Lines of history the screen is moved back (0 shows the page).
+    review: usize,
+    /// Mouse wheel movement not yet a whole line.
+    wheel: f64,
+    /// Scrollback length when `review` was last set, so a reviewed screen
+    /// stays on the same lines as more arrive.
+    review_back: usize,
+    /// The find bar is open.
+    searching: bool,
+    /// The last search match.
+    found: Option<vt_core::Found>,
 }
 
 /// An open Set-Up: the menu and the screen it draws on.
@@ -132,6 +145,9 @@ impl State {
 #[derive(Clone)]
 pub struct TerminalView {
     area: gtk::GLArea,
+    /// The terminal with the find bar over it.
+    container: gtk::Overlay,
+    search: review::SearchBar,
     state: Rc<RefCell<State>>,
 }
 
@@ -175,9 +191,23 @@ impl TerminalView {
             saver: false,
             visible_bell: false,
             bell_flash: None,
+            review: 0,
+            review_back: 0,
+            wheel: 0.0,
+            searching: false,
+            found: None,
         }));
-        let view = TerminalView { area, state };
+        let search = review::SearchBar::new();
+        let container = gtk::Overlay::builder().child(&area).build();
+        container.add_overlay(&search.revealer);
+        let view = TerminalView {
+            area,
+            container,
+            search,
+            state,
+        };
         view.connect_gl();
+        view.connect_review();
         view.connect_input(keymap);
         view.connect_mouse();
         view.connect_notices(notices);
@@ -187,6 +217,11 @@ impl TerminalView {
 
     pub fn widget(&self) -> &gtk::GLArea {
         &self.area
+    }
+
+    /// The widget to place in the window.
+    pub fn container(&self) -> &gtk::Overlay {
+        &self.container
     }
 
     pub fn session(&self) -> Session {
@@ -257,6 +292,11 @@ impl TerminalView {
         let state = self.state.clone();
         self.area.connect_render(move |area, _ctx| {
             let st = &mut *state.borrow_mut();
+            let back = st.session.terminal().scrollback_len();
+            if st.review > 0 && back > st.review_back {
+                st.review += back - st.review_back;
+            }
+            st.review_back = back;
             let (cursor_on, blink_on) = st.phases();
             st.last_phases = (cursor_on, blink_on);
             let frame = FrameState {
@@ -264,6 +304,8 @@ impl TerminalView {
                 blink_on,
                 focused: st.focused,
                 selection: st.selection,
+                review: st.review,
+                found: st.found,
             };
             let scale = area.scale_factor();
             let (w, h) = (
@@ -381,10 +423,12 @@ impl TerminalView {
         im.set_client_widget(Some(&self.area));
 
         let state = self.state.clone();
+        let view_commit = self.clone();
         im.connect_commit(move |_, text| {
             let session = state.borrow().session.clone();
             session.type_text(text);
             keyclick(&session);
+            view_commit.leave_review();
         });
 
         let view = self.clone();
@@ -454,6 +498,9 @@ impl TerminalView {
                     glib::Propagation::Proceed
                 };
             };
+            if !matches!(action, Action::Local(_)) {
+                view.leave_review();
+            }
             let session = view.state.borrow().session.clone();
             let outcome = match action {
                 Action::Key(key) => session.key(key),
@@ -601,6 +648,10 @@ impl TerminalView {
     /// The page cell under a widget position, clamped to the page.
     fn point_at(&self, x: f64, y: f64) -> Option<Point> {
         let st = self.state.borrow();
+        // Selections are on the page, not in reviewed history.
+        if st.review > 0 {
+            return None;
+        }
         let term = st.session.terminal();
         let grid = term.display_grid();
         let (window_top, screen_lines) = term.window();
@@ -761,6 +812,14 @@ impl TerminalView {
                 drop(st);
                 self.copy_to_clipboard();
             }
+            Local::ReviewBack | Local::ReviewForward => {
+                drop(st);
+                self.review_screen(local == Local::ReviewBack);
+            }
+            Local::Search => {
+                drop(st);
+                self.open_search();
+            }
         }
     }
 
@@ -896,6 +955,8 @@ impl TerminalView {
                 match notice {
                     Notice::Redraw => {
                         view.wake();
+                        // Host output returns the screen to the page.
+                        view.leave_review();
                         area.queue_render();
                     }
                     Notice::SmoothScroll if !ticking.get() => {

@@ -8,6 +8,7 @@ mod connections;
 mod gl_loader;
 mod keymap_editor;
 mod keymaps;
+mod log;
 mod profiles;
 mod session;
 mod setup_store;
@@ -105,7 +106,10 @@ fn build_window(app: &adw::Application, config: Config, options: Options) {
     let session_section = gio::Menu::new();
     session_section.append(Some("Set-Up"), Some("win.setup"));
     session_section.append(Some("Open Second Session"), Some("win.new-session"));
+    session_section.append(Some("Find…"), Some("win.search"));
     session_section.append(Some("Mark Checkpoint"), Some("win.mark-checkpoint"));
+    session_section.append(Some("Log to File…"), Some("win.log"));
+    session_section.append(Some("Timestamp Log Lines"), Some("win.log-timestamps"));
     session_section.append(Some("Keyboard Map…"), Some("win.keymap"));
     menu.append_section(None, &session_section);
     let window_section = gio::Menu::new();
@@ -158,8 +162,9 @@ fn build_window(app: &adw::Application, config: Config, options: Options) {
     }
     glib::spawn_future_local(async move {
         let Ok(opened) = rx.recv().await else { return };
-        let started =
-            opened.and_then(|t| session::Session::start(first, t, options.record.as_ref()));
+        let started = opened.and_then(|t| {
+            session::Session::start(first, t, options.record.as_ref(), options.log.as_ref())
+        });
         let (session, notices) = match started {
             Ok(s) => s,
             Err(e) => {
@@ -285,6 +290,46 @@ fn add_session_actions(window: &adw::ApplicationWindow, workspace: &Rc<workspace
         }
     });
     window.add_action(&mark);
+
+    let log = gio::SimpleAction::new_stateful("log", None, &workspace.is_logging().to_variant());
+    log.connect_activate({
+        let workspace = Rc::downgrade(workspace);
+        move |_, _| {
+            if let Some(ws) = workspace.upgrade() {
+                ws.toggle_log();
+            }
+        }
+    });
+    window.add_action(&log);
+
+    let stamps = gio::SimpleAction::new_stateful(
+        "log-timestamps",
+        None,
+        &workspace.appearance().log_timestamps.to_variant(),
+    );
+    stamps.connect_activate({
+        let workspace = Rc::downgrade(workspace);
+        move |action, _| {
+            if let Some(ws) = workspace.upgrade() {
+                let mut appearance = ws.appearance();
+                appearance.log_timestamps = !appearance.log_timestamps;
+                action.set_state(&appearance.log_timestamps.to_variant());
+                ws.set_appearance(appearance);
+            }
+        }
+    });
+    window.add_action(&stamps);
+
+    let search = gio::SimpleAction::new("search", None);
+    search.connect_activate({
+        let workspace = Rc::downgrade(workspace);
+        move |_, _| {
+            if let Some(ws) = workspace.upgrade() {
+                ws.search();
+            }
+        }
+    });
+    window.add_action(&search);
 
     let save_connection = gio::SimpleAction::new("save-connection", None);
     save_connection.connect_activate({

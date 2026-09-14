@@ -214,6 +214,14 @@ dec = "pan-prev-page"
 pc = "Ctrl+Page_Down"
 dec = "pan-next-page"
 
+# Reviewing the session's history (veetee).
+[[bind]]
+pc = "Shift+Page_Up"
+dec = "review-back"
+[[bind]]
+pc = "Shift+Page_Down"
+dec = "review-forward"
+
 # Numeric keypad: Num Lock / * - are PF1–PF4.
 [[bind]]
 pc = "Num_Lock"
@@ -334,3 +342,6 @@ dec = "paste"
 [[bind]]
 pc = "Ctrl+Shift+m"
 dec = "mark-checkpoint"
+[[bind]]
+pc = "Ctrl+Shift+f"
+dec = "search"

@@ -184,7 +184,7 @@ impl Workspace {
             .build();
         let frame = gtk::Box::new(gtk::Orientation::Vertical, 0);
         frame.append(&header);
-        frame.append(view.widget());
+        frame.append(view.container());
         let pane = Rc::new(Pane {
             id,
             view,
@@ -222,7 +222,8 @@ impl Workspace {
             let Ok(opened) = rx.recv().await else { return };
             let Some(ws) = weak.upgrade() else { return };
             ws.opening.set(false);
-            let started = opened.and_then(|t| session::Session::start(session_config, t, None));
+            let started =
+                opened.and_then(|t| session::Session::start(session_config, t, None, None));
             match started {
                 Ok((session, notices)) => ws.add_session(session, notices),
                 Err(e) => ws.notify(&format!("Cannot open a session: {e}")),
@@ -386,6 +387,13 @@ impl Workspace {
         if active.view.session().is_recording() {
             subtitle.push_str(" · Recording");
         }
+        let logging = active.view.session().log_path().is_some();
+        if logging {
+            subtitle.push_str(" · Logging");
+        }
+        if let Some(action) = self.window.lookup_action("log") {
+            action.change_state(&logging.to_variant());
+        }
         if !status.is_empty() {
             subtitle.push_str(&format!(" · {status}"));
         }
@@ -415,6 +423,84 @@ impl Workspace {
         self.appearance.set(appearance);
         crate::appearance::save(&appearance);
         self.set_phosphor(self.phosphor.get());
+    }
+
+    fn active_pane(&self) -> Option<Rc<Pane>> {
+        let panes = self.panes.borrow();
+        panes.iter().find(|p| p.id == self.active.get()).cloned()
+    }
+
+    /// Find: opens the find bar of the active session.
+    pub fn search(&self) {
+        if let Some(pane) = self.active_pane() {
+            pane.view.open_search();
+        }
+    }
+
+    pub fn is_logging(&self) -> bool {
+        self.active_pane()
+            .is_some_and(|p| p.view.session().log_path().is_some())
+    }
+
+    /// Log to File: stops the active session's log, or asks for a file and
+    /// starts one.
+    pub fn toggle_log(self: &Rc<Self>) {
+        let Some(pane) = self.active_pane() else {
+            return;
+        };
+        let session = pane.view.session().clone();
+        if let Some(path) = session.log_path() {
+            session.stop_log();
+            self.notify(&format!("Log saved to {}", path.display()));
+            self.refresh();
+            return;
+        }
+        let stamp = glib::DateTime::now_local()
+            .and_then(|t| t.format("%Y%m%d-%H%M"))
+            .map(|s| s.to_string())
+            .unwrap_or_default();
+        let label = self
+            .options
+            .profile
+            .clone()
+            .unwrap_or_else(|| self.options.connection.label());
+        let safe: String = label
+            .chars()
+            .map(|c| {
+                if c.is_alphanumeric() || c == '-' || c == '.' {
+                    c
+                } else {
+                    '-'
+                }
+            })
+            .collect();
+        let dialog = gtk::FileDialog::builder()
+            .title("Log to File")
+            .accept_label("Log")
+            .initial_name(format!("{safe}-{stamp}.log"))
+            .build();
+        let weak = Rc::downgrade(self);
+        dialog.save(
+            Some(&self.window),
+            gtk::gio::Cancellable::NONE,
+            move |result| {
+                let (Ok(file), Some(ws)) = (result, weak.upgrade()) else {
+                    return;
+                };
+                let Some(path) = file.path() else { return };
+                let options = crate::log::LogOptions {
+                    path: path.clone(),
+                    raw: false,
+                    timestamps: ws.appearance.get().log_timestamps,
+                    append: false,
+                };
+                match session.start_log(&options) {
+                    Ok(()) => ws.notify(&format!("Logging to {}", path.display())),
+                    Err(e) => ws.notify(&format!("Cannot log to {}: {e}", path.display())),
+                }
+                ws.refresh();
+            },
+        );
     }
 
     /// Opens Set-Up for the active session, as F3 does.

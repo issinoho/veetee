@@ -324,6 +324,9 @@ fn editor(
         phosphor: "white".into(),
         sessions: 1,
         keymap: None,
+        log: None,
+        log_timestamps: false,
+        log_raw: false,
     });
 
     let name = adw::EntryRow::builder().title("Name").text(&p.name).build();
@@ -349,6 +352,14 @@ fn editor(
     let names: Vec<&str> = MODELS.iter().map(|m| cli::model_name(*m)).collect();
     let model = combo("Terminal", &names);
     let phosphor = combo("Phosphor", &PHOSPHORS.map(|p| p.1));
+    let log_file = adw::EntryRow::builder()
+        .title("Log file (~ and %Y %m %d %H %M %S expand)")
+        .text(p.log.as_deref().unwrap_or(""))
+        .build();
+    let log_stamps = adw::SwitchRow::builder()
+        .title("Timestamp log lines")
+        .active(p.log_timestamps)
+        .build();
     let two = adw::SwitchRow::builder()
         .title("Two sessions")
         .subtitle("Split the window; F4 switches")
@@ -413,10 +424,17 @@ fn editor(
     terminal_group.add(&model);
     terminal_group.add(&phosphor);
     terminal_group.add(&two);
+    let log_group = adw::PreferencesGroup::builder()
+        .title("Log")
+        .description("The session's text is added to the file each time it opens")
+        .build();
+    log_group.add(&log_file);
+    log_group.add(&log_stamps);
     let page = adw::PreferencesPage::new();
     page.add(&connection_group);
     page.add(&line_group);
     page.add(&terminal_group);
+    page.add(&log_group);
 
     let show_fields = {
         let (host, port, command, device, line_group) = (
@@ -543,6 +561,9 @@ fn editor(
                     .into(),
                 sessions: if two.is_active() { 2 } else { 1 },
                 keymap: p.keymap.clone(),
+                log: Some(log_file.text().trim().to_string()).filter(|l| !l.is_empty()),
+                log_timestamps: log_stamps.is_active(),
+                log_raw: p.log_raw,
             };
             match save(profile) {
                 Ok(()) => {

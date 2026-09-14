@@ -26,6 +26,10 @@ options:
   --record FILE          record the session to FILE (.vtrec) for replay and tests;
                          Ctrl+Shift+M marks a checkpoint
   --record-keys          also record typed keys (includes passwords)
+  --log FILE             add the session's text to FILE (~ and %Y %m %d %H %M %S
+                         are expanded)
+  --log-timestamps       start each logged line with the date and time
+  --log-raw              log the host's bytes as received instead of the text
   --sessions N           open 1 or 2 sessions (2 splits the window, F4 switches)
   --phosphor COLOUR      white (P4, default), green (P1) or amber (P3)
   --keymap FILE          PC-to-DEC keymap (default: the one saved from the Keyboard
@@ -89,6 +93,8 @@ pub struct Options {
     pub keymap: Option<std::path::PathBuf>,
     /// The saved connection the window was opened from.
     pub profile: Option<String>,
+    /// Log the first session to a file.
+    pub log: Option<crate::log::LogOptions>,
 }
 
 // Parsed once at start-up, so the size difference does not matter.
@@ -130,6 +136,7 @@ pub fn parse_args_with(
     let mut port: Option<u16> = None;
     let mut chosen = 0;
     let mut record_keys = false;
+    let (mut log_timestamps, mut log_raw) = (false, false);
     let mut args = rest.into_iter().peekable();
     while let Some(arg) = args.next() {
         let mut value = || args.next().ok_or_else(|| format!("{arg} needs a value"));
@@ -149,6 +156,24 @@ pub fn parse_args_with(
             }
             "--record-keys" => {
                 record_keys = true;
+                None
+            }
+            "--log" => {
+                let path = crate::log::expand_path(&value()?);
+                options.log = Some(crate::log::LogOptions {
+                    path,
+                    raw: false,
+                    timestamps: false,
+                    append: true,
+                });
+                None
+            }
+            "--log-timestamps" => {
+                log_timestamps = true;
+                None
+            }
+            "--log-raw" => {
+                log_raw = true;
                 None
             }
             "--keymap" => {
@@ -209,6 +234,15 @@ pub fn parse_args_with(
         match options.record.as_mut() {
             Some(r) => r.keys = true,
             None => return Err("--record-keys needs --record FILE".into()),
+        }
+    }
+    if log_timestamps || log_raw {
+        match options.log.as_mut() {
+            Some(log) => {
+                log.timestamps |= log_timestamps;
+                log.raw |= log_raw;
+            }
+            None => return Err("--log-timestamps and --log-raw need --log FILE".into()),
         }
     }
     if chosen > 1 {
