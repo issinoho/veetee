@@ -169,7 +169,10 @@ mod tests {
         t.advance(b"\r\n\r\n\r\n");
         assert_eq!(t.selection_text(&word), "LOGIN.COM");
         assert_eq!(
-            t.selection_text(&Selection::new(Point { row: 0, col: 2 }, Point { row: 1, col: 4 })),
+            t.selection_text(&Selection::new(
+                Point { row: 0, col: 2 },
+                Point { row: 1, col: 4 }
+            )),
             "DIR\nLOGIN"
         );
     }

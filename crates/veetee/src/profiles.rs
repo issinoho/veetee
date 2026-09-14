@@ -364,7 +364,12 @@ log-timestamps = true
         p[2].apply(&mut config, &mut options);
         let log = options.log.unwrap();
         assert!(log.timestamps && log.append && !log.raw);
-        assert!(log.path.to_string_lossy().contains("/logs/alpha-2"));
+        let name = log.path.file_name().unwrap().to_string_lossy().into_owned();
+        assert!(
+            name.starts_with("alpha-2") && name.ends_with(".log"),
+            "{name}"
+        );
+        assert!(log.path.parent().unwrap().ends_with("logs"));
     }
 
     #[test]
