@@ -219,6 +219,46 @@ impl SetUp {
     pub(super) fn set_comm_speed(&mut self, line: usize, speed: u16) {
         self.comm_speed[line] = speed;
     }
+
+    /// DECSPP for the communication port: data bits (1 eight, 2 seven),
+    /// parity (1–7) and stop bits (1 or 2).
+    pub(super) fn port_parameters(&self) -> [u16; 3] {
+        let v: Vec<u16> = self.port_parameters[0]
+            .split(';')
+            .skip(1)
+            .map(|n| n.parse().unwrap_or(1))
+            .collect();
+        [v[0], v[1], v[2]]
+    }
+
+    pub(super) fn set_port_parameters(&mut self, [bits, parity, stop]: [u16; 3]) {
+        self.port_parameters[0] = format!("1;{bits};{parity};{stop}");
+    }
+
+    /// DECSFC for the communication port: direction (1 transmit, 2 receive,
+    /// 3 both), type (1 XON/XOFF, 2 DTR, 3 both, 4 none) and threshold.
+    pub(super) fn flow_control(&self) -> [u16; 3] {
+        let v: Vec<u16> = self.flow_control[0]
+            .split(';')
+            .skip(1)
+            .map(|n| n.parse().unwrap_or(1))
+            .collect();
+        [v[0], v[1], v[2]]
+    }
+
+    pub(super) fn set_flow_control(&mut self, [dir, kind, threshold]: [u16; 3]) {
+        self.flow_control[0] = format!("1;{dir};{kind};{threshold}");
+    }
+
+    /// DECSTRL rate (1 150, 2 50, 3 30 cps) for all keys (0), graphic keys
+    /// (1) or function keys (2).
+    pub(super) fn transmit_rate(&self, keys: usize) -> u16 {
+        self.transmit_rate[keys]
+    }
+
+    pub(super) fn set_transmit_rate(&mut self, keys: usize, rate: u16) {
+        self.transmit_rate[keys] = rate;
+    }
 }
 
 impl Emulator {
@@ -671,7 +711,11 @@ impl Emulator {
     /// DECSR: a reset to the power-up state without disconnecting, confirmed
     /// with DECSRC when a number is given.
     pub(super) fn secure_reset(&mut self, p: &Params) {
-        let confirm = p.get(0).filter(|v| *v <= 16383);
+        self.secure_reset_confirming(p.get(0));
+    }
+
+    pub(super) fn secure_reset_confirming(&mut self, pr: Option<u16>) {
+        let confirm = pr.filter(|v| *v <= 16383);
         self.full_reset();
         if let Some(pr) = confirm {
             self.reply_csi(&format!("{pr}*q"));

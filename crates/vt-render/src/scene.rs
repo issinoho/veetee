@@ -499,7 +499,7 @@ fn draw_line(
         }
         let a = cell.attrs;
         let mut flags = size_flag;
-        let (fg, bg) = if let Some((table, options)) = term.colors() {
+        let (mut fg, bg) = if let Some((table, options)) = term.colors() {
             // VT525: colours come from the terminal's colour map and mode.
             let c = table.resolve(a, options, frame.blink_on);
             if c.hidden {
@@ -528,6 +528,9 @@ fn draw_line(
             }
             (fg, bg)
         };
+        if a.flags.contains(Flags::DIM) {
+            fg = std::array::from_fn(|i| fg[i] * 0.45 + bg[i] * 0.55);
+        }
         if term.modes().cursor_visible && cursor_col == Some(col) {
             let style = term.cursor_style();
             if !frame.focused {

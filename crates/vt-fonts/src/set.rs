@@ -1,6 +1,8 @@
 //! The fonts a terminal family draws its screen sizes with.
 
-use crate::{Font, VEETEE_10X10, VEETEE_VT420_6X16, VEETEE_VT420_10X16};
+use crate::{
+    Font, VEETEE_10X10, VEETEE_VT420_6X8, VEETEE_VT420_6X16, VEETEE_VT420_10X8, VEETEE_VT420_10X16,
+};
 
 /// Terminal families with different character cells.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -76,11 +78,17 @@ impl FontSet {
                 wide_36.fill_from(&wide_24);
                 let mut narrow_36 = narrow_24.derive(6, 10);
                 narrow_36.fill_from(&wide_36);
-                let wide_48 = wide_36.derive(10, 8);
-                let narrow_48 = narrow_36.derive(6, 8);
+                let mut wide_48 = parse(VEETEE_VT420_10X8);
+                wide_48.fill_from(&wide_36);
+                let mut narrow_48 = parse(VEETEE_VT420_6X8);
+                narrow_48.fill_from(&narrow_36);
                 vec![wide_24, narrow_24, wide_36, narrow_36, wide_48, narrow_48]
             }
         };
+        let mut faces = faces;
+        for face in &mut faces {
+            face.add_control_pictures();
+        }
         FontSet { family, faces }
     }
 

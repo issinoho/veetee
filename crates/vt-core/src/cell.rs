@@ -18,6 +18,9 @@ impl Flags {
     pub const COLOR_ALTERNATE: Flags = Flags(1 << 6);
     /// VT525: written in monochrome colour mode.
     pub const COLOR_MONO: Flags = Flags(1 << 7);
+    /// SGR 2, faint (xterm extension). DEC terminals show dim text only in
+    /// Set-Up, which veetee draws with it.
+    pub const DIM: Flags = Flags(1 << 8);
 
     pub const fn bits(self) -> u16 {
         self.0

@@ -11,9 +11,11 @@
 
 use std::collections::HashMap;
 
+mod controls;
 mod resample;
 mod set;
 
+pub use controls::C1_CONTROL_PICTURES;
 pub use set::{Family, FontSet};
 
 /// The VT100/VT220-style font, drawn on a 10×10 dot cell. VT420-family
@@ -25,6 +27,14 @@ pub const VEETEE_VT420_10X16: &str = include_str!("../fonts/veetee-vt420-10x16.v
 
 /// The VT420/VT500-style 132-column font for 24-line screens, 6×16 dots.
 pub const VEETEE_VT420_6X16: &str = include_str!("../fonts/veetee-vt420-6x16.vtfont");
+
+/// The VT420/VT500-style 80-column font for 48-line screens, 10×8 dots
+/// (ASCII; other characters are derived).
+pub const VEETEE_VT420_10X8: &str = include_str!("../fonts/veetee-vt420-10x8.vtfont");
+
+/// The VT420/VT500-style 132-column font for 48-line screens, 6×8 dots
+/// (ASCII; other characters are derived).
+pub const VEETEE_VT420_6X8: &str = include_str!("../fonts/veetee-vt420-6x8.vtfont");
 
 /// A parsed bitmap font. Glyph rows are bit masks, bit 0 = leftmost dot.
 #[derive(Debug, Clone)]

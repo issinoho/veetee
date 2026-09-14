@@ -212,6 +212,12 @@ const SPECIAL_GRAPHICS: [char; 32] = [
 /// equivalent (the large sigma parts at 3/1–3/7). The font draws these.
 pub const TECHNICAL_PUA: u32 = 0xF7E0;
 
+/// Display Controls (CRM) symbols for C1 controls 0x80–0x9F and NS (0xA0),
+/// in the Private Use Area; C0 controls use Unicode's Control Pictures and
+/// DEL U+2421. The fonts draw the same code points
+/// (`vt_fonts::C1_CONTROL_PICTURES`).
+pub const C1_CONTROL_PICTURES: u32 = 0xF780;
+
 /// DEC Technical for 0x21–0x7E. `None` marks positions DEC left undefined.
 const TECHNICAL: [Option<char>; 94] = {
     const U: Option<char> = None;

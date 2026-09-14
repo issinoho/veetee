@@ -91,6 +91,13 @@ fn setup_screen(model: vt_core::Model, menu: &SetupMenu) -> vt_core::Terminal {
     let mut screen = vt_core::Terminal::new(vt_core::Config {
         model,
         cols: if features.columns_132 { 132 } else { 80 },
+        // The VT500 menus use box, check box and radio button characters,
+        // and dim video for features that cannot be selected.
+        extensions: vt_core::Extensions {
+            utf8: true,
+            xterm_sgr: true,
+            ..vt_core::Extensions::default()
+        },
         ..vt_core::Config::default()
     });
     // Light or dark screen takes effect in Set-Up.
@@ -283,8 +290,12 @@ impl TerminalView {
             if let (Some(gl), Some(renderer)) = (st.gl.as_ref(), st.renderer.as_mut()) {
                 let term = st.session.terminal();
                 if let Some(setup) = st.setup.as_ref() {
-                    // Set-Up replaces the page; the status line stays.
-                    let mut indicator = indicator_line(&term, setup.was_held, bell);
+                    // Set-Up replaces the page; the status line stays, or
+                    // the VT500s show the Set-Up summary line there.
+                    let mut indicator = setup
+                        .menu
+                        .status_line()
+                        .unwrap_or_else(|| indicator_line(&term, setup.was_held, bell));
                     let cols = setup.screen.grid().cols();
                     indicator = format!("{indicator:<cols$}").chars().take(cols).collect();
                     drop(term);
@@ -767,7 +778,8 @@ impl TerminalView {
             let term = session.terminal();
             (term.config().model, term.setup_features())
         };
-        let menu = SetupMenu::new(model, short_version(), features);
+        let mut menu = SetupMenu::new(model, short_version(), features);
+        menu.set_session(st.callbacks.session_number);
         let screen = setup_screen(model, &menu);
         st.setup = Some(SetupView {
             menu,

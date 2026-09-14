@@ -5,6 +5,25 @@ milestones (0.3 = M3). The format follows [Keep a Changelog](https://keepachange
 
 ## [Unreleased]
 
+Finishes milestone M7.
+
+- **VT500 Set-Up (M7)**: the VT510, VT520 and VT525 open the menu-driven Set-Up of their
+  reference manual (EK-VT520-RM chapter 2): pull-right menus with check boxes and radio buttons,
+  Answerback and Tab Set-Up dialog boxes, and the Set-Up summary line (line settings, character
+  set, keyboard, emulation) on the status line. Features veetee does not have are dimmed. The
+  VT100 to VT420 models keep the VT420 Set-Up screens.
+- **More Set-Up features**: word size and parity separately (with the unchecked parities), 57.6K
+  to 115.2K baud, transmit and receive flow control and threshold, transmit and function key rate
+  limits, modem speeds, clear on column change (DECNCSM), CRT saver time, energy saver, zero
+  style, host wake-up, overscan, NUL handling, half duplex and auto repeat rate. They are saved
+  and follow the host's DECSPP, DECSFC, DECSTRL, DECSCS and VT500 modes.
+- **Display Controls (M7)**: Display Set-Up's Display Controls (CRM) shows control characters as
+  DEC's small stacked names instead of performing them, for debugging host output; DECSR leaves
+  it.
+- **Fonts (M7)**: hand-drawn ASCII for 48-line screens (10×8 and 6×8 dots) and hand-drawn Greek,
+  Cyrillic and Hebrew for 132 columns.
+- **Changed**: DECSR (secure reset) now works on the VT420, as its programmer reference documents.
+
 ## [0.7.0] - 2026-09-14
 
 Milestone M7, the look and feel of the terminal: DEC character cell fonts (in 0.6.0), Set-Up,

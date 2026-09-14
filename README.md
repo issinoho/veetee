@@ -9,7 +9,7 @@ and SSH, Telnet, serial and LAT connections.
 **Status:** early development — 0.7.0: the VT100 through VT525 (colour, VT500 character sets,
 dual sessions, page memory, rectangular operations, soft fonts), an LK401 keyboard map with a
 visual editor and VT520 key programming, session recordings, fonts drawn on DEC's own
-character cells, VT420 Set-Up, sound, smooth scrolling and a CRT picture. vttest VT100–VT520 menus pass headless,
+character cells, VT420 and VT520 Set-Up, sound, smooth scrolling and a CRT picture. vttest VT100–VT520 menus pass headless,
 and esctest2 runs at VT level 5 with every difference from xterm explained against DEC
 documentation.
 
@@ -131,9 +131,11 @@ Screen is not implemented yet.
 
 ### Set-Up
 
-F3 (or *Set-Up* in the window menu) opens the terminal's own Set-Up screens, laid out like a
-VT420's: the Set-Up Directory and the Global, Display, General, Communications, Printer, Keyboard
-and Tab screens. The host is held while Set-Up is open. The arrow keys move the field cursor and
+F3 (or *Set-Up* in the window menu) opens the terminal's own Set-Up. The VT100 to VT420 models
+show a VT420's screens: the Set-Up Directory and the Global, Display, General, Communications,
+Printer, Keyboard and Tab screens. The VT510, VT520 and VT525 show the VT500 series' pull-right
+menus, with the Set-Up summary line in place of the status line; there the arrow keys move
+through the menus and Enter chooses. The host is held while Set-Up is open. The arrow keys move the field cursor and
 Enter steps the highlighted feature to its next setting or performs an action; changes take
 effect when you leave Set-Up with F3 or Exit. *Save* keeps the settings as the power-up settings
 (`~/.config/veetee/setup-vt420-session1.conf`, per model and session), *Recall* returns to them and

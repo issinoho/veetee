@@ -11,6 +11,7 @@ use crate::modes::Modes;
 use crate::softfont::{SoftFonts, SoftGlyph};
 use crate::udk::UserKeys;
 
+mod crm;
 mod dcs;
 mod rect;
 mod reports;
@@ -137,6 +138,11 @@ impl Terminal {
     fn advance_nested(&mut self, bytes: &[u8], depth: usize) {
         let mut rest = bytes;
         while !rest.is_empty() {
+            if self.emu.stored.display_controls {
+                let n = self.emu.show_controls(rest);
+                rest = &rest[n..];
+                continue;
+            }
             let n = self.parser.advance_until_pause(&mut self.emu, rest);
             rest = &rest[n..];
             self.sync_parser();
@@ -155,9 +161,12 @@ impl Terminal {
     pub fn advance_paced(&mut self, bytes: &[u8]) -> usize {
         let mut used = 0;
         while used < bytes.len() {
-            let n = self
-                .parser
-                .advance_until_pause(&mut self.emu, &bytes[used..]);
+            let n = if self.emu.stored.display_controls {
+                self.emu.show_controls(&bytes[used..])
+            } else {
+                self.parser
+                    .advance_until_pause(&mut self.emu, &bytes[used..])
+            };
             used += n;
             self.sync_parser();
             let invoked = std::mem::take(&mut self.emu.pending_input);
@@ -622,6 +631,8 @@ struct Emulator {
     stored: crate::setup::Features,
     /// A smooth scroll that has happened and not yet been taken.
     smooth: Option<SmoothScroll>,
+    /// The last bytes shown in Display Controls mode, to recognise DECSR.
+    crm_tail: Vec<u8>,
     output: Vec<u8>,
     events: Vec<Event>,
     pause: bool,
@@ -754,6 +765,7 @@ impl Emulator {
             keyprog: crate::keyprog::KeyPrograms::default(),
             stored: crate::setup::Features::factory(model),
             smooth: None,
+            crm_tail: Vec::new(),
             output: Vec::new(),
             events: Vec::new(),
             pause: false,
@@ -1740,11 +1752,15 @@ impl Emulator {
             match p {
                 0 => *a = normal(a),
                 1 => a.flags.set(Flags::BOLD, true),
+                2 if xterm => a.flags.set(Flags::DIM, true),
                 4 => a.flags.set(Flags::UNDERLINE, true),
                 5 => a.flags.set(Flags::BLINK, true),
                 7 => a.flags.set(Flags::REVERSE, true),
                 8 if vt220 => a.flags.set(Flags::INVISIBLE, true),
-                22 if vt220 => a.flags.set(Flags::BOLD, false),
+                22 if vt220 => {
+                    a.flags.set(Flags::BOLD, false);
+                    a.flags.set(Flags::DIM, false);
+                }
                 24 if vt220 => a.flags.set(Flags::UNDERLINE, false),
                 25 if vt220 => a.flags.set(Flags::BLINK, false),
                 27 if vt220 => a.flags.set(Flags::REVERSE, false),
@@ -2010,7 +2026,8 @@ impl Perform for Emulator {
         match (seq.private, seq.intermediates, seq.final_byte) {
             (None, [], b'@') if vt220 => self.insert_chars(n(0)),
             (Some(b'?'), [], b'W') if vt510 && p.get_or(0, 0) == 5 => self.tab_every_8(),
-            (None, [b'+'], b'p') if self.config.model.max_level() >= 5 => self.secure_reset(p),
+            // DECSR: EK-VT420-RM chapter 13 and EK-VT520-RM.
+            (None, [b'+'], b'p') if self.config.model.max_level() >= 4 => self.secure_reset(p),
             (None, [b'+'], b'z') if self.config.model.max_level() >= 5 => {
                 self.keyprog.key_action(p.get_or(0, 0))
             }

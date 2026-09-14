@@ -1,674 +1,7 @@
-//! Set-Up: the terminal's local configuration screens (F3).
-//!
-//! The screens follow the VT420 (Installing and Using the VT420 Video
-//! Terminal, chapter 5): a Set-Up Directory and the Global, Display, General,
-//! Communications, Printer, Keyboard and Tab screens. A field cursor moves
-//! with the arrow keys; Enter performs an action field or steps a feature to
-//! its next setting. [`Features`] holds every setting; the terminal reads its
-//! current features with [`crate::Terminal::setup_features`] and applies them
-//! with [`crate::Terminal::apply_setup_features`] when Set-Up is left.
-//!
-//! [`SetupMenu::render`] draws the screen as VT420 output (a double-width
-//! title, the field cursor in reverse video) for a scratch 24-line terminal,
-//! so Set-Up is drawn with the same fonts as the session.
+//! The VT420 Set-Up screens (Installing and Using the VT420 Video Terminal,
+//! chapter 5), used for the VT100 to VT420 models.
 
-use std::fmt::Write as _;
-
-use crate::charset::Nrc;
-use crate::{CursorStyle, LocalKeyAction, Model, StatusDisplay, Supplemental};
-
-/// Smooth or jump scrolling (Display Set-Up).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum Scroll {
-    /// The factory setting (EK-VT520-RM table 2-10).
-    #[default]
-    Jump,
-    Smooth2,
-    Smooth4,
-}
-
-/// Keyclick and bell volumes (Keyboard Set-Up).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Volume {
-    Off,
-    Low,
-    High,
-}
-
-/// The terminal's operating level (General Set-Up "terminal mode").
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum TerminalMode {
-    Vt52,
-    Vt100,
-    /// VT200 (2) to VT500 (5) mode, with 7-bit or 8-bit controls.
-    Level {
-        level: u8,
-        eight_bit: bool,
-    },
-}
-
-/// What F5 does (Keyboard Set-Up).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum BreakKey {
-    #[default]
-    Break,
-    NoBreak,
-    FunctionKey,
-    Ignore,
-}
-
-/// What the Compose Character key does (Keyboard Set-Up).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum ComposeKey {
-    #[default]
-    Local,
-    Report,
-    Ignore,
-}
-
-/// Every Set-Up feature of a session.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Features {
-    // Global
-    pub on_line: bool,
-    pub two_sessions: bool,
-    pub crt_saver: bool,
-    pub comm1_dec423: bool,
-    pub refresh_60hz: bool,
-    /// Printer assignment: 0 shared, 1 session 1, 2 session 2.
-    pub printer_session: u8,
-    // Display
-    pub columns_132: bool,
-    pub display_controls: bool,
-    pub autowrap: bool,
-    pub scroll: Scroll,
-    pub light_screen: bool,
-    pub cursor: bool,
-    pub cursor_style: CursorStyle,
-    pub status: StatusDisplay,
-    pub page_length: usize,
-    pub screen_lines: usize,
-    pub vertical_coupling: bool,
-    pub page_coupling: bool,
-    pub auto_resize: bool,
-    // General
-    pub terminal_mode: TerminalMode,
-    pub udk_locked: bool,
-    pub user_features_locked: bool,
-    pub national: bool,
-    pub keypad_application: bool,
-    pub cursor_keys_application: bool,
-    pub new_line: bool,
-    pub upss: Supplemental,
-    /// DECTID code; 10 is the model's own identity.
-    pub terminal_id: u16,
-    /// Inactive session updates: 1 never, 2 when available, 3 shared.
-    pub update: u16,
-    // Communications
-    pub transmit_speed: u32,
-    /// `None` receives at the transmit speed.
-    pub receive_speed: Option<u32>,
-    /// `None` sends no XOFF.
-    pub xoff: Option<u16>,
-    /// Index into [`DATA_FORMATS`].
-    pub data_format: u8,
-    pub two_stop_bits: bool,
-    pub local_echo: bool,
-    pub modem_control: bool,
-    /// 0 two seconds, 1 60 ms, 2 no disconnect.
-    pub disconnect: u8,
-    pub limited_transmit: bool,
-    pub auto_answerback: bool,
-    pub answerback: Vec<u8>,
-    pub conceal_answerback: bool,
-    // Keyboard
-    pub data_processing_keys: bool,
-    pub shift_lock: bool,
-    pub auto_repeat: bool,
-    pub keyclick: Volume,
-    pub margin_bell: Volume,
-    pub warning_bell: Volume,
-    pub position_mode: bool,
-    pub backarrow_bs: bool,
-    pub compose: ComposeKey,
-    pub report_alt: bool,
-    /// F1 Hold, F2 Print, F3 Set-Up, F4 Session.
-    pub local_keys: [LocalKeyAction; 4],
-    pub break_key: BreakKey,
-    pub comma_period_same: bool,
-    pub angle_sends_tilde: bool,
-    pub tilde_sends_escape: bool,
-    pub keyboard_language: Option<Nrc>,
-    // Tab
-    pub tabs: Vec<bool>,
-}
-
-/// Communications Set-Up character formats.
-pub const DATA_FORMATS: [&str; 7] = [
-    "8 Bits, No Parity",
-    "8 Bits, Even Parity",
-    "8 Bits, Odd Parity",
-    "7 Bits, Even Parity",
-    "7 Bits, Odd Parity",
-    "7 Bits, Mark Parity",
-    "7 Bits, Space Parity",
-];
-
-const SPEEDS: [u32; 8] = [300, 600, 1200, 2400, 4800, 9600, 19200, 38400];
-
-/// Keyboard dialects offered in the Set-Up Directory, `None` first.
-const DIALECTS: [(Option<Nrc>, &str); 13] = [
-    (None, "North American Keyboard"),
-    (Some(Nrc::British), "British Keyboard"),
-    (Some(Nrc::Dutch), "Dutch Keyboard"),
-    (Some(Nrc::Finnish), "Finnish Keyboard"),
-    (Some(Nrc::French), "French/Belgian Keyboard"),
-    (Some(Nrc::FrenchCanadian), "Canadian (French) Keyboard"),
-    (Some(Nrc::German), "German Keyboard"),
-    (Some(Nrc::Italian), "Italian Keyboard"),
-    (Some(Nrc::NorwegianDanish), "Norwegian/Danish Keyboard"),
-    (Some(Nrc::Portuguese), "Portuguese Keyboard"),
-    (Some(Nrc::Spanish), "Spanish Keyboard"),
-    (Some(Nrc::Swedish), "Swedish Keyboard"),
-    (Some(Nrc::Swiss), "Swiss Keyboard"),
-];
-
-impl Features {
-    /// The factory settings of `model` (Installing and Using the VT420,
-    /// tables 5-2 to 5-7).
-    pub fn factory(model: Model) -> Features {
-        let level = model.max_level();
-        Features {
-            on_line: true,
-            two_sessions: false,
-            crt_saver: true,
-            comm1_dec423: false,
-            refresh_60hz: false,
-            printer_session: 0,
-            columns_132: false,
-            display_controls: false,
-            autowrap: false,
-            scroll: if model.smooth_scroll_default() {
-                Scroll::Smooth2
-            } else {
-                Scroll::Jump
-            },
-            light_screen: false,
-            cursor: true,
-            cursor_style: CursorStyle::default(),
-            status: if model.has_status_line() {
-                StatusDisplay::Indicator
-            } else {
-                StatusDisplay::None
-            },
-            page_length: 24,
-            screen_lines: 24,
-            vertical_coupling: true,
-            page_coupling: true,
-            auto_resize: false,
-            terminal_mode: if level >= 2 {
-                TerminalMode::Level {
-                    level,
-                    eight_bit: false,
-                }
-            } else {
-                TerminalMode::Vt100
-            },
-            udk_locked: false,
-            user_features_locked: false,
-            national: false,
-            keypad_application: false,
-            cursor_keys_application: false,
-            new_line: false,
-            upss: Supplemental::DecSupplemental,
-            terminal_id: 10,
-            update: 2,
-            transmit_speed: 9600,
-            receive_speed: None,
-            xoff: Some(64),
-            data_format: 0,
-            two_stop_bits: false,
-            local_echo: false,
-            modem_control: false,
-            disconnect: 0,
-            limited_transmit: false,
-            auto_answerback: false,
-            answerback: Vec::new(),
-            conceal_answerback: false,
-            data_processing_keys: false,
-            shift_lock: false,
-            auto_repeat: true,
-            keyclick: Volume::High,
-            margin_bell: Volume::Off,
-            warning_bell: Volume::High,
-            position_mode: false,
-            backarrow_bs: false,
-            compose: ComposeKey::Local,
-            report_alt: true,
-            local_keys: [LocalKeyAction::Local; 4],
-            break_key: BreakKey::Break,
-            comma_period_same: false,
-            angle_sends_tilde: false,
-            tilde_sends_escape: false,
-            keyboard_language: None,
-            tabs: default_tabs(80),
-        }
-    }
-
-    /// The features as `name=value` lines, for saving.
-    pub fn to_text(&self) -> String {
-        let mut s = String::new();
-        let b = |v: bool| u8::from(v);
-        let mut line = |k: &str, v: String| {
-            let _ = writeln!(s, "{k}={v}");
-        };
-        line("on-line", b(self.on_line).to_string());
-        line("crt-saver", b(self.crt_saver).to_string());
-        line("comm1-dec423", b(self.comm1_dec423).to_string());
-        line("refresh-60hz", b(self.refresh_60hz).to_string());
-        line("printer-session", self.printer_session.to_string());
-        line(
-            "columns",
-            if self.columns_132 { "132" } else { "80" }.into(),
-        );
-        line("display-controls", b(self.display_controls).to_string());
-        line("autowrap", b(self.autowrap).to_string());
-        line(
-            "scroll",
-            match self.scroll {
-                Scroll::Jump => "jump",
-                Scroll::Smooth2 => "smooth-2",
-                Scroll::Smooth4 => "smooth-4",
-            }
-            .into(),
-        );
-        line("light-screen", b(self.light_screen).to_string());
-        line("cursor", b(self.cursor).to_string());
-        line(
-            "cursor-style",
-            match self.cursor_style {
-                CursorStyle::BlinkingBlock => "blinking-block",
-                CursorStyle::SteadyBlock => "steady-block",
-                CursorStyle::BlinkingUnderline => "blinking-underline",
-                CursorStyle::SteadyUnderline => "steady-underline",
-            }
-            .into(),
-        );
-        line(
-            "status",
-            match self.status {
-                StatusDisplay::None => "none",
-                StatusDisplay::Indicator => "indicator",
-                StatusDisplay::HostWritable => "host",
-            }
-            .into(),
-        );
-        line("page-length", self.page_length.to_string());
-        line("screen-lines", self.screen_lines.to_string());
-        line("vertical-coupling", b(self.vertical_coupling).to_string());
-        line("page-coupling", b(self.page_coupling).to_string());
-        line("auto-resize", b(self.auto_resize).to_string());
-        line(
-            "terminal-mode",
-            match self.terminal_mode {
-                TerminalMode::Vt52 => "vt52".into(),
-                TerminalMode::Vt100 => "vt100".into(),
-                TerminalMode::Level { level, eight_bit } => {
-                    format!("level{level}-{}bit", if eight_bit { 8 } else { 7 })
-                }
-            },
-        );
-        line("udk-locked", b(self.udk_locked).to_string());
-        line(
-            "user-features-locked",
-            b(self.user_features_locked).to_string(),
-        );
-        line("national", b(self.national).to_string());
-        line("new-line", b(self.new_line).to_string());
-        line(
-            "upss",
-            match self.upss {
-                Supplemental::DecSupplemental => "dec",
-                Supplemental::IsoLatin1 => "latin1",
-            }
-            .into(),
-        );
-        line("terminal-id", self.terminal_id.to_string());
-        line("update", self.update.to_string());
-        line("transmit-speed", self.transmit_speed.to_string());
-        line(
-            "receive-speed",
-            self.receive_speed
-                .map_or("transmit".into(), |v| v.to_string()),
-        );
-        line("xoff", self.xoff.map_or("none".into(), |v| v.to_string()));
-        line("data-format", self.data_format.to_string());
-        line(
-            "stop-bits",
-            if self.two_stop_bits { "2" } else { "1" }.into(),
-        );
-        line("local-echo", b(self.local_echo).to_string());
-        line("modem-control", b(self.modem_control).to_string());
-        line("disconnect", self.disconnect.to_string());
-        line("limited-transmit", b(self.limited_transmit).to_string());
-        line("auto-answerback", b(self.auto_answerback).to_string());
-        line("answerback", hex(&self.answerback));
-        line("conceal-answerback", b(self.conceal_answerback).to_string());
-        line(
-            "data-processing-keys",
-            b(self.data_processing_keys).to_string(),
-        );
-        line("shift-lock", b(self.shift_lock).to_string());
-        line("auto-repeat", b(self.auto_repeat).to_string());
-        line("keyclick", volume_name(self.keyclick).into());
-        line("margin-bell", volume_name(self.margin_bell).into());
-        line("warning-bell", volume_name(self.warning_bell).into());
-        line("position-mode", b(self.position_mode).to_string());
-        line("backarrow-bs", b(self.backarrow_bs).to_string());
-        line(
-            "compose",
-            match self.compose {
-                ComposeKey::Local => "local",
-                ComposeKey::Report => "report",
-                ComposeKey::Ignore => "ignore",
-            }
-            .into(),
-        );
-        line("report-alt", b(self.report_alt).to_string());
-        line(
-            "local-keys",
-            self.local_keys
-                .iter()
-                .map(|k| match k {
-                    LocalKeyAction::Local => 'l',
-                    LocalKeyAction::SendToHost => 'h',
-                    LocalKeyAction::Disabled => 'x',
-                })
-                .collect(),
-        );
-        line(
-            "break-key",
-            match self.break_key {
-                BreakKey::Break => "break",
-                BreakKey::NoBreak => "no-break",
-                BreakKey::FunctionKey => "fkey",
-                BreakKey::Ignore => "ignore",
-            }
-            .into(),
-        );
-        line("comma-period-same", b(self.comma_period_same).to_string());
-        line("angle-sends-tilde", b(self.angle_sends_tilde).to_string());
-        line("tilde-sends-escape", b(self.tilde_sends_escape).to_string());
-        line(
-            "keyboard",
-            DIALECTS
-                .iter()
-                .position(|(n, _)| *n == self.keyboard_language)
-                .unwrap_or(0)
-                .to_string(),
-        );
-        line(
-            "tabs",
-            self.tabs
-                .iter()
-                .enumerate()
-                .filter(|(_, t)| **t)
-                .map(|(i, _)| (i + 1).to_string())
-                .collect::<Vec<_>>()
-                .join(","),
-        );
-        s
-    }
-
-    /// Reads [`Features::to_text`] output over the factory settings of
-    /// `model`. Unknown names and bad values are ignored.
-    pub fn from_text(model: Model, text: &str) -> Features {
-        let mut f = Features::factory(model);
-        for line in text.lines() {
-            let Some((k, v)) = line.split_once('=') else {
-                continue;
-            };
-            let flag = v == "1";
-            let num = || v.parse::<usize>().ok();
-            match k.trim() {
-                "on-line" => f.on_line = flag,
-                "crt-saver" => f.crt_saver = flag,
-                "comm1-dec423" => f.comm1_dec423 = flag,
-                "refresh-60hz" => f.refresh_60hz = flag,
-                "printer-session" => f.printer_session = num().unwrap_or(0).min(2) as u8,
-                "columns" => f.columns_132 = v == "132",
-                "display-controls" => f.display_controls = flag,
-                "autowrap" => f.autowrap = flag,
-                "scroll" => {
-                    f.scroll = match v {
-                        "smooth-2" => Scroll::Smooth2,
-                        "smooth-4" => Scroll::Smooth4,
-                        _ => Scroll::Jump,
-                    }
-                }
-                "light-screen" => f.light_screen = flag,
-                "cursor" => f.cursor = flag,
-                "cursor-style" => {
-                    f.cursor_style = match v {
-                        "steady-block" => CursorStyle::SteadyBlock,
-                        "blinking-underline" => CursorStyle::BlinkingUnderline,
-                        "steady-underline" => CursorStyle::SteadyUnderline,
-                        _ => CursorStyle::BlinkingBlock,
-                    }
-                }
-                "status" if model.has_status_line() => {
-                    f.status = match v {
-                        "none" => StatusDisplay::None,
-                        "host" => StatusDisplay::HostWritable,
-                        _ => StatusDisplay::Indicator,
-                    }
-                }
-                "page-length" => {
-                    if let Some(n) = num().filter(|n| page_lengths(model).contains(n)) {
-                        f.page_length = n;
-                    }
-                }
-                "screen-lines" => {
-                    if let Some(n) = num().filter(|n| screen_line_choices(model).contains(n)) {
-                        f.screen_lines = n;
-                    }
-                }
-                "vertical-coupling" => f.vertical_coupling = flag,
-                "page-coupling" => f.page_coupling = flag,
-                "auto-resize" => f.auto_resize = flag,
-                "terminal-mode" => {
-                    if let Some(m) = terminal_modes(model).into_iter().find(|m| {
-                        let name = match m {
-                            TerminalMode::Vt52 => "vt52".to_string(),
-                            TerminalMode::Vt100 => "vt100".to_string(),
-                            TerminalMode::Level { level, eight_bit } => {
-                                format!("level{level}-{}bit", if *eight_bit { 8 } else { 7 })
-                            }
-                        };
-                        name == v
-                    }) {
-                        f.terminal_mode = m;
-                    }
-                }
-                "udk-locked" => f.udk_locked = flag,
-                "user-features-locked" => f.user_features_locked = flag,
-                "national" => f.national = flag,
-                "new-line" => f.new_line = flag,
-                "upss" => {
-                    f.upss = if v == "latin1" {
-                        Supplemental::IsoLatin1
-                    } else {
-                        Supplemental::DecSupplemental
-                    }
-                }
-                "terminal-id" => {
-                    if let Some(id) = num().map(|n| n as u16) {
-                        if terminal_ids(model).contains(&id) {
-                            f.terminal_id = id;
-                        }
-                    }
-                }
-                "update" => f.update = num().unwrap_or(2).clamp(1, 3) as u16,
-                "transmit-speed" => {
-                    if let Some(s) = num().map(|n| n as u32).filter(|s| SPEEDS.contains(s)) {
-                        f.transmit_speed = s;
-                    }
-                }
-                "receive-speed" => {
-                    f.receive_speed = v.parse::<u32>().ok().filter(|s| SPEEDS.contains(s))
-                }
-                "xoff" => f.xoff = v.parse::<u16>().ok().filter(|x| [64, 128].contains(x)),
-                "data-format" => {
-                    f.data_format = num().unwrap_or(0).min(DATA_FORMATS.len() - 1) as u8
-                }
-                "stop-bits" => f.two_stop_bits = v == "2",
-                "local-echo" => f.local_echo = flag,
-                "modem-control" => f.modem_control = flag,
-                "disconnect" => f.disconnect = num().unwrap_or(0).min(2) as u8,
-                "limited-transmit" => f.limited_transmit = flag,
-                "auto-answerback" => f.auto_answerback = flag,
-                "answerback" => f.answerback = unhex(v).unwrap_or_default(),
-                "conceal-answerback" => f.conceal_answerback = flag,
-                "data-processing-keys" => f.data_processing_keys = flag,
-                "shift-lock" => f.shift_lock = flag,
-                "auto-repeat" => f.auto_repeat = flag,
-                "keyclick" => f.keyclick = volume_from(v),
-                "margin-bell" => f.margin_bell = volume_from(v),
-                "warning-bell" => f.warning_bell = volume_from(v),
-                "position-mode" => f.position_mode = flag,
-                "backarrow-bs" => f.backarrow_bs = flag,
-                "compose" => {
-                    f.compose = match v {
-                        "report" => ComposeKey::Report,
-                        "ignore" => ComposeKey::Ignore,
-                        _ => ComposeKey::Local,
-                    }
-                }
-                "report-alt" => f.report_alt = flag,
-                "local-keys" => {
-                    for (slot, c) in f.local_keys.iter_mut().zip(v.chars()) {
-                        *slot = match c {
-                            'h' => LocalKeyAction::SendToHost,
-                            'x' => LocalKeyAction::Disabled,
-                            _ => LocalKeyAction::Local,
-                        };
-                    }
-                }
-                "break-key" => {
-                    f.break_key = match v {
-                        "no-break" => BreakKey::NoBreak,
-                        "fkey" => BreakKey::FunctionKey,
-                        "ignore" => BreakKey::Ignore,
-                        _ => BreakKey::Break,
-                    }
-                }
-                "comma-period-same" => f.comma_period_same = flag,
-                "angle-sends-tilde" => f.angle_sends_tilde = flag,
-                "tilde-sends-escape" => f.tilde_sends_escape = flag,
-                "keyboard" => {
-                    f.keyboard_language = DIALECTS.get(num().unwrap_or(0)).and_then(|d| d.0)
-                }
-                "tabs" => {
-                    let cols = if f.columns_132 { 132 } else { 80 };
-                    let mut tabs = vec![false; cols];
-                    for n in v.split(',').filter_map(|n| n.parse::<usize>().ok()) {
-                        if (2..=cols).contains(&n) {
-                            tabs[n - 1] = true;
-                        }
-                    }
-                    f.tabs = tabs;
-                }
-                _ => {}
-            }
-        }
-        if f.keyboard_language.is_none() {
-            // National mode needs a national keyboard.
-            f.national = false;
-        }
-        f
-    }
-}
-
-pub(crate) fn default_tabs(cols: usize) -> Vec<bool> {
-    (0..cols).map(|c| c > 0 && c % 8 == 0).collect()
-}
-
-fn volume_name(v: Volume) -> &'static str {
-    match v {
-        Volume::Off => "off",
-        Volume::Low => "low",
-        Volume::High => "high",
-    }
-}
-
-fn volume_from(v: &str) -> Volume {
-    match v {
-        "off" => Volume::Off,
-        "low" => Volume::Low,
-        _ => Volume::High,
-    }
-}
-
-fn hex(data: &[u8]) -> String {
-    data.iter().map(|b| format!("{b:02x}")).collect()
-}
-
-fn unhex(text: &str) -> Option<Vec<u8>> {
-    if text.len() % 2 != 0 {
-        return None;
-    }
-    (0..text.len())
-        .step_by(2)
-        .map(|i| u8::from_str_radix(text.get(i..i + 2)?, 16).ok())
-        .collect()
-}
-
-fn model_name(model: Model) -> String {
-    model.term_name_exact().to_uppercase()
-}
-
-pub(crate) fn page_lengths(model: Model) -> &'static [usize] {
-    if model.max_level() >= 5 {
-        &[24, 25, 36, 41, 42, 48, 52, 53, 72]
-    } else {
-        &[24, 25, 36, 48, 72, 144]
-    }
-}
-
-/// Lines per screen as Set-Up names them; a VT500 shows 26, 42 or 53 data
-/// lines for these (EK-VT520-RM DECSNLS).
-fn screen_line_choices(_model: Model) -> &'static [usize] {
-    &[24, 36, 48]
-}
-
-fn terminal_modes(model: Model) -> Vec<TerminalMode> {
-    let max = model.max_level();
-    let mut modes = Vec::new();
-    for level in (2..=max).rev() {
-        modes.push(TerminalMode::Level {
-            level,
-            eight_bit: false,
-        });
-        modes.push(TerminalMode::Level {
-            level,
-            eight_bit: true,
-        });
-    }
-    modes.push(TerminalMode::Vt100);
-    modes.push(TerminalMode::Vt52);
-    modes
-}
-
-/// DECTID codes a model offers, its own identity (10) first.
-fn terminal_ids(model: Model) -> Vec<u16> {
-    match model.max_level() {
-        5 => vec![10, 9, 7, 5, 2, 1, 0],
-        4 => vec![10, 0, 1, 2, 5, 7],
-        _ => vec![10],
-    }
-}
-
-// ------------------------------------------------------------------ menus
+use super::*;
 
 /// The Set-Up screens.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -709,45 +42,6 @@ impl Screen {
             Screen::Tab => Screen::Global,
         }
     }
-}
-
-/// Actions the terminal or window performs for Set-Up.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Action {
-    ClearComm,
-    ResetSession,
-    /// Recall the saved settings.
-    Recall,
-    Save,
-    /// Recall the factory settings.
-    Default,
-}
-
-/// What a Set-Up key did.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Outcome {
-    /// The screen changed (or nothing happened).
-    Redraw,
-    /// Leave Set-Up, applying the features.
-    Exit,
-    /// Perform an action, then report with [`SetupMenu::done`].
-    Action(Action),
-}
-
-/// Keys Set-Up understands.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Input {
-    Up,
-    Down,
-    Left,
-    Right,
-    Enter,
-    Tab,
-    Backspace,
-    /// Typed text (only used while entering an answerback message).
-    Text(String),
-    /// The Set-Up key: leaves Set-Up, or cancels answerback entry.
-    SetUp,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -830,7 +124,7 @@ enum Field {
     // Tab
     ClearTabs,
     SetTabs8,
-    /// The tab ruler; the column is [`SetupMenu::tab_col`].
+    /// The tab ruler; the column is [`Screens::tab_col`].
     Ruler,
 }
 
@@ -1073,9 +367,11 @@ fn label(field: Field, f: &Features, model: Model) -> String {
             .receive_speed
             .map_or("Receive=Transmit".into(), |s| format!("Receive={s}")),
         F::Xoff => f.xoff.map_or("No XOFF".into(), |x| format!("XOFF at {x}")),
-        F::DataFormat => {
-            DATA_FORMATS[usize::from(f.data_format).min(DATA_FORMATS.len() - 1)].into()
-        }
+        F::DataFormat => DATA_FORMATS
+            .iter()
+            .find(|d| (d.1, d.2) == (f.seven_bit_data, f.parity))
+            .map_or(DATA_FORMATS[0].0, |d| d.0)
+            .into(),
         F::StopBits => on_off(f.two_stop_bits, "2 Stop Bits", "1 Stop Bit"),
         F::LocalEcho => on_off(f.local_echo, "Local Echo", "No Local Echo"),
         F::ModemControl => on_off(f.modem_control, "Modem Control", "Data Leads Only"),
@@ -1239,14 +535,20 @@ fn cycle(field: Field, f: &mut Features, model: Model) -> bool {
         }
         F::TerminalId if level >= 4 => f.terminal_id = next_of(&terminal_ids(model), f.terminal_id),
         F::Update => f.update = next_of(&[2, 3, 1], f.update),
-        F::Transmit => f.transmit_speed = next_of(&SPEEDS, f.transmit_speed),
+        F::Transmit => f.transmit_speed = next_of(speeds(model), f.transmit_speed),
         F::Receive => {
             let mut options = vec![None];
-            options.extend(SPEEDS.iter().map(|s| Some(*s)));
+            options.extend(speeds(model).iter().map(|s| Some(*s)));
             f.receive_speed = next_of(&options, f.receive_speed);
         }
         F::Xoff => f.xoff = next_of(&[Some(64), Some(128), None], f.xoff),
-        F::DataFormat => f.data_format = (f.data_format + 1) % DATA_FORMATS.len() as u8,
+        F::DataFormat => {
+            let at = DATA_FORMATS
+                .iter()
+                .position(|d| (d.1, d.2) == (f.seven_bit_data, f.parity))
+                .map_or(0, |i| (i + 1) % DATA_FORMATS.len());
+            (_, f.seven_bit_data, f.parity) = DATA_FORMATS[at];
+        }
         F::StopBits => f.two_stop_bits = !f.two_stop_bits,
         F::LocalEcho => f.local_echo = !f.local_echo,
         F::ModemControl => f.modem_control = !f.modem_control,
@@ -1305,7 +607,7 @@ fn cycle(field: Field, f: &mut Features, model: Model) -> bool {
 }
 
 /// Lines per screen for a page length when Auto Resize Screen is on.
-fn auto_screen_lines(page_length: usize) -> usize {
+pub(super) fn auto_screen_lines(page_length: usize) -> usize {
     match page_length {
         0..=25 => 24,
         26..=36 => 36,
@@ -1327,9 +629,9 @@ fn width(field: Field, f: &Features, model: Model) -> usize {
     widest
 }
 
-/// An open Set-Up session.
+/// An open VT420 Set-Up.
 #[derive(Debug, Clone)]
-pub struct SetupMenu {
+pub(super) struct Screens {
     model: Model,
     version: String,
     features: Features,
@@ -1348,11 +650,11 @@ fn row_line(row: usize) -> usize {
     3 + 2 * row
 }
 
-impl SetupMenu {
+impl Screens {
     /// Opens Set-Up on the Set-Up Directory, with the field cursor on
     /// Global. `version` is shown after the model name.
-    pub fn new(model: Model, version: &str, features: Features) -> SetupMenu {
-        SetupMenu {
+    pub fn new(model: Model, version: &str, features: Features) -> Screens {
+        Screens {
             model,
             version: version.to_string(),
             features,
@@ -1376,6 +678,7 @@ impl SetupMenu {
         self.features = features;
     }
 
+    #[cfg(test)]
     pub fn screen(&self) -> Screen {
         self.screen
     }
@@ -1648,7 +951,7 @@ mod tests {
     use super::*;
     use crate::{Config, Terminal};
 
-    fn screen_text(menu: &SetupMenu) -> Vec<String> {
+    fn screen_text(menu: &Screens) -> Vec<String> {
         let mut term = Terminal::new(Config {
             cols: if menu.features.columns_132 { 132 } else { 80 },
             ..Config::default()
@@ -1668,8 +971,8 @@ mod tests {
             .collect()
     }
 
-    fn menu() -> SetupMenu {
-        SetupMenu::new(Model::Vt420, "0.6", Features::factory(Model::Vt420))
+    fn menu() -> Screens {
+        Screens::new(Model::Vt420, "0.6", Features::factory(Model::Vt420))
     }
 
     #[test]
@@ -1749,7 +1052,7 @@ mod tests {
     #[test]
     fn every_screen_fits_80_columns() {
         for model in [Model::Vt100, Model::Vt220, Model::Vt420, Model::Vt525] {
-            let mut m = SetupMenu::new(model, "0.6", Features::factory(model));
+            let mut m = Screens::new(model, "0.6", Features::factory(model));
             for screen in [
                 Screen::Directory,
                 Screen::Global,

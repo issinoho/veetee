@@ -7,7 +7,7 @@ use crate::Model;
 use crate::cell::Cell;
 use crate::charset::Charset;
 use crate::config::{Config, StatusDisplay, Supplemental};
-use crate::setup::{Features, Scroll, TerminalMode, Volume};
+use crate::setup::{Features, Parity, Scroll, TerminalMode, Volume};
 
 /// VT500 private modes a VT420 also keeps in Set-Up.
 const DECXRLM: u16 = 73;
@@ -15,6 +15,10 @@ const DECCRTSM: u16 = 97;
 const DECMCM: u16 = 99;
 const DECAAM: u16 = 100;
 const DECCANSM: u16 = 101;
+const DECNULM: u16 = 102;
+const DECHDPXM: u16 = 103;
+const DECOSCNM: u16 = 106;
+const DECHWUM: u16 = 113;
 
 impl Terminal {
     /// The session's current Set-Up features.
@@ -160,30 +164,48 @@ fn volume_code(v: Volume) -> &'static str {
     }
 }
 
-/// DECSCS speed codes.
+/// DECSCS speeds by code (EK-VT520-RM); 0 ignores the modem speed
+/// indicator.
+const SPEEDS: [u32; 11] = [
+    300, 600, 1200, 2400, 4800, 9600, 19200, 38400, 57600, 76800, 115200,
+];
+
 fn speed_code(speed: u32) -> u16 {
-    match speed {
-        300 => 1,
-        600 => 2,
-        1200 => 3,
-        2400 => 4,
-        4800 => 5,
-        19200 => 7,
-        38400 => 8,
-        _ => 6,
-    }
+    SPEEDS
+        .iter()
+        .position(|&s| s == speed)
+        .map_or(6, |i| i as u16 + 1)
 }
 
 fn speed_of(code: u16) -> u32 {
+    SPEEDS
+        .get(usize::from(code).wrapping_sub(1))
+        .copied()
+        .unwrap_or(9600)
+}
+
+fn modem_speed_of(code: u16) -> Option<u32> {
+    (code > 0).then(|| speed_of(code))
+}
+
+/// DECSPP parity codes, in [`Parity::ALL`] order.
+fn parity_code(parity: Parity) -> u16 {
+    Parity::ALL.iter().position(|&p| p == parity).unwrap_or(0) as u16 + 1
+}
+
+/// DECSFC flow control types for Set-Up's 0 none, 1 XON/XOFF, 2 DSR/DTR,
+/// 3 both.
+fn flow_code(flow: u8) -> u16 {
+    match flow {
+        0 => 4,
+        n => u16::from(n),
+    }
+}
+
+fn flow_of(code: u16) -> u8 {
     match code {
-        1 => 300,
-        2 => 600,
-        3 => 1200,
-        4 => 2400,
-        5 => 4800,
-        7 => 19200,
-        8 => 38400,
-        _ => 9600,
+        4 => 0,
+        n => n.min(3) as u8,
     }
 }
 
@@ -238,6 +260,35 @@ impl Emulator {
             terminal_id: s.terminal_id,
             update: s.update_session(),
             transmit_speed: speed_of(s.comm_speed(0)),
+            modem_high_speed: modem_speed_of(s.comm_speed(3)),
+            modem_low_speed: modem_speed_of(s.comm_speed(4)),
+            seven_bit_data: s.port_parameters()[0] == 2,
+            parity: Parity::ALL[usize::from(s.port_parameters()[1].clamp(1, 7)) - 1],
+            two_stop_bits: s.port_parameters()[2] == 2,
+            transmit_flow: match s.flow_control() {
+                [1 | 3, kind, _] => flow_of(kind),
+                _ => stored.transmit_flow,
+            },
+            receive_flow: match s.flow_control() {
+                [2 | 3, kind, _] => flow_of(kind),
+                _ => stored.receive_flow,
+            },
+            flow_threshold_high: s.flow_control()[2] == 2,
+            transmit_rate: s.transmit_rate(0) as u8,
+            fkey_rate: if s.transmit_rate(2) == s.transmit_rate(0) {
+                stored.fkey_rate
+            } else {
+                s.transmit_rate(2) as u8
+            },
+            ignore_null: flag(DECNULM),
+            half_duplex: flag(DECHDPXM),
+            clear_on_column_change: !flag(vt520::DECNCSM),
+            overscan: flag(DECOSCNM),
+            host_wake_up: flag(DECHWUM),
+            zero_style: s.selection(b",{").parse().unwrap_or(1),
+            crt_saver_minutes: s.selection(b"-q").parse().unwrap_or(15),
+            energy_saver_minutes: s.selection(b"-r").parse().unwrap_or(15),
+            auto_repeat_rate: if s.selection(b"-p") == "10" { 10 } else { 30 },
             local_echo: !self.modes.send_receive,
             modem_control: flag(DECMCM),
             limited_transmit: flag(DECXRLM),
@@ -317,6 +368,40 @@ impl Emulator {
         self.setup.terminal_id = f.terminal_id;
         self.setup.set_update_session(f.update);
         self.setup.set_comm_speed(0, speed_code(f.transmit_speed));
+        self.setup
+            .set_comm_speed(3, f.modem_high_speed.map_or(0, speed_code));
+        self.setup
+            .set_comm_speed(4, f.modem_low_speed.map_or(0, speed_code));
+        self.setup.set_port_parameters([
+            if f.seven_bit_data { 2 } else { 1 },
+            parity_code(f.parity),
+            if f.two_stop_bits { 2 } else { 1 },
+        ]);
+        let threshold = if f.flow_threshold_high { 2 } else { 1 };
+        self.setup
+            .set_flow_control(if f.transmit_flow == f.receive_flow {
+                [3, flow_code(f.receive_flow), threshold]
+            } else {
+                [2, flow_code(f.receive_flow), threshold]
+            });
+        let rate = u16::from(f.transmit_rate.clamp(1, 3));
+        self.setup.set_transmit_rate(0, rate);
+        self.setup.set_transmit_rate(1, rate);
+        self.setup.set_transmit_rate(
+            2,
+            if f.fkey_rate == 0 {
+                rate
+            } else {
+                u16::from(f.fkey_rate)
+            },
+        );
+        self.setup.set_selection(b",{", &f.zero_style.to_string());
+        self.setup
+            .set_selection(b"-q", &f.crt_saver_minutes.to_string());
+        self.setup
+            .set_selection(b"-r", &f.energy_saver_minutes.to_string());
+        self.setup
+            .set_selection(b"-p", &f.auto_repeat_rate.to_string());
         self.modes.send_receive = !f.local_echo;
         let modes = [
             (DECMCM, f.modem_control),
@@ -325,6 +410,11 @@ impl Emulator {
             (DECAAM, f.auto_answerback),
             (DECCANSM, f.conceal_answerback),
             (vt520::DECKPM, f.position_mode),
+            (DECNULM, f.ignore_null),
+            (DECHDPXM, f.half_duplex),
+            (vt520::DECNCSM, !f.clear_on_column_change),
+            (DECOSCNM, f.overscan),
+            (DECHWUM, f.host_wake_up),
         ];
         for (mode, on) in modes {
             self.set_vt520_mode(mode, on);
@@ -397,6 +487,55 @@ mod tests {
         assert!(term.modes().autowrap && term.modes().reverse_screen);
         assert!(term.eight_bit_replies());
         assert_eq!(term.setup_features(), f);
+    }
+
+    #[test]
+    fn vt500_features_take_effect_and_read_back() {
+        let mut term = Terminal::new(Config {
+            model: Model::Vt520,
+            ..Config::default()
+        });
+        let mut f = term.setup_features();
+        f.transmit_speed = 115200;
+        f.modem_high_speed = Some(57600);
+        f.seven_bit_data = true;
+        f.parity = Parity::OddUnchecked;
+        f.two_stop_bits = true;
+        f.transmit_flow = 0;
+        f.receive_flow = 2;
+        f.flow_threshold_high = true;
+        f.limited_transmit = true;
+        f.transmit_rate = 3;
+        f.fkey_rate = 2;
+        f.ignore_null = false;
+        f.clear_on_column_change = false;
+        f.zero_style = 2;
+        f.crt_saver_minutes = 60;
+        f.auto_repeat_rate = 10;
+        term.apply_setup_features(&f);
+        assert_eq!(term.setup_features(), f);
+        // The host sees them in its reports.
+        for (request, reply) in [
+            (&b"*r"[..], &b"\x1bP1$r1;11*r\x1b\\"[..]),
+            (b"+w", b"\x1bP1$r1;2;5;2+w\x1b\\"),
+            (b"-q", b"\x1bP1$r60-q\x1b\\"),
+        ] {
+            term.advance(b"\x1bP$q");
+            term.advance(request);
+            term.advance(b"\x1b\\");
+            assert_eq!(
+                term.take_output(),
+                reply,
+                "{}",
+                String::from_utf8_lossy(request)
+            );
+        }
+        term.advance(b"\x1b[?95$p");
+        assert_eq!(term.take_output(), b"\x1b[?95;1$y", "DECNCSM set");
+        // And host changes show in Set-Up.
+        term.advance(b"\x1b[1;1;4+w\x1b[?102h");
+        let f = term.setup_features();
+        assert!(!f.seven_bit_data && f.parity == Parity::EvenUnchecked && f.ignore_null);
     }
 
     #[test]
