@@ -52,6 +52,23 @@ impl Terminal {
         }
     }
 
+    /// How long the terminal waits, with no keys pressed and nothing
+    /// received, before blanking the screen; `None` when the CRT saver is
+    /// off. A VT420 waits 30 minutes (Global Set-Up); a VT500 uses DECCRTST
+    /// (minutes, 0 never; factory 15).
+    pub fn crt_saver_timeout(&self) -> Option<std::time::Duration> {
+        let e = &self.emu;
+        if !e.setup.modes.get(&DECCRTSM).copied().unwrap_or(false) {
+            return None;
+        }
+        let minutes = if e.config.model.max_level() >= 5 {
+            e.setup.selection(b"-q").parse::<u64>().unwrap_or(15)
+        } else {
+            30
+        };
+        (minutes > 0).then(|| std::time::Duration::from_secs(minutes * 60))
+    }
+
     /// The power-up settings, or `None` for the factory settings.
     pub fn saved_setup_features(&self) -> Option<&Features> {
         self.emu.config.setup.as_ref()
@@ -422,6 +439,34 @@ mod tests {
             "only when the cursor reaches it"
         );
         assert_eq!(term.sound_volumes().margin_bell, Volume::High);
+    }
+
+    #[test]
+    fn crt_saver_waits_as_set_up() {
+        let term = Terminal::new(Config::default());
+        assert_eq!(
+            term.crt_saver_timeout(),
+            Some(std::time::Duration::from_secs(1800))
+        );
+        let mut vt520 = Terminal::new(Config {
+            model: Model::Vt520,
+            ..Config::default()
+        });
+        assert_eq!(
+            vt520.crt_saver_timeout(),
+            Some(std::time::Duration::from_secs(900))
+        );
+        vt520.advance(b"\x1b[5-q");
+        assert_eq!(
+            vt520.crt_saver_timeout(),
+            Some(std::time::Duration::from_secs(300))
+        );
+        vt520.advance(b"\x1b[0-q");
+        assert_eq!(vt520.crt_saver_timeout(), None, "0 is never");
+        let mut f = vt520.setup_features();
+        f.crt_saver = false;
+        vt520.apply_setup_features(&f);
+        assert_eq!(vt520.crt_saver_timeout(), None);
     }
 
     #[test]

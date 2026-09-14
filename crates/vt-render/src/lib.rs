@@ -16,6 +16,7 @@
 //! only uploads and draws.
 
 mod gl;
+mod postfx;
 mod scene;
 mod theme;
 
@@ -24,4 +25,4 @@ pub use scene::{
     Clip, FrameState, Layout, ScrollFrame, SoftAtlas, build_instances, face_offset, family, layout,
     page_layout, page_rows,
 };
-pub use theme::{Phosphor, Theme};
+pub use theme::{Effects, Phosphor, Theme};

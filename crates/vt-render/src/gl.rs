@@ -28,6 +28,12 @@ pub struct Renderer {
     fonts: FontSet,
     scratch: Vec<f32>,
     uniforms: Uniforms,
+    /// The GLSL version line for this context.
+    header: &'static str,
+    postfx: Option<crate::postfx::PostFx>,
+    /// The previous frame's instances, to tell when the picture changes.
+    previous: Vec<f32>,
+    last_change: std::time::Instant,
 }
 
 impl std::fmt::Debug for Renderer {
@@ -176,7 +182,7 @@ impl Renderer {
     /// A GL context must be current and remain current for every later call.
     pub unsafe fn new(gl: &glow::Context, fonts: FontSet) -> Result<Renderer, String> {
         unsafe {
-            let header = if gl.version().is_embedded {
+            let header: &'static str = if gl.version().is_embedded {
                 "#version 300 es\nprecision highp float;\nprecision highp int;\nprecision highp sampler2D;\n"
             } else {
                 "#version 330 core\n"
@@ -235,6 +241,10 @@ impl Renderer {
                 fonts,
                 scratch: Vec::new(),
                 uniforms,
+                header,
+                postfx: None,
+                previous: Vec::new(),
+                last_change: std::time::Instant::now(),
             })
         }
     }
@@ -244,7 +254,9 @@ impl Renderer {
     }
 
     /// Draws one frame into the currently bound framebuffer. `indicator` is
-    /// the text shown when the indicator status line is selected.
+    /// the text shown when the indicator status line is selected. Returns
+    /// true while the picture is still changing on its own (phosphor
+    /// afterglow fading), so the caller should draw another frame.
     ///
     /// # Safety
     /// The context passed to [`Renderer::new`] must be current.
@@ -259,7 +271,7 @@ impl Renderer {
         theme: &Theme,
         indicator: &str,
         scroll: Option<ScrollFrame>,
-    ) {
+    ) -> bool {
         let clip = build_instances(
             term,
             layout,
@@ -271,6 +283,33 @@ impl Renderer {
             scroll,
             &mut self.scratch,
         );
+        if self.scratch != self.previous {
+            self.previous.clone_from(&self.scratch);
+            self.last_change = std::time::Instant::now();
+        }
+        let (w, h) = (viewport.0 as i32, viewport.1 as i32);
+        let output = if theme.has_effects() {
+            unsafe {
+                let output = gl.get_parameter_framebuffer(glow::FRAMEBUFFER_BINDING);
+                if self.postfx.as_ref().is_some_and(|fx| fx.size() != (w, h)) {
+                    if let Some(fx) = self.postfx.take() {
+                        fx.destroy(gl);
+                    }
+                }
+                if self.postfx.is_none() {
+                    match crate::postfx::PostFx::new(gl, self.header, w, h) {
+                        Ok(fx) => self.postfx = Some(fx),
+                        Err(e) => eprintln!("veetee: CRT effects unavailable: {e}"),
+                    }
+                }
+                if let Some(fx) = &self.postfx {
+                    fx.begin(gl);
+                }
+                Some(output)
+            }
+        } else {
+            None
+        };
         unsafe {
             gl.viewport(0, 0, viewport.0 as i32, viewport.1 as i32);
             gl.disable(glow::BLEND);
@@ -342,7 +381,13 @@ impl Renderer {
                 gl.disable(glow::SCISSOR_TEST);
             }
             gl.bind_vertex_array(None);
+            if let (Some(output), Some(fx)) = (output, self.postfx.as_mut()) {
+                fx.finish(gl, theme, output);
+            }
         }
+        // Afterglow keeps fading for four time constants (under 2% left) after a change.
+        theme.afterglow_ms > 0.0
+            && self.last_change.elapsed().as_secs_f32() * 1000.0 < theme.afterglow_ms * 4.0
     }
 
     /// Releases GL objects.
@@ -357,6 +402,9 @@ impl Renderer {
             gl.delete_buffer(self.instances);
             gl.delete_texture(self.atlas);
             gl.delete_texture(self.soft_texture);
+            if let Some(fx) = self.postfx {
+                fx.destroy(gl);
+            }
         }
     }
 }
@@ -377,7 +425,7 @@ fn as_bytes(v: &[f32]) -> &[u8] {
     unsafe { std::slice::from_raw_parts(v.as_ptr().cast(), std::mem::size_of_val(v)) }
 }
 
-unsafe fn link(gl: &glow::Context, vs: &str, fs: &str) -> Result<glow::Program, String> {
+pub(crate) unsafe fn link(gl: &glow::Context, vs: &str, fs: &str) -> Result<glow::Program, String> {
     unsafe {
         let program = gl.create_program()?;
         let mut shaders = Vec::new();

@@ -2,6 +2,7 @@
 // Release builds on Windows start without a console window.
 #![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
 
+mod appearance;
 mod cli;
 mod gl_loader;
 mod keymap_editor;
@@ -17,7 +18,7 @@ use std::rc::Rc;
 use adw::prelude::*;
 use gtk::{gio, glib};
 use vt_core::Config;
-use vt_render::{Phosphor, Theme};
+use vt_render::Phosphor;
 
 use cli::{Options, Parsed};
 
@@ -71,6 +72,12 @@ fn build_window(app: &adw::Application, config: Config, options: Options) {
     phosphor.append(Some("Green (P1)"), Some("win.phosphor::green"));
     phosphor.append(Some("Amber (P3)"), Some("win.phosphor::amber"));
     menu.append_section(Some("Phosphor"), &phosphor);
+    let effects = gio::Menu::new();
+    effects.append(Some("Glow"), Some("win.glow"));
+    effects.append(Some("Afterglow"), Some("win.afterglow"));
+    effects.append(Some("Curved Screen"), Some("win.curvature"));
+    effects.append(Some("Visible Bell"), Some("win.visible-bell"));
+    menu.append_section(Some("Screen"), &effects);
     let session_section = gio::Menu::new();
     session_section.append(Some("Set-Up"), Some("win.setup"));
     session_section.append(Some("Open Second Session"), Some("win.new-session"));
@@ -143,7 +150,7 @@ fn build_window(app: &adw::Application, config: Config, options: Options) {
         let phosphor = phosphor_named(&options.phosphor);
         let workspace =
             workspace::Workspace::new(&window, &title, &toasts, config, options, base_subtitle);
-        workspace.set_theme(Theme::phosphor(phosphor));
+        workspace.set_phosphor(phosphor);
         workspace.add_session(session, notices);
         if workspace.sessions_to_open() > 1 {
             workspace.open_session();
@@ -178,10 +185,37 @@ fn add_session_actions(window: &adw::ApplicationWindow, workspace: &Rc<workspace
                 return;
             };
             action.set_state(&name.to_variant());
-            workspace.set_theme(Theme::phosphor(phosphor_named(&name)));
+            workspace.set_phosphor(phosphor_named(&name));
         }
     });
     window.add_action(&phosphor_action);
+
+    type Toggle = fn(&mut appearance::Appearance) -> &mut bool;
+    let toggles: [(&str, Toggle); 4] = [
+        ("glow", |a| &mut a.effects.glow),
+        ("afterglow", |a| &mut a.effects.afterglow),
+        ("curvature", |a| &mut a.effects.curvature),
+        ("visible-bell", |a| &mut a.visible_bell),
+    ];
+    for (name, field) in toggles {
+        let mut current = workspace.appearance();
+        let action =
+            gio::SimpleAction::new_stateful(name, None, &(*field(&mut current)).to_variant());
+        action.connect_activate({
+            let workspace = Rc::downgrade(workspace);
+            move |action, _| {
+                let Some(ws) = workspace.upgrade() else {
+                    return;
+                };
+                let mut appearance = ws.appearance();
+                let on = field(&mut appearance);
+                *on = !*on;
+                action.set_state(&(*on).to_variant());
+                ws.set_appearance(appearance);
+            }
+        });
+        window.add_action(&action);
+    }
 
     let new_session = gio::SimpleAction::new("new-session", None);
     new_session.connect_activate({

@@ -58,6 +58,17 @@ struct State {
     drag_anchor: Option<Point>,
     /// Set-Up, while it is open.
     setup: Option<SetupView>,
+    /// The picture is still changing by itself (afterglow, visible bell).
+    animating: bool,
+    /// A tick callback is redrawing every frame.
+    ticking: bool,
+    /// The last key press or host output, for the CRT saver.
+    last_activity: Instant,
+    /// The CRT saver has blanked the screen.
+    saver: bool,
+    visible_bell: bool,
+    /// When the visible bell started flashing.
+    bell_flash: Option<Instant>,
 }
 
 /// An open Set-Up: the menu and the screen it draws on.
@@ -90,7 +101,18 @@ fn setup_screen(model: vt_core::Model, menu: &SetupMenu) -> vt_core::Terminal {
     screen
 }
 
+/// The visible bell flashes six times in two seconds (EK-VT520-RM 2.12.7.1).
+const BELL_FLASH: Duration = Duration::from_secs(2);
+
 impl State {
+    /// Whether the visible bell is lit now.
+    fn bell_lit(&self) -> bool {
+        self.bell_flash.is_some_and(|start| {
+            let ms = start.elapsed().as_millis();
+            ms < BELL_FLASH.as_millis() && (ms * 6 / BELL_FLASH.as_millis()) % 2 == 0
+        })
+    }
+
     fn phases(&self) -> (bool, bool) {
         let ms = self.epoch.elapsed().as_millis();
         (
@@ -140,6 +162,12 @@ impl TerminalView {
             selection: None,
             drag_anchor: None,
             setup: None,
+            animating: false,
+            ticking: false,
+            last_activity: Instant::now(),
+            saver: false,
+            visible_bell: false,
+            bell_flash: None,
         }));
         let view = TerminalView { area, state };
         view.connect_gl();
@@ -161,6 +189,23 @@ impl TerminalView {
     pub fn set_theme(&self, theme: Theme) {
         self.state.borrow_mut().theme = theme;
         self.area.queue_render();
+    }
+
+    pub fn set_visible_bell(&self, on: bool) {
+        self.state.borrow_mut().visible_bell = on;
+    }
+
+    /// Records keyboard or host activity. Returns true if this woke the
+    /// screen from the CRT saver.
+    fn wake(&self) -> bool {
+        let mut st = self.state.borrow_mut();
+        st.last_activity = Instant::now();
+        let was_blank = std::mem::take(&mut st.saver);
+        drop(st);
+        if was_blank {
+            self.area.queue_render();
+        }
+        was_blank
     }
 
     fn connect_gl(&self) {
@@ -219,11 +264,27 @@ impl TerminalView {
                 (area.height() * scale).max(1) as u32,
             );
             session::frame_drawn(&st.session);
+            if st.saver {
+                // CRT saver: the screen is blank until a key or host data.
+                if let Some(gl) = st.gl.as_ref() {
+                    clear_black(gl);
+                    capture_when_due(&mut st.capture, st.epoch, gl, w, h);
+                }
+                return glib::Propagation::Stop;
+            }
+            let bell = st.bell_lit();
+            if st
+                .bell_flash
+                .is_some_and(|start| start.elapsed() >= BELL_FLASH)
+            {
+                st.bell_flash = None;
+            }
+            let mut animating = st.bell_flash.is_some();
             if let (Some(gl), Some(renderer)) = (st.gl.as_ref(), st.renderer.as_mut()) {
                 let term = st.session.terminal();
                 if let Some(setup) = st.setup.as_ref() {
                     // Set-Up replaces the page; the status line stays.
-                    let mut indicator = indicator_line(&term, setup.was_held);
+                    let mut indicator = indicator_line(&term, setup.was_held, bell);
                     let cols = setup.screen.grid().cols();
                     indicator = format!("{indicator:<cols$}").chars().take(cols).collect();
                     drop(term);
@@ -237,7 +298,7 @@ impl TerminalView {
                     };
                     // SAFETY: GTK makes the context current before emitting `render`.
                     #[allow(unsafe_code)]
-                    unsafe {
+                    let more = unsafe {
                         renderer.draw(
                             gl,
                             screen,
@@ -249,10 +310,11 @@ impl TerminalView {
                             None,
                         )
                     };
+                    animating |= more;
                 } else {
                     let held = st.session.is_held();
                     let layout = vt_render::page_layout(w, h, &term);
-                    let indicator = indicator_line(&term, held);
+                    let indicator = indicator_line(&term, held, bell);
                     let animation = st.session.scroll_animation();
                     let scroll = animation.as_ref().map(|a| vt_render::ScrollFrame {
                         scroll: &a.scroll,
@@ -260,7 +322,7 @@ impl TerminalView {
                     });
                     // SAFETY: GTK makes the context current before emitting `render`.
                     #[allow(unsafe_code)]
-                    unsafe {
+                    let more = unsafe {
                         renderer.draw(
                             gl,
                             &term,
@@ -272,19 +334,27 @@ impl TerminalView {
                             scroll,
                         )
                     };
+                    animating |= more;
                 }
-                if let Some((path, delay)) = st.capture.clone() {
-                    if st.epoch.elapsed() >= delay {
-                        st.capture = None;
-                        match save_frame(gl, w, h, &path) {
-                            Ok(()) => eprintln!("veetee: captured {}", path.display()),
-                            Err(e) => eprintln!("veetee: capture failed: {e}"),
-                        }
-                        if let Some(app) = gtk::gio::Application::default() {
-                            app.quit();
-                        }
+                capture_when_due(&mut st.capture, st.epoch, gl, w, h);
+            }
+            st.animating = animating;
+            if animating && !st.ticking {
+                st.ticking = true;
+                let weak = Rc::downgrade(&state);
+                area.add_tick_callback(move |area, _| {
+                    let Some(state) = weak.upgrade() else {
+                        return glib::ControlFlow::Break;
+                    };
+                    let mut st = state.borrow_mut();
+                    if st.animating {
+                        area.queue_render();
+                        glib::ControlFlow::Continue
+                    } else {
+                        st.ticking = false;
+                        glib::ControlFlow::Break
                     }
-                }
+                });
             }
             glib::Propagation::Stop
         });
@@ -309,6 +379,10 @@ impl TerminalView {
         let view = self.clone();
         let im_keys = im.clone();
         keys.connect_key_pressed(move |controller, keyval, keycode, modifiers| {
+            // A key that wakes the screen from the CRT saver does nothing else.
+            if view.wake() {
+                return glib::Propagation::Stop;
+            }
             if view.state.borrow().setup.is_some() {
                 let mods = Mods {
                     shift: modifiers.contains(gtk::gdk::ModifierType::SHIFT_MASK),
@@ -803,11 +877,15 @@ impl TerminalView {
         let area = self.area.clone();
         let session = self.state.borrow().session.clone();
         let ticking = Rc::new(std::cell::Cell::new(false));
+        let view = self.clone();
         let callbacks = self.state.borrow().callbacks.clone();
         glib::spawn_future_local(async move {
             while let Ok(notice) = notices.recv().await {
                 match notice {
-                    Notice::Redraw => area.queue_render(),
+                    Notice::Redraw => {
+                        view.wake();
+                        area.queue_render();
+                    }
                     Notice::SmoothScroll if !ticking.get() => {
                         // Redraw every frame until scrolling stops.
                         ticking.set(true);
@@ -826,6 +904,14 @@ impl TerminalView {
                     Notice::Sound(sound) => {
                         // Without an audio device the desktop's bell stands in.
                         let bell = matches!(sound, crate::sound::Sound::Bell(v) if v != vt_core::setup::Volume::Off);
+                        if matches!(sound, crate::sound::Sound::Bell(_)) {
+                            let mut st = view.state.borrow_mut();
+                            if st.visible_bell {
+                                st.bell_flash = Some(Instant::now());
+                                drop(st);
+                                area.queue_render();
+                            }
+                        }
                         if !crate::sound::play(sound) && bell {
                             area.error_bell();
                         }
@@ -855,9 +941,22 @@ impl TerminalView {
             let (Some(state), Some(area)) = (state.upgrade(), area.upgrade()) else {
                 return glib::ControlFlow::Break;
             };
-            let st = state.borrow();
+            let mut st = state.borrow_mut();
             if st.phases() != st.last_phases {
                 area.queue_render();
+            }
+            if !st.saver && st.setup.is_none() {
+                let idle = st.last_activity.elapsed();
+                let timeout = crt_saver_override().or_else(|| {
+                    // Checked only once the screen has been idle a while.
+                    (idle >= Duration::from_secs(60))
+                        .then(|| st.session.terminal().crt_saver_timeout())
+                        .flatten()
+                });
+                if timeout.is_some_and(|t| idle >= t) {
+                    st.saver = true;
+                    area.queue_render();
+                }
             }
             glib::ControlFlow::Continue
         });
@@ -867,8 +966,11 @@ impl TerminalView {
 /// The indicator status line, after the VT420's: printer and local
 /// state on the left, page number and cursor position on the right.
 // 🔎 Field positions are approximate until checked against hardware.
-fn indicator_line(term: &vt_core::Terminal, held: bool) -> String {
+fn indicator_line(term: &vt_core::Terminal, held: bool, bell: bool) -> String {
     let mut left = String::from(" Printer: None");
+    if bell {
+        left.push_str("   Bell");
+    }
     if held {
         left.push_str("   Hold Screen");
     }
@@ -888,6 +990,53 @@ fn indicator_line(term: &vt_core::Terminal, held: bool) -> String {
     let cols = term.grid().cols();
     let pad = cols.saturating_sub(left.len() + right.len());
     format!("{left}{}{right}", " ".repeat(pad))
+}
+
+/// Developer hook: `VEETEE_CRT_SAVER_SECONDS` shortens the CRT saver timeout.
+fn crt_saver_override() -> Option<Duration> {
+    static OVERRIDE: std::sync::OnceLock<Option<Duration>> = std::sync::OnceLock::new();
+    *OVERRIDE.get_or_init(|| {
+        std::env::var("VEETEE_CRT_SAVER_SECONDS")
+            .ok()
+            .and_then(|s| s.parse().ok())
+            .map(Duration::from_secs)
+    })
+}
+
+/// Developer hook (`VEETEE_CAPTURE`): saves the frame once the delay has
+/// passed, then quits.
+fn capture_when_due(
+    capture: &mut Option<(std::path::PathBuf, Duration)>,
+    epoch: Instant,
+    gl: &glow::Context,
+    w: u32,
+    h: u32,
+) {
+    let Some((path, delay)) = capture.clone() else {
+        return;
+    };
+    if epoch.elapsed() < delay {
+        return;
+    }
+    *capture = None;
+    match save_frame(gl, w, h, &path) {
+        Ok(()) => eprintln!("veetee: captured {}", path.display()),
+        Err(e) => eprintln!("veetee: capture failed: {e}"),
+    }
+    if let Some(app) = gtk::gio::Application::default() {
+        app.quit();
+    }
+}
+
+/// Clears the drawing area to black.
+fn clear_black(gl: &glow::Context) {
+    use glow::HasContext;
+    // SAFETY: called from the render handler with the context current.
+    #[allow(unsafe_code)]
+    unsafe {
+        gl.clear_color(0.0, 0.0, 0.0, 1.0);
+        gl.clear(glow::COLOR_BUFFER_BIT);
+    }
 }
 
 /// The keyboard clicks for a key that sends a code or acts (Installing and

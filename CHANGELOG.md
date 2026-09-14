@@ -5,6 +5,13 @@ milestones (0.3 = M3). The format follows [Keep a Changelog](https://keepachange
 
 ## [Unreleased]
 
+- **CRT look (M7)**: the page is drawn through a post-processing pass with a soft glow around lit
+  dots and phosphor afterglow that fades with the phosphor's persistence (short for P4 white,
+  longer for P1 green and P3 amber), both on by default, and an optional curved screen with
+  darker corners. *Screen* in the window menu switches them, and the choice is remembered.
+- **CRT saver**: the screen blanks after the Set-Up idle time (30 minutes on a VT420, DECCRTST on
+  a VT500); a key or host output wakes it.
+- **Visible bell**: optionally flashes "Bell" on the status line when the bell sounds.
 - **Smooth scroll (M7)**: with DECSCLM set, each line scrolls smoothly at DEC speed — Smooth 2
   at 9 lines a second, Smooth 4 (DECSSCLS or Display Set-Up) at 18 — and host output waits
   meanwhile, so the host is flow-controlled as on the terminal. Scrolling regions and left/right

@@ -41,6 +41,8 @@ pub struct Workspace {
     active: Cell<u64>,
     next_id: Cell<u64>,
     theme: RefCell<Theme>,
+    phosphor: Cell<vt_render::Phosphor>,
+    appearance: Cell<crate::appearance::Appearance>,
     opening: Cell<bool>,
     keymap: SharedKeymap,
 }
@@ -75,6 +77,8 @@ impl Workspace {
             active: Cell::new(0),
             next_id: Cell::new(1),
             theme: RefCell::new(Theme::default()),
+            phosphor: Cell::new(vt_render::Phosphor::default()),
+            appearance: Cell::new(crate::appearance::load()),
             opening: Cell::new(false),
             keymap: Rc::new(RefCell::new(crate::keymaps::load(
                 options_keymap.as_deref(),
@@ -154,6 +158,7 @@ impl Workspace {
         };
         let view = TerminalView::new(session, notices, callbacks, self.keymap.clone());
         view.set_theme(self.theme.borrow().clone());
+        view.set_visible_bell(self.appearance.get().visible_bell);
         let header = gtk::Label::builder()
             .xalign(0.0)
             .margin_start(8)
@@ -370,11 +375,29 @@ impl Workspace {
         self.title.set_subtitle(&subtitle);
     }
 
-    pub fn set_theme(&self, theme: Theme) {
+    fn set_theme(&self, theme: Theme) {
         *self.theme.borrow_mut() = theme.clone();
+        let visible_bell = self.appearance.get().visible_bell;
         for pane in self.panes.borrow().iter() {
             pane.view.set_theme(theme.clone());
+            pane.view.set_visible_bell(visible_bell);
         }
+    }
+
+    pub fn set_phosphor(&self, phosphor: vt_render::Phosphor) {
+        self.phosphor.set(phosphor);
+        self.set_theme(Theme::with_effects(phosphor, self.appearance.get().effects));
+    }
+
+    pub fn appearance(&self) -> crate::appearance::Appearance {
+        self.appearance.get()
+    }
+
+    /// Changes the display preferences and remembers them.
+    pub fn set_appearance(&self, appearance: crate::appearance::Appearance) {
+        self.appearance.set(appearance);
+        crate::appearance::save(&appearance);
+        self.set_phosphor(self.phosphor.get());
     }
 
     /// Opens Set-Up for the active session, as F3 does.
