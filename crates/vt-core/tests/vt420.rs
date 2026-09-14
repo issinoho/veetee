@@ -511,3 +511,45 @@ fn decstr_resets_left_right_margin_mode() {
     assert!(!t.modes().lr_margins);
     assert_eq!(t.lr_margins(), (0, 79));
 }
+
+/// DECSCLM: a VT420 powers up in smooth scroll (EK-VT420-RM 11), and paced
+/// processing stops after each line that scrolls.
+#[test]
+fn smooth_scroll_paces_each_scrolled_line() {
+    let mut t = Terminal::new(Config::default());
+    assert_eq!(t.smooth_scroll_rate(), Some(9));
+    t.advance(b"\x1b[24;1Htop");
+    let data = b"\nb\nc";
+    let n = t.advance_paced(data);
+    assert_eq!(n, 1, "stops after the line feed that scrolled");
+    let s = t.take_smooth_scroll().expect("a smooth scroll");
+    assert!(s.up);
+    assert_eq!((s.top, s.bottom, s.left, s.right), (0, 23, 0, 79));
+    assert_eq!(t.advance_paced(&data[n..]), 2);
+    assert!(t.take_smooth_scroll().is_some());
+    assert_eq!(t.advance_paced(b"x"), 1);
+    assert!(t.take_smooth_scroll().is_none());
+
+    // Jump scroll does not pace.
+    t.advance(b"\x1b[?4l");
+    assert_eq!(t.smooth_scroll_rate(), None);
+    assert_eq!(t.advance_paced(b"\n\n\n"), 3);
+    assert!(t.take_smooth_scroll().is_none());
+
+    // DECSSCLS (VT500): 4 is Smooth 4, 9 is jump.
+    let mut vt510 = Terminal::new(Config {
+        model: Model::Vt510,
+        ..Config::default()
+    });
+    assert_eq!(vt510.smooth_scroll_rate(), Some(9));
+    vt510.advance(b"\x1b[4 p");
+    assert_eq!(vt510.smooth_scroll_rate(), Some(18));
+    vt510.advance(b"\x1b[9 p");
+    assert_eq!(vt510.smooth_scroll_rate(), None);
+
+    let vt520 = Terminal::new(Config {
+        model: Model::Vt520,
+        ..Config::default()
+    });
+    assert_eq!(vt520.smooth_scroll_rate(), None, "VT520 factory: jump");
+}

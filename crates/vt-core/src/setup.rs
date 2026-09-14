@@ -188,7 +188,11 @@ impl Features {
             columns_132: false,
             display_controls: false,
             autowrap: false,
-            scroll: Scroll::Jump,
+            scroll: if model.smooth_scroll_default() {
+                Scroll::Smooth2
+            } else {
+                Scroll::Jump
+            },
             light_screen: false,
             cursor: true,
             cursor_style: CursorStyle::default(),

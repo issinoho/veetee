@@ -108,6 +108,15 @@ impl Model {
         self.max_level() >= 3
     }
 
+    /// DECSCLM at power-up: smooth scroll on the VT420 and VT510 (their
+    /// programmer references), jump on the VT520 and VT525 (EK-VT520-RM
+    /// table 2-10).
+    // 🔎 The VT100, VT102, VT220 and VT320 defaults are not in the manuals
+    // at hand; they power up in jump scroll.
+    pub const fn smooth_scroll_default(self) -> bool {
+        matches!(self, Model::Vt420 | Model::Vt510)
+    }
+
     pub const fn has_color(self) -> bool {
         matches!(self, Model::Vt525)
     }

@@ -21,7 +21,7 @@ mod theme;
 
 pub use gl::Renderer;
 pub use scene::{
-    FrameState, Layout, SoftAtlas, build_instances, face_offset, family, layout, page_layout,
-    page_rows,
+    Clip, FrameState, Layout, ScrollFrame, SoftAtlas, build_instances, face_offset, family, layout,
+    page_layout, page_rows,
 };
 pub use theme::{Phosphor, Theme};

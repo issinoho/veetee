@@ -39,7 +39,7 @@ conformance scripts in `tests/conformance/vttest`.
 | SCS G0/G1 `B A 0 1 2` | `ESC ( )` | ✅ | Alternate ROM sets map to ASCII / special graphics |
 | SI SO | | ✅ | |
 | SM/RM KAM IRM SRM LNM | `CSI h/l` | ✅ | SRM reset = local echo of keyboard output |
-| DECCKM DECANM DECCOLM DECSCLM DECSCNM DECOM DECAWM DECARM DECPFF DECPEX | `CSI ? h/l` | ✅ | DECCOLM clears page, resets margins, homes; **tab stops preserved** (STD070) |
+| DECCKM DECANM DECCOLM DECSCLM DECSCNM DECOM DECAWM DECARM DECPFF DECPEX | `CSI ? h/l` | ✅ | DECCOLM clears page, resets margins, homes; **tab stops preserved** (STD070). DECSCLM smooth scroll moves each line up (or down) at 9 lines a second, or 18 with DECSSCLS Smooth 4, holding back host output meanwhile; it is on at power-up on the VT420 and VT510 (their programmer references) and off on the VT520/VT525 (RM520 table 2-10). 🔎 VT100–VT320 power up in jump scroll |
 | DECKPAM DECKPNM | `ESC = >` | ✅ | |
 | DA, DECID | `CSI c`, `ESC Z` | ✅ | VT100 `?1;2c`, VT102 `?6c` |
 | DSR 5 / 6 (CPR) | `CSI n` | ✅ | CPR relative in origin mode |
@@ -122,7 +122,7 @@ conformance scripts in `tests/conformance/vttest`.
 | DECSCUSR | `CSI Ps SP q` | ✅ | Blinking/steady block or underline; xterm's bar styles (5, 6) are ignored |
 | DECNCSM | `CSI ? 95 h/l` | ✅ | DECCOLM keeps page memory; margins still reset and the cursor homes |
 | VT500 private modes | `CSI ? 34…117 h/l` | 🟡 | All modes of RM520 table 5-3 are stored and reported with factory defaults; DECNCSM, DECECM, DECBBSM, DECATCUM/BM and DECKPM (reset by DECSTR) have effect so far |
-| Set-Up selections | DECSKCV DECSWBV DECSMBV DECSSCLS DECSLCK DECARR DECCRTST DECSEST DECSZS DECSPRTT DECSPPCS DECSDPT DECSDDT DECSSL DECSCP DECSCS DECSFC DECSPP DECSTRL DECSRFR | 🟡 | Validated, stored and reported with DECRQSS (factory values from RM520). Keyclick, warning bell and margin bell volumes set the sounds; scroll speed and zero style are not rendered yet. DECSRFR is VT510 only |
+| Set-Up selections | DECSKCV DECSWBV DECSMBV DECSSCLS DECSLCK DECARR DECCRTST DECSEST DECSZS DECSPRTT DECSPPCS DECSDPT DECSDDT DECSSL DECSCP DECSCS DECSFC DECSPP DECSTRL DECSRFR | 🟡 | Validated, stored and reported with DECRQSS (factory values from RM520). Keyclick, warning bell and margin bell volumes set the sounds and DECSSCLS the smooth scroll speed; zero style is not rendered yet. DECSRFR is VT510 only |
 | DECTID | `CSI Ps , q` | ✅ | Selects the DA1 identity (VT100 … VT520) |
 | DECTME | `CSI Ps SP ~` | 🟡 | VT500, VT100 and VT52 operation with a soft reset; Wyse/TVI/ADDS/SCO emulations are not provided |
 | DECSR / DECSRC | `CSI Pr + p`, `CSI Pr * q` | ✅ | Reset to power-up without disconnecting; confirmation when Pr is given |

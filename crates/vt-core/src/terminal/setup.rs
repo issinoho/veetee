@@ -178,9 +178,12 @@ impl Emulator {
         Features {
             columns_132: self.modes.columns_132,
             autowrap: self.modes.autowrap,
-            scroll: match (self.modes.smooth_scroll, stored.scroll) {
-                (false, _) => Scroll::Jump,
-                (true, Scroll::Smooth4) => Scroll::Smooth4,
+            scroll: match (
+                self.modes.smooth_scroll,
+                s.selection(b" p").parse::<u8>().unwrap_or(0),
+            ) {
+                (false, _) | (true, 9..) => Scroll::Jump,
+                (true, 4..=8) => Scroll::Smooth4,
                 (true, _) => Scroll::Smooth2,
             },
             light_screen: self.modes.reverse_screen,
@@ -318,7 +321,7 @@ impl Emulator {
         self.setup.set_selection(
             b" p",
             match f.scroll {
-                Scroll::Smooth4 => "2",
+                Scroll::Smooth4 => "4",
                 _ => "1",
             },
         );

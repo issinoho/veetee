@@ -50,6 +50,20 @@ pub enum Event {
     },
 }
 
+/// One line of smooth scrolling (DECSCLM), for the display to animate.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SmoothScroll {
+    /// Page rows and columns of the scrolling region, inclusive.
+    pub top: usize,
+    pub bottom: usize,
+    pub left: usize,
+    pub right: usize,
+    /// True when the lines moved up (LF at the bottom margin).
+    pub up: bool,
+    /// The line that left the region, for drawing as it slides out.
+    pub outgoing: crate::grid::Line,
+}
+
 /// What a key press did.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum KeyOutcome {
@@ -116,6 +130,7 @@ impl Terminal {
     /// Processes bytes received from the host.
     pub fn advance(&mut self, bytes: &[u8]) {
         self.advance_nested(bytes, 0);
+        self.emu.smooth = None;
         self.emu.couple();
     }
 
@@ -131,6 +146,48 @@ impl Terminal {
             if !invoked.is_empty() && depth < 16 {
                 self.advance_nested(&invoked, depth + 1);
             }
+        }
+    }
+
+    /// Like [`Terminal::advance`], but in smooth scroll mode stops after the
+    /// first line that scrolls, so the caller can show it at DEC speed.
+    /// Returns how many bytes were processed; the rest must be passed again.
+    pub fn advance_paced(&mut self, bytes: &[u8]) -> usize {
+        let mut used = 0;
+        while used < bytes.len() {
+            let n = self
+                .parser
+                .advance_until_pause(&mut self.emu, &bytes[used..]);
+            used += n;
+            self.sync_parser();
+            let invoked = std::mem::take(&mut self.emu.pending_input);
+            if !invoked.is_empty() {
+                self.advance_nested(&invoked, 1);
+            }
+            if self.emu.smooth.is_some() {
+                break;
+            }
+        }
+        self.emu.couple();
+        used
+    }
+
+    /// The smooth scroll that stopped [`Terminal::advance_paced`], if any.
+    pub fn take_smooth_scroll(&mut self) -> Option<SmoothScroll> {
+        self.emu.smooth.take()
+    }
+
+    /// Smooth scrolling speed in lines per second, or `None` for jump
+    /// scrolling: Smooth 2 is 9 lines a second and Smooth 4 is 18
+    /// (EK-VT520-RM DECSSCLS, section 2.8.6).
+    pub fn smooth_scroll_rate(&self) -> Option<u32> {
+        if !self.emu.modes.smooth_scroll {
+            return None;
+        }
+        match self.emu.setup.selection(b" p").parse::<u8>().unwrap_or(0) {
+            0..=3 => Some(9),
+            4..=8 => Some(18),
+            _ => None,
         }
     }
 
@@ -563,6 +620,8 @@ struct Emulator {
     keyprog: crate::keyprog::KeyPrograms,
     /// Set-Up features with no other home in the terminal.
     stored: crate::setup::Features,
+    /// A smooth scroll that has happened and not yet been taken.
+    smooth: Option<SmoothScroll>,
     output: Vec<u8>,
     events: Vec<Event>,
     pause: bool,
@@ -657,11 +716,14 @@ impl Emulator {
             saved: None,
             charsets: initial_charsets(model, upss),
             upss,
-            modes: Modes::power_up(
-                config.autowrap,
-                config.new_line,
-                config.national_mode && model.max_level() >= 2,
-            ),
+            modes: Modes {
+                smooth_scroll: model.smooth_scroll_default(),
+                ..Modes::power_up(
+                    config.autowrap,
+                    config.new_line,
+                    config.national_mode && model.max_level() >= 2,
+                )
+            },
             top: 0,
             bottom: rows - 1,
             left: 0,
@@ -691,6 +753,7 @@ impl Emulator {
             sessions: 1,
             keyprog: crate::keyprog::KeyPrograms::default(),
             stored: crate::setup::Features::factory(model),
+            smooth: None,
             output: Vec::new(),
             events: Vec::new(),
             pause: false,
@@ -1043,6 +1106,7 @@ impl Emulator {
         if self.cursor.row == self.bottom {
             // Outside the left/right margins nothing scrolls.
             if self.within_lr_margins() {
+                self.note_smooth_scroll(true);
                 self.scroll_up(1);
             }
         } else if self.cursor.row + 1 < self.rows() {
@@ -1059,6 +1123,7 @@ impl Emulator {
         }
         if self.cursor.row == self.top {
             if self.within_lr_margins() {
+                self.note_smooth_scroll(false);
                 let region = self.region(self.top);
                 let blank = self.blank();
                 self.grid.scroll_down(region, 1, blank);
@@ -1075,6 +1140,24 @@ impl Emulator {
         if self.modes.new_line {
             self.carriage_return();
         }
+    }
+
+    /// In smooth scroll mode, records the line about to scroll and stops the
+    /// parser, so the display can show the scroll before more is processed.
+    fn note_smooth_scroll(&mut self, up: bool) {
+        if !self.modes.smooth_scroll {
+            return;
+        }
+        let row = if up { self.top } else { self.bottom };
+        self.smooth = Some(SmoothScroll {
+            top: self.top,
+            bottom: self.bottom,
+            left: self.left,
+            right: self.right,
+            up,
+            outgoing: self.grid.line(row).clone(),
+        });
+        self.pause = true;
     }
 
     fn scroll_up(&mut self, n: usize) {

@@ -238,16 +238,39 @@ impl TerminalView {
                     // SAFETY: GTK makes the context current before emitting `render`.
                     #[allow(unsafe_code)]
                     unsafe {
-                        renderer.draw(gl, screen, &layout, (w, h), frame, &st.theme, &indicator)
+                        renderer.draw(
+                            gl,
+                            screen,
+                            &layout,
+                            (w, h),
+                            frame,
+                            &st.theme,
+                            &indicator,
+                            None,
+                        )
                     };
                 } else {
                     let held = st.session.is_held();
                     let layout = vt_render::page_layout(w, h, &term);
                     let indicator = indicator_line(&term, held);
+                    let animation = st.session.scroll_animation();
+                    let scroll = animation.as_ref().map(|a| vt_render::ScrollFrame {
+                        scroll: &a.scroll,
+                        progress: a.progress(),
+                    });
                     // SAFETY: GTK makes the context current before emitting `render`.
                     #[allow(unsafe_code)]
                     unsafe {
-                        renderer.draw(gl, &term, &layout, (w, h), frame, &st.theme, &indicator)
+                        renderer.draw(
+                            gl,
+                            &term,
+                            &layout,
+                            (w, h),
+                            frame,
+                            &st.theme,
+                            &indicator,
+                            scroll,
+                        )
                     };
                 }
                 if let Some((path, delay)) = st.capture.clone() {
@@ -778,11 +801,28 @@ impl TerminalView {
 
     fn connect_notices(&self, notices: async_channel::Receiver<Notice>) {
         let area = self.area.clone();
+        let session = self.state.borrow().session.clone();
+        let ticking = Rc::new(std::cell::Cell::new(false));
         let callbacks = self.state.borrow().callbacks.clone();
         glib::spawn_future_local(async move {
             while let Ok(notice) = notices.recv().await {
                 match notice {
                     Notice::Redraw => area.queue_render(),
+                    Notice::SmoothScroll if !ticking.get() => {
+                        // Redraw every frame until scrolling stops.
+                        ticking.set(true);
+                        let (session, ticking) = (session.clone(), ticking.clone());
+                        area.add_tick_callback(move |area, _| {
+                            area.queue_render();
+                            if session.scroll_animation().is_some() {
+                                glib::ControlFlow::Continue
+                            } else {
+                                ticking.set(false);
+                                glib::ControlFlow::Break
+                            }
+                        });
+                    }
+                    Notice::SmoothScroll => {}
                     Notice::Sound(sound) => {
                         // Without an audio device the desktop's bell stands in.
                         let bell = matches!(sound, crate::sound::Sound::Bell(v) if v != vt_core::setup::Volume::Off);

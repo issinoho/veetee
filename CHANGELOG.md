@@ -5,6 +5,13 @@ milestones (0.3 = M3). The format follows [Keep a Changelog](https://keepachange
 
 ## [Unreleased]
 
+- **Smooth scroll (M7)**: with DECSCLM set, each line scrolls smoothly at DEC speed — Smooth 2
+  at 9 lines a second, Smooth 4 (DECSSCLS or Display Set-Up) at 18 — and host output waits
+  meanwhile, so the host is flow-controlled as on the terminal. Scrolling regions and left/right
+  margins scroll within their bounds.
+- **Changed**: the VT420 and VT510 now power up in smooth scroll, as their programmer references
+  document; the VT520 and VT525 keep jump scroll (their factory Set-Up). Choose *Jump Scroll* in
+  Display Set-Up (F3) and Save for fast output.
 - **Sound (M7)**: the warning bell and margin bell sound as 125 ms beeps and keys click with a
   2 ms beep (EK-VT520-RM section 2.17), at the keyclick, warning bell and margin bell volumes of
   Keyboard Set-Up (factory: click and warning bell high, margin bell off) or DECSKCV, DECSWBV and

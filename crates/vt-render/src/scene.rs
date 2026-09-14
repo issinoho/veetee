@@ -186,6 +186,30 @@ pub struct FrameState {
     pub selection: Option<vt_core::Selection>,
 }
 
+/// A scrolling region drawn part-way through a smooth scroll.
+#[derive(Debug, Clone, Copy)]
+pub struct ScrollFrame<'a> {
+    pub scroll: &'a vt_core::SmoothScroll,
+    /// How far the line has moved, 0 to 1.
+    pub progress: f32,
+}
+
+/// Instances from `first` on must be drawn clipped to `rect` (x, y, width,
+/// height in window pixels, from the top left).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Clip {
+    pub first: usize,
+    pub rect: [f32; 4],
+}
+
+/// Which cells of a line to draw, and where.
+#[derive(Debug, Clone, Copy)]
+struct Placement {
+    y: f32,
+    /// Inclusive column range, and whether to draw only it or all but it.
+    columns: Option<(usize, usize, bool)>,
+}
+
 /// Number of rows the screen shows: the user window (DECSNLS) plus a
 /// status line.
 pub fn page_rows(term: &Terminal) -> usize {
@@ -204,8 +228,9 @@ pub fn build_instances(
     fonts: &FontSet,
     soft: &mut SoftAtlas,
     indicator: &str,
+    scroll: Option<ScrollFrame>,
     out: &mut Vec<f32>,
-) {
+) -> Option<Clip> {
     soft.sync(term);
     let face = fonts.face_index(term.modes().columns_132, layout.rows);
     let font = Glyphs {
@@ -250,6 +275,24 @@ pub fn build_instances(
     let cursor = term.cursor();
     let status_active = term.status_active();
     let cursor_shown = !status_active && term.cursor_on_display();
+    // A smooth scroll in view: its region is drawn afterwards, displaced
+    // and clipped (DECSCLM).
+    let region = scroll.filter(|_| term.cursor_on_display()).and_then(|f| {
+        let s = f.scroll;
+        let visible = s.top >= window_top && s.bottom < window_top + screen_lines;
+        visible.then(|| {
+            // DEC terminals move the text a few scan lines at a time.
+            let steps = 8.0;
+            let moved = (f.progress * steps).floor() / steps;
+            let offset = (1.0 - moved) * layout.cell_height;
+            (
+                s,
+                s.top - window_top,
+                s.bottom - window_top,
+                if s.up { offset } else { -offset },
+            )
+        })
+    });
     let visible = grid
         .lines()
         .iter()
@@ -258,6 +301,9 @@ pub fn build_instances(
         .take(screen_lines);
     for (screen_row, (row, line)) in visible.enumerate().take(layout.rows) {
         let cursor_col = (cursor_shown && row == cursor.row).then_some(cursor.col);
+        let columns = region
+            .filter(|(_, top, bottom, _)| (*top..=*bottom).contains(&screen_row))
+            .map(|(s, ..)| (s.left, s.right, false));
         draw_line(
             out,
             term,
@@ -270,6 +316,10 @@ pub fn build_instances(
             (screen_row, row),
             line,
             cursor_col,
+            Placement {
+                y: layout.row_y(screen_row),
+                columns,
+            },
         );
     }
 
@@ -291,6 +341,10 @@ pub fn build_instances(
                     (status_row, usize::MAX),
                     term.status_line(),
                     cursor_col,
+                    Placement {
+                        y: layout.row_y(status_row),
+                        columns: None,
+                    },
                 );
             }
             StatusDisplay::Indicator => {
@@ -313,10 +367,68 @@ pub fn build_instances(
                     (status_row, usize::MAX),
                     &line,
                     None,
+                    Placement {
+                        y: layout.row_y(status_row),
+                        columns: None,
+                    },
                 );
             }
         }
     }
+    let (s, top, bottom, offset) = region?;
+    let first = out.len() / INSTANCE_LEN;
+    for screen_row in top..=bottom {
+        let row = window_top + screen_row;
+        let cursor_col = (cursor_shown && row == cursor.row).then_some(cursor.col);
+        draw_line(
+            out,
+            term,
+            layout,
+            frame,
+            theme,
+            font,
+            soft,
+            &colors,
+            (screen_row, row),
+            grid.line(row),
+            cursor_col,
+            Placement {
+                y: layout.row_y(screen_row) + offset,
+                columns: Some((s.left, s.right, true)),
+            },
+        );
+    }
+    // The line leaving the region slides out past its edge.
+    let outgoing_y = if s.up {
+        layout.row_y(top) - layout.cell_height
+    } else {
+        layout.row_y(bottom) + layout.cell_height
+    } + offset;
+    draw_line(
+        out,
+        term,
+        layout,
+        frame,
+        theme,
+        font,
+        soft,
+        &colors,
+        (top, usize::MAX),
+        &s.outgoing,
+        None,
+        Placement {
+            y: outgoing_y,
+            columns: Some((s.left, s.right, true)),
+        },
+    );
+    let x0 = layout.col_x(s.left);
+    let x1 = layout.col_x(s.right + 1);
+    let y0 = layout.row_y(top);
+    let y1 = layout.row_y(bottom + 1);
+    Some(Clip {
+        first,
+        rect: [x0, y0, x1 - x0, y1 - y0],
+    })
 }
 
 /// The atlas index of the first glyph of each face: faces are uploaded one
@@ -363,6 +475,7 @@ fn draw_line(
     (row, page_row): (usize, usize),
     line: &Line,
     cursor_col: Option<usize>,
+    placement: Placement,
 ) {
     let Colors {
         page_bg,
@@ -376,8 +489,14 @@ fn draw_line(
         LineSize::DoubleHeightTop => (2, flag::DOUBLE_TOP),
         LineSize::DoubleHeightBottom => (2, flag::DOUBLE_BOTTOM),
     };
-    let y = layout.row_y(row);
+    let y = placement.y;
+    let _ = row;
     for (col, cell) in line.cells().iter().enumerate().take(line.width()) {
+        if let Some((left, right, only)) = placement.columns {
+            if (left..=right).contains(&col) != only {
+                continue;
+            }
+        }
         let a = cell.attrs;
         let mut flags = size_flag;
         let (fg, bg) = if let Some((table, options)) = term.colors() {
@@ -519,6 +638,7 @@ mod tests {
             fonts(),
             &mut soft,
             "",
+            None,
             &mut out,
         );
         out.chunks(INSTANCE_LEN)
@@ -662,6 +782,7 @@ mod tests {
             fonts(),
             &mut soft,
             "",
+            None,
             &mut out,
         );
         let inst: Vec<[f32; INSTANCE_LEN]> = out

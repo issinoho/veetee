@@ -22,6 +22,8 @@ pub enum Notice {
     Title(String),
     /// The host made this session active (DECES).
     Activate,
+    /// A line started scrolling smoothly; keep redrawing until it settles.
+    SmoothScroll,
     /// The connection closed; the text says why when known.
     Exited(Option<String>),
 }
@@ -36,11 +38,28 @@ pub struct RecordOptions {
 
 type SessionRecorder = Recorder<LineWriter<File>>;
 
+/// A smooth scroll in progress.
+#[derive(Debug, Clone)]
+pub struct ScrollAnimation {
+    pub scroll: vt_core::SmoothScroll,
+    pub start: std::time::Instant,
+    pub duration: Duration,
+}
+
+impl ScrollAnimation {
+    /// How far the line has moved, 0 to 1.
+    pub fn progress(&self) -> f32 {
+        (self.start.elapsed().as_secs_f32() / self.duration.as_secs_f32()).min(1.0)
+    }
+}
+
 struct Shared {
     term: Mutex<Terminal>,
     recorder: Mutex<Option<SessionRecorder>>,
     writer: Mutex<Box<dyn TransportWriter>>,
     redraw_pending: AtomicBool,
+    /// The line scrolling smoothly now, set together with the scroll itself.
+    scroll: Mutex<Option<ScrollAnimation>>,
     /// Hold Screen: the I/O thread stops reading, so the host is flow-controlled.
     held: Mutex<bool>,
     resume: Condvar,
@@ -76,6 +95,7 @@ impl Session {
             term: Mutex::new(Terminal::new(config)),
             recorder: Mutex::new(recorder),
             redraw_pending: AtomicBool::new(false),
+            scroll: Mutex::new(None),
             held: Mutex::new(false),
             resume: Condvar::new(),
             closed: AtomicBool::new(false),
@@ -88,6 +108,13 @@ impl Session {
             .name("veetee-io".into())
             .spawn(move || io_loop(transport, shared, tx))?;
         Ok((session, rx))
+    }
+
+    /// The smooth scroll being shown, if it has not finished. Read it while
+    /// holding [`Session::terminal`] so it matches the page.
+    pub fn scroll_animation(&self) -> Option<ScrollAnimation> {
+        let anim = self.shared.scroll.lock().unwrap_or_else(|e| e.into_inner());
+        anim.clone().filter(|a| a.progress() < 1.0)
     }
 
     /// Locks the terminal for reading (rendering) or local changes.
@@ -240,6 +267,15 @@ fn record(shared: &Shared, f: impl FnOnce(&mut SessionRecorder) -> io::Result<()
     }
 }
 
+/// Waits while the session is held; returns false once it is closed.
+fn wait_while_held(shared: &Shared) -> bool {
+    let mut held = shared.held.lock().unwrap_or_else(|e| e.into_inner());
+    while *held && !shared.closed.load(Ordering::Relaxed) {
+        held = shared.resume.wait(held).unwrap_or_else(|e| e.into_inner());
+    }
+    !shared.closed.load(Ordering::Relaxed)
+}
+
 fn io_loop(
     mut transport: Box<dyn Transport>,
     shared: Arc<Shared>,
@@ -247,13 +283,7 @@ fn io_loop(
 ) {
     let mut buf = vec![0u8; 64 * 1024];
     let reason = loop {
-        {
-            let mut held = shared.held.lock().unwrap_or_else(|e| e.into_inner());
-            while *held && !shared.closed.load(Ordering::Relaxed) {
-                held = shared.resume.wait(held).unwrap_or_else(|e| e.into_inner());
-            }
-        }
-        if shared.closed.load(Ordering::Relaxed) {
+        if !wait_while_held(&shared) {
             break None;
         }
         let n = match transport.read_timeout(&mut buf, Duration::from_millis(250)) {
@@ -266,67 +296,118 @@ fn io_loop(
         if n > 0 {
             record(&shared, |r| r.host(&buf[..n]));
         }
-        let (reply, events, rows, cols, volumes) = {
-            let mut term = shared.term.lock().unwrap_or_else(|e| e.into_inner());
-            if n > 0 {
-                term.advance(&buf[..n]);
+        let mut rest = &buf[..n];
+        loop {
+            let step = {
+                let mut term = shared.term.lock().unwrap_or_else(|e| e.into_inner());
+                let used = if rest.is_empty() {
+                    0
+                } else {
+                    term.advance_paced(rest)
+                };
+                rest = &rest[used..];
+                let scroll = term.take_smooth_scroll();
+                let rate = term.smooth_scroll_rate();
+                if let (Some(scroll), Some(rate)) = (&scroll, rate) {
+                    *shared.scroll.lock().unwrap_or_else(|e| e.into_inner()) =
+                        Some(ScrollAnimation {
+                            scroll: scroll.clone(),
+                            start: std::time::Instant::now(),
+                            duration: Duration::from_millis(1000 / u64::from(rate)),
+                        });
+                }
+                Step {
+                    reply: term.take_output(),
+                    events: term.take_events(),
+                    rows: term.grid().rows(),
+                    cols: term.grid().cols(),
+                    volumes: term.sound_volumes(),
+                    scroll,
+                    rate,
+                }
+            };
+            let busy = n > 0 || !step.reply.is_empty() || !step.events.is_empty();
+            handle_step(&step, &shared, transport.as_mut(), &tx);
+            if busy {
+                request_redraw(&shared, &tx);
             }
-            let (rows, cols) = (term.grid().rows(), term.grid().cols());
-            (
-                term.take_output(),
-                term.take_events(),
-                rows,
-                cols,
-                term.sound_volumes(),
-            )
-        };
-        // Without data there may still be events from local changes (Set-Up).
-        if n == 0 && reply.is_empty() && events.is_empty() {
-            continue;
-        }
-        if !reply.is_empty() {
-            record(&shared, |r| r.reply(&reply));
-            let mut writer = shared.writer.lock().unwrap_or_else(|e| e.into_inner());
-            let _ = writer.write_all(&reply);
-        }
-        for event in events {
-            match event {
-                Event::Bell => {
-                    let _ = tx.try_send(Notice::Sound(crate::sound::Sound::Bell(
-                        volumes.warning_bell,
-                    )));
+            if let (Some(scroll), Some(rate)) = (step.scroll, step.rate) {
+                // Smooth scroll: show this line moving before processing more,
+                // which holds the host back as a DEC terminal does.
+                let _ = scroll;
+                let duration = Duration::from_millis(1000 / u64::from(rate));
+                let _ = tx.try_send(Notice::SmoothScroll);
+                thread::sleep(duration);
+                if !wait_while_held(&shared) {
+                    break;
                 }
-                Event::MarginBell => {
-                    let _ = tx.try_send(Notice::Sound(crate::sound::Sound::Bell(
-                        volumes.margin_bell,
-                    )));
-                }
-                Event::PlaySound {
-                    volume,
-                    duration_ms,
-                    note,
-                } => {
-                    let _ = tx.try_send(Notice::Sound(crate::sound::Sound::Note {
-                        volume,
-                        duration_ms,
-                        note,
-                    }));
-                }
-                // The host addresses the whole page, so that is its size.
-                Event::ColumnsChanged(_) | Event::LinesChanged(_) => {
-                    let _ = transport.resize(rows as u16, cols as u16);
-                }
-                Event::TitleChanged(title) => {
-                    let _ = tx.try_send(Notice::Title(title));
-                }
-                Event::SessionActivated => {
-                    let _ = tx.try_send(Notice::Activate);
-                }
-                Event::ScreenLinesChanged(_) | Event::IconNameChanged(_) => {}
-                Event::LedsChanged(_) => {}
+            }
+            if rest.is_empty() {
+                break;
             }
         }
-        request_redraw(&shared, &tx);
     };
     let _ = tx.try_send(Notice::Exited(reason));
+}
+
+/// What one step of processing produced.
+struct Step {
+    reply: Vec<u8>,
+    events: Vec<Event>,
+    rows: usize,
+    cols: usize,
+    volumes: vt_core::SoundVolumes,
+    scroll: Option<vt_core::SmoothScroll>,
+    rate: Option<u32>,
+}
+
+fn handle_step(
+    step: &Step,
+    shared: &Shared,
+    transport: &mut dyn Transport,
+    tx: &async_channel::Sender<Notice>,
+) {
+    if !step.reply.is_empty() {
+        record(shared, |r| r.reply(&step.reply));
+        let mut writer = shared.writer.lock().unwrap_or_else(|e| e.into_inner());
+        let _ = writer.write_all(&step.reply);
+    }
+    let volumes = step.volumes;
+    for event in &step.events {
+        match event {
+            Event::Bell => {
+                let _ = tx.try_send(Notice::Sound(crate::sound::Sound::Bell(
+                    volumes.warning_bell,
+                )));
+            }
+            Event::MarginBell => {
+                let _ = tx.try_send(Notice::Sound(crate::sound::Sound::Bell(
+                    volumes.margin_bell,
+                )));
+            }
+            Event::PlaySound {
+                volume,
+                duration_ms,
+                note,
+            } => {
+                let _ = tx.try_send(Notice::Sound(crate::sound::Sound::Note {
+                    volume: *volume,
+                    duration_ms: *duration_ms,
+                    note: *note,
+                }));
+            }
+            // The host addresses the whole page, so that is its size.
+            Event::ColumnsChanged(_) | Event::LinesChanged(_) => {
+                let _ = transport.resize(step.rows as u16, step.cols as u16);
+            }
+            Event::TitleChanged(title) => {
+                let _ = tx.try_send(Notice::Title(title.clone()));
+            }
+            Event::SessionActivated => {
+                let _ = tx.try_send(Notice::Activate);
+            }
+            Event::ScreenLinesChanged(_) | Event::IconNameChanged(_) => {}
+            Event::LedsChanged(_) => {}
+        }
+    }
 }

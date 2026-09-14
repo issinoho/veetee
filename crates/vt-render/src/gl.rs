@@ -7,7 +7,8 @@ use vt_core::Terminal;
 use vt_fonts::FontSet;
 
 use crate::scene::{
-    FrameState, INSTANCE_LEN, Layout, SOFT_ATLAS_COLUMNS, SOFT_SLOT, SoftAtlas, build_instances,
+    FrameState, INSTANCE_LEN, Layout, SOFT_ATLAS_COLUMNS, SOFT_SLOT, ScrollFrame, SoftAtlas,
+    build_instances,
 };
 use crate::theme::Theme;
 
@@ -257,8 +258,9 @@ impl Renderer {
         frame: FrameState,
         theme: &Theme,
         indicator: &str,
+        scroll: Option<ScrollFrame>,
     ) {
-        build_instances(
+        let clip = build_instances(
             term,
             layout,
             frame,
@@ -266,6 +268,7 @@ impl Renderer {
             &self.fonts,
             &mut self.soft,
             indicator,
+            scroll,
             &mut self.scratch,
         );
         unsafe {
@@ -315,13 +318,29 @@ impl Renderer {
 
             gl.bind_vertex_array(Some(self.vao));
             gl.bind_buffer(glow::ARRAY_BUFFER, Some(self.instances));
-            gl.buffer_data_u8_slice(
-                glow::ARRAY_BUFFER,
-                as_bytes(&self.scratch),
-                glow::STREAM_DRAW,
-            );
-            let count = (self.scratch.len() / INSTANCE_LEN) as i32;
-            gl.draw_arrays_instanced(glow::TRIANGLES, 0, 6, count);
+            let split = clip.map_or(self.scratch.len(), |c| c.first * INSTANCE_LEN);
+            let (plain, clipped) = self.scratch.split_at(split);
+            gl.buffer_data_u8_slice(glow::ARRAY_BUFFER, as_bytes(plain), glow::STREAM_DRAW);
+            gl.draw_arrays_instanced(glow::TRIANGLES, 0, 6, (plain.len() / INSTANCE_LEN) as i32);
+            if let Some(clip) = clip.filter(|_| !clipped.is_empty()) {
+                // A smooth scroll's region, drawn again inside its own bounds.
+                let [x, y, w, h] = clip.rect;
+                gl.enable(glow::SCISSOR_TEST);
+                gl.scissor(
+                    x.round() as i32,
+                    (viewport.1 as f32 - (y + h)).round() as i32,
+                    w.round() as i32,
+                    h.round() as i32,
+                );
+                gl.buffer_data_u8_slice(glow::ARRAY_BUFFER, as_bytes(clipped), glow::STREAM_DRAW);
+                gl.draw_arrays_instanced(
+                    glow::TRIANGLES,
+                    0,
+                    6,
+                    (clipped.len() / INSTANCE_LEN) as i32,
+                );
+                gl.disable(glow::SCISSOR_TEST);
+            }
             gl.bind_vertex_array(None);
         }
     }

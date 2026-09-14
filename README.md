@@ -115,7 +115,9 @@ The PC keyboard is mapped to LK401 key positions:
 | Ctrl+Shift+M | Mark a checkpoint in the session recording |
 
 Keys click, BEL rings the warning bell and hosts can play notes (DECPS), as on the terminal;
-Keyboard Set-Up (F3) turns the keyclick and bells down or off.
+Keyboard Set-Up (F3) turns the keyclick and bells down or off. A VT420 scrolls smoothly at nine
+lines a second, as the hardware did; for fast output choose *Jump Scroll* in Display Set-Up and
+Save.
 
 Ctrl and Alt with the editing, cursor and function keys pass on to the DEC key, so a VT520
 receives its DECFNK sequences (Ctrl+Insert is Ctrl+Find, `CSI 1;5~`).
