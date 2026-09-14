@@ -5,7 +5,10 @@ milestones (0.3 = M3). The format follows [Keep a Changelog](https://keepachange
 
 ## [Unreleased]
 
-Milestone M8 begins.
+## [0.8.0] - 2026-09-14
+
+The first release of milestone M8, power-user features: saved connections, session logs,
+history review and search, and copy and paste that translate characters.
 
 - **Saved connections (M8)**: *Connections…* in the window menu lists saved connections (Telnet,
   SSH, serial, local shell or command, with the terminal model, phosphor and sessions) to open in
@@ -190,7 +193,8 @@ The first release: VT100 through VT420 emulation with local, Telnet, SSH and ser
   `cargo deny` licence checks and parser fuzzing.
 - `cargo xtask dist` builds the release tarball and Debian package.
 
-[Unreleased]: https://github.com/issinoho/veetee/compare/v0.7.1...HEAD
+[Unreleased]: https://github.com/issinoho/veetee/compare/v0.8.0...HEAD
+[0.8.0]: https://github.com/issinoho/veetee/compare/v0.7.1...v0.8.0
 [0.7.1]: https://github.com/issinoho/veetee/compare/v0.7.0...v0.7.1
 [0.7.0]: https://github.com/issinoho/veetee/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/issinoho/veetee/compare/v0.4.0...v0.6.0
