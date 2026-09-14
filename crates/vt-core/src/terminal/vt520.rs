@@ -192,6 +192,35 @@ fn select(p: &Params, i: usize, range: std::ops::RangeInclusive<u16>, default: u
     }
 }
 
+impl SetUp {
+    /// The parameters of a simple selection, by its DECRQSS final characters.
+    pub(super) fn selection(&self, key: &[u8]) -> &str {
+        self.selections.get(key).map_or("", String::as_str)
+    }
+
+    pub(super) fn set_selection(&mut self, key: &[u8], value: &str) {
+        if let Some(v) = self.selections.get_mut(key) {
+            *v = value.to_string();
+        }
+    }
+
+    pub(super) fn update_session(&self) -> u16 {
+        self.update_session
+    }
+
+    pub(super) fn set_update_session(&mut self, value: u16) {
+        self.update_session = value;
+    }
+
+    pub(super) fn comm_speed(&self, line: usize) -> u16 {
+        self.comm_speed[line]
+    }
+
+    pub(super) fn set_comm_speed(&mut self, line: usize, speed: u16) {
+        self.comm_speed[line] = speed;
+    }
+}
+
 impl Emulator {
     pub(super) fn vt520_mode(&self, mode: u16) -> Option<bool> {
         STORED_MODES
@@ -622,9 +651,10 @@ impl Emulator {
         }
     }
 
-    /// The primary DA response selected with DECTID (EK-VT520-RM DECTID).
+    /// The primary DA response selected with DECTID (EK-VT520-RM DECTID) or,
+    /// on a VT420, the General Set-Up terminal ID.
     pub(super) fn terminal_id_attributes(&self) -> Option<&'static str> {
-        if self.config.model.max_level() < 5 {
+        if self.config.model.max_level() < 4 {
             return None;
         }
         Some(match self.setup.terminal_id {

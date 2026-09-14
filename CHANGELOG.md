@@ -5,6 +5,13 @@ milestones (0.3 = M3). The format follows [Keep a Changelog](https://keepachange
 
 ## [Unreleased]
 
+- **Set-Up (M7)**: F3 opens the terminal's Set-Up screens, laid out like a VT420's: the Set-Up
+  Directory with Clear Display, Clear Comm, Reset Session, Recall, Save, Default and Screen Align,
+  and the Global, Display, General, Communications, Printer, Keyboard and Tab screens. The host is
+  held while Set-Up is open, changes take effect on leaving it, and Save keeps the settings per
+  model and session as the power-up settings that RIS and Recall restore. Global Set-Up's Local
+  puts the host on hold and echoes typed characters. A VT420's General Set-Up terminal ID
+  changes its device attributes reply. *Set-Up* is also in the window menu.
 - Fixed: box-drawing and other lines that run across cells showed a faint step half-way along
   each cell.
 - Website screenshots are recaptured with the new fonts, and the site covers the Windows build.

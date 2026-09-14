@@ -194,6 +194,16 @@ impl Session {
         if bytes.is_empty() {
             return;
         }
+        {
+            // Local (Global Set-Up): typed characters go to the screen.
+            let mut term = self.terminal();
+            if !term.on_line() {
+                term.advance(bytes);
+                drop(term);
+                request_redraw(&self.shared, &self.notices);
+                return;
+            }
+        }
         record(&self.shared, |r| r.keys(bytes));
         let mut writer = self.shared.writer.lock().unwrap_or_else(|e| e.into_inner());
         if let Err(e) = writer.write_all(bytes) {
@@ -246,20 +256,27 @@ fn io_loop(
             break None;
         }
         let n = match transport.read_timeout(&mut buf, Duration::from_millis(250)) {
-            Ok(0) => continue,
             Ok(n) => n,
             Err(e) if e.kind() == io::ErrorKind::UnexpectedEof => {
                 break e.get_ref().map(|inner| inner.to_string());
             }
             Err(e) => break Some(e.to_string()),
         };
-        record(&shared, |r| r.host(&buf[..n]));
+        if n > 0 {
+            record(&shared, |r| r.host(&buf[..n]));
+        }
         let (reply, events, rows, cols) = {
             let mut term = shared.term.lock().unwrap_or_else(|e| e.into_inner());
-            term.advance(&buf[..n]);
+            if n > 0 {
+                term.advance(&buf[..n]);
+            }
             let (rows, cols) = (term.grid().rows(), term.grid().cols());
             (term.take_output(), term.take_events(), rows, cols)
         };
+        // Without data there may still be events from local changes (Set-Up).
+        if n == 0 && reply.is_empty() && events.is_empty() {
+            continue;
+        }
         if !reply.is_empty() {
             record(&shared, |r| r.reply(&reply));
             let mut writer = shared.writer.lock().unwrap_or_else(|e| e.into_inner());

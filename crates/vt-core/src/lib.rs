@@ -18,6 +18,7 @@ pub mod keyprog;
 mod modes;
 pub mod recording;
 mod selection;
+pub mod setup;
 pub mod softfont;
 mod terminal;
 pub mod udk;

@@ -14,6 +14,7 @@ use crate::udk::UserKeys;
 mod dcs;
 mod rect;
 mod reports;
+mod setup;
 mod vt520;
 
 pub use vt520::{CursorStyle, LocalKeyAction};
@@ -555,6 +556,8 @@ struct Emulator {
     sessions: u8,
     /// VT520 programmed keys.
     keyprog: crate::keyprog::KeyPrograms,
+    /// Set-Up features with no other home in the terminal.
+    stored: crate::setup::Features,
     output: Vec<u8>,
     events: Vec<Event>,
     pause: bool,
@@ -624,7 +627,7 @@ impl Emulator {
         } else {
             1
         };
-        Emulator {
+        let mut emu = Emulator {
             grid: Grid::new(rows, cols),
             pages: (0..page_count)
                 .map(|i| {
@@ -682,11 +685,17 @@ impl Emulator {
             osc: Vec::new(),
             sessions: 1,
             keyprog: crate::keyprog::KeyPrograms::default(),
+            stored: crate::setup::Features::factory(model),
             output: Vec::new(),
             events: Vec::new(),
             pause: false,
             config,
+        };
+        if let Some(features) = emu.config.setup.clone() {
+            emu.apply_features(&features);
+            emu.events.clear();
         }
+        emu
     }
 
     // ------------------------------------------------------------ geometry

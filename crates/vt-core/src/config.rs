@@ -179,6 +179,9 @@ pub struct Config {
     /// Set-Up "User Defined Keys: Locked".
     pub udk_locked: bool,
     pub extensions: Extensions,
+    /// Saved Set-Up features applied at power-up and by RIS; `None` for the
+    /// factory settings (see [`crate::setup`]).
+    pub setup: Option<crate::setup::Features>,
 }
 
 impl Default for Config {
@@ -197,6 +200,7 @@ impl Default for Config {
             supplemental: Supplemental::default(),
             udk_locked: false,
             extensions: Extensions::default(),
+            setup: None,
         }
     }
 }

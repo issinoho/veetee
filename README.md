@@ -118,8 +118,19 @@ Ctrl and Alt with the editing, cursor and function keys pass on to the DEC key, 
 receives its DECFNK sequences (Ctrl+Insert is Ctrl+Find, `CSI 1;5~`).
 
 The map is a TOML file. *Keyboard Map…* in the window menu opens an LK401 keyboard to rebind
-keys; Save writes `~/.config/veetee/keymap.toml`, and `--keymap FILE` uses another map. Set-Up
-(F3) and Print Screen are not implemented yet.
+keys; Save writes `~/.config/veetee/keymap.toml`, and `--keymap FILE` uses another map. Print
+Screen is not implemented yet.
+
+### Set-Up
+
+F3 (or *Set-Up* in the window menu) opens the terminal's own Set-Up screens, laid out like a
+VT420's: the Set-Up Directory and the Global, Display, General, Communications, Printer, Keyboard
+and Tab screens. The host is held while Set-Up is open. The arrow keys move the field cursor and
+Enter steps the highlighted feature to its next setting or performs an action; changes take
+effect when you leave Set-Up with F3 or Exit. *Save* keeps the settings as the power-up settings
+(`~/.config/veetee/setup-vt420-session1.conf`, per model and session), *Recall* returns to them and
+*Default* to the factory settings. Global Set-Up's *Local* disconnects the keyboard from the host,
+as on the terminal.
 
 ### Recording sessions
 

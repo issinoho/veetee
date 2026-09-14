@@ -7,6 +7,7 @@ mod gl_loader;
 mod keymap_editor;
 mod keymaps;
 mod session;
+mod setup_store;
 mod view;
 mod workspace;
 
@@ -70,6 +71,7 @@ fn build_window(app: &adw::Application, config: Config, options: Options) {
     phosphor.append(Some("Amber (P3)"), Some("win.phosphor::amber"));
     menu.append_section(Some("Phosphor"), &phosphor);
     let session_section = gio::Menu::new();
+    session_section.append(Some("Set-Up"), Some("win.setup"));
     session_section.append(Some("Open Second Session"), Some("win.new-session"));
     session_section.append(Some("Mark Checkpoint"), Some("win.mark-checkpoint"));
     session_section.append(Some("Keyboard Map…"), Some("win.keymap"));
@@ -107,18 +109,22 @@ fn build_window(app: &adw::Application, config: Config, options: Options) {
     window.present();
     capture_window_later(&window);
 
+    // The saved Set-Up settings are the terminal's power-up settings.
+    let mut first = config.clone();
+    setup_store::load_into(&mut first, 1);
+
     // Connecting can block on DNS or TCP; do it off the UI thread.
     let (tx, rx) = async_channel::bounded(1);
     {
-        let (config, connection) = (config.clone(), options.connection.clone());
+        let (config, connection) = (first.clone(), options.connection.clone());
         std::thread::spawn(move || {
             let _ = tx.send_blocking(cli::open_transport(&config, &connection));
         });
     }
     glib::spawn_future_local(async move {
         let Ok(opened) = rx.recv().await else { return };
-        let started = opened
-            .and_then(|t| session::Session::start(config.clone(), t, options.record.as_ref()));
+        let started =
+            opened.and_then(|t| session::Session::start(first, t, options.record.as_ref()));
         let (session, notices) = match started {
             Ok(s) => s,
             Err(e) => {
@@ -183,6 +189,17 @@ fn add_session_actions(window: &adw::ApplicationWindow, workspace: &Rc<workspace
         }
     });
     window.add_action(&new_session);
+
+    let setup = gio::SimpleAction::new("setup", None);
+    setup.connect_activate({
+        let workspace = Rc::downgrade(workspace);
+        move |_, _| {
+            if let Some(ws) = workspace.upgrade() {
+                ws.open_setup();
+            }
+        }
+    });
+    window.add_action(&setup);
 
     let mark = gio::SimpleAction::new("mark-checkpoint", None);
     mark.connect_activate({

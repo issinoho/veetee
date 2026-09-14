@@ -7,6 +7,7 @@ use std::time::{Duration, Instant};
 use gtk::glib::translate::IntoGlib;
 use gtk::prelude::*;
 use gtk::{gdk, gio, glib};
+use vt_core::setup::{self, SetupMenu};
 use vt_core::{Point, Selection};
 use vt_keyboard::{Action, Local, Mods};
 use vt_render::{FrameState, Renderer, Theme};
@@ -20,6 +21,8 @@ const TEXT_BLINK: Duration = Duration::from_millis(670);
 
 /// How a view reports to the window that holds it.
 pub struct Callbacks {
+    /// 1 or 2: which session of the window this is (for saved Set-Up).
+    pub session_number: u8,
     /// Shows a transient message.
     pub notify: Box<dyn Fn(&str)>,
     /// Extra text for the window subtitle ("Hold Screen").
@@ -53,6 +56,38 @@ struct State {
     selection: Option<Selection>,
     /// Page position where the current mouse drag began.
     drag_anchor: Option<Point>,
+    /// Set-Up, while it is open.
+    setup: Option<SetupView>,
+}
+
+/// An open Set-Up: the menu and the screen it draws on.
+struct SetupView {
+    menu: SetupMenu,
+    screen: vt_core::Terminal,
+    /// Hold Screen was on before Set-Up held the host.
+    was_held: bool,
+}
+
+/// Set-Up shows veetee's major and minor version after the model name.
+fn short_version() -> &'static str {
+    let v = env!("CARGO_PKG_VERSION");
+    v.rsplit_once('.').map_or(v, |(major_minor, _)| major_minor)
+}
+
+/// A 24-line terminal showing the Set-Up screen.
+fn setup_screen(model: vt_core::Model, menu: &SetupMenu) -> vt_core::Terminal {
+    let features = menu.features();
+    let mut screen = vt_core::Terminal::new(vt_core::Config {
+        model,
+        cols: if features.columns_132 { 132 } else { 80 },
+        ..vt_core::Config::default()
+    });
+    // Light or dark screen takes effect in Set-Up.
+    if features.light_screen {
+        screen.advance(b"\x1b[?5h");
+    }
+    screen.advance(&menu.render());
+    screen
 }
 
 impl State {
@@ -104,6 +139,7 @@ impl TerminalView {
             }),
             selection: None,
             drag_anchor: None,
+            setup: None,
         }));
         let view = TerminalView { area, state };
         view.connect_gl();
@@ -184,15 +220,36 @@ impl TerminalView {
             );
             session::frame_drawn(&st.session);
             if let (Some(gl), Some(renderer)) = (st.gl.as_ref(), st.renderer.as_mut()) {
-                let held = st.session.is_held();
                 let term = st.session.terminal();
-                let layout = vt_render::page_layout(w, h, &term);
-                let indicator = indicator_line(&term, held);
-                // SAFETY: GTK makes the context current before emitting `render`.
-                #[allow(unsafe_code)]
-                unsafe {
-                    renderer.draw(gl, &term, &layout, (w, h), frame, &st.theme, &indicator)
-                };
+                if let Some(setup) = st.setup.as_ref() {
+                    // Set-Up replaces the page; the status line stays.
+                    let mut indicator = indicator_line(&term, setup.was_held);
+                    let cols = setup.screen.grid().cols();
+                    indicator = format!("{indicator:<cols$}").chars().take(cols).collect();
+                    drop(term);
+                    let screen = &setup.screen;
+                    let layout = vt_render::page_layout(w, h, screen);
+                    let frame = FrameState {
+                        cursor_on: false,
+                        focused: true,
+                        selection: None,
+                        ..frame
+                    };
+                    // SAFETY: GTK makes the context current before emitting `render`.
+                    #[allow(unsafe_code)]
+                    unsafe {
+                        renderer.draw(gl, screen, &layout, (w, h), frame, &st.theme, &indicator)
+                    };
+                } else {
+                    let held = st.session.is_held();
+                    let layout = vt_render::page_layout(w, h, &term);
+                    let indicator = indicator_line(&term, held);
+                    // SAFETY: GTK makes the context current before emitting `render`.
+                    #[allow(unsafe_code)]
+                    unsafe {
+                        renderer.draw(gl, &term, &layout, (w, h), frame, &st.theme, &indicator)
+                    };
+                }
                 if let Some((path, delay)) = st.capture.clone() {
                     if st.epoch.elapsed() >= delay {
                         st.capture = None;
@@ -227,6 +284,23 @@ impl TerminalView {
         let view = self.clone();
         let im_keys = im.clone();
         keys.connect_key_pressed(move |controller, keyval, keycode, modifiers| {
+            if view.state.borrow().setup.is_some() {
+                let mods = Mods {
+                    shift: modifiers.contains(gtk::gdk::ModifierType::SHIFT_MASK),
+                    ctrl: modifiers.contains(gtk::gdk::ModifierType::CONTROL_MASK),
+                    alt: modifiers.contains(gtk::gdk::ModifierType::ALT_MASK),
+                };
+                let is_setup_key = matches!(
+                    keymap
+                        .borrow()
+                        .map(keyval.into_glib(), keyval.to_unicode(), mods),
+                    Some(Action::Local(Local::SetUp))
+                );
+                if let Some(input) = setup_input(keyval, mods, is_setup_key) {
+                    view.setup_input(input);
+                }
+                return glib::Propagation::Stop;
+            }
             let to_input_method = || {
                 controller
                     .current_event()
@@ -535,7 +609,10 @@ impl TerminalView {
             }
             Local::Answerback => st.session.send_answerback(),
             Local::Paste => self.paste(self.area.clipboard()),
-            Local::SetUp => (st.callbacks.notify)("Set-Up is not available yet"),
+            Local::SetUp => {
+                drop(st);
+                self.open_setup();
+            }
             Local::PanUp | Local::PanDown | Local::PanPrevPage | Local::PanNextPage => {
                 {
                     let mut term = st.session.terminal();
@@ -568,6 +645,126 @@ impl TerminalView {
                 self.copy_to_clipboard();
             }
         }
+    }
+
+    /// F3: enters Set-Up. The host is held while Set-Up is open, so no data
+    /// is lost (Installing and Using the VT420, chapter 5).
+    pub fn open_setup(&self) {
+        let mut st = self.state.borrow_mut();
+        if st.setup.is_some() {
+            return;
+        }
+        let session = st.session.clone();
+        let was_held = session.is_held();
+        session.set_held(true);
+        let (model, features) = {
+            let term = session.terminal();
+            (term.config().model, term.setup_features())
+        };
+        let menu = SetupMenu::new(model, short_version(), features);
+        let screen = setup_screen(model, &menu);
+        st.setup = Some(SetupView {
+            menu,
+            screen,
+            was_held,
+        });
+        // The window reads this view's state when its status changes.
+        let callbacks = st.callbacks.clone();
+        drop(st);
+        (callbacks.status)("Set-Up");
+        self.area.queue_render();
+    }
+
+    fn setup_input(&self, input: setup::Input) {
+        let mut st = self.state.borrow_mut();
+        let session = st.session.clone();
+        let (callbacks, number) = (st.callbacks.clone(), st.callbacks.session_number);
+        let mut error = None;
+        let Some(view) = st.setup.as_mut() else {
+            return;
+        };
+        match view.menu.input(input) {
+            setup::Outcome::Redraw => {}
+            setup::Outcome::Exit => {
+                drop(st);
+                self.close_setup();
+                return;
+            }
+            setup::Outcome::Action(action) => {
+                let mut term = session.terminal();
+                let model = term.config().model;
+                let result = match action {
+                    setup::Action::ClearComm => {
+                        term.clear_comm();
+                        Ok(())
+                    }
+                    setup::Action::ResetSession => {
+                        term.reset_session();
+                        Ok(())
+                    }
+                    setup::Action::Recall => {
+                        term.recall_setup_features();
+                        view.menu.set_features(term.setup_features());
+                        Ok(())
+                    }
+                    setup::Action::Save => {
+                        term.apply_setup_features(view.menu.features());
+                        term.save_setup_features();
+                        crate::setup_store::save(model, number, view.menu.features()).map(|_| ())
+                    }
+                    setup::Action::Default => {
+                        term.restore_factory_setup();
+                        view.menu.set_features(term.setup_features());
+                        crate::setup_store::remove(model, number)
+                    }
+                };
+                // Local changes never reach the host.
+                let _ = term.take_output();
+                drop(term);
+                match result {
+                    Ok(()) => view.menu.done(),
+                    Err(e) => error = Some(format!("Set-Up could not be saved: {e}")),
+                }
+            }
+        }
+        let model = session.terminal().config().model;
+        view.screen = setup_screen(model, &view.menu);
+        drop(st);
+        if let Some(message) = error {
+            (callbacks.notify)(&message);
+        }
+        self.area.queue_render();
+    }
+
+    /// Leaves Set-Up: the features take effect and the host resumes.
+    fn close_setup(&self) {
+        let mut st = self.state.borrow_mut();
+        let Some(view) = st.setup.take() else {
+            return;
+        };
+        let session = st.session.clone();
+        let on_line = {
+            let mut term = session.terminal();
+            term.apply_setup_features(view.menu.features());
+            if view.menu.clear_display_on_exit() {
+                term.clear_display();
+            }
+            let _ = term.take_output();
+            term.on_line()
+        };
+        // Local keeps the host on hold.
+        session.set_held(view.was_held || !on_line);
+        let status = if view.was_held {
+            "Hold Screen"
+        } else if !on_line {
+            "Local"
+        } else {
+            ""
+        };
+        let callbacks = st.callbacks.clone();
+        drop(st);
+        (callbacks.status)(status);
+        self.area.queue_render();
     }
 
     fn connect_notices(&self, notices: async_channel::Receiver<Notice>) {
@@ -623,6 +820,9 @@ fn indicator_line(term: &vt_core::Terminal, held: bool) -> String {
     if term.modes().keyboard_locked {
         left.push_str("   Locked");
     }
+    if !term.on_line() {
+        left.push_str("   Local");
+    }
     let cursor = term.cursor();
     let right = format!(
         "Page {}   {:>3},{:<3} ",
@@ -633,6 +833,30 @@ fn indicator_line(term: &vt_core::Terminal, held: bool) -> String {
     let cols = term.grid().cols();
     let pad = cols.saturating_sub(left.len() + right.len());
     format!("{left}{}{right}", " ".repeat(pad))
+}
+
+/// The Set-Up key a key press stands for, if any.
+fn setup_input(keyval: gdk::Key, mods: Mods, is_setup_key: bool) -> Option<setup::Input> {
+    use gdk::Key as K;
+    if is_setup_key || keyval == K::F3 {
+        return Some(setup::Input::SetUp);
+    }
+    Some(match keyval {
+        K::Up | K::KP_Up => setup::Input::Up,
+        K::Down | K::KP_Down => setup::Input::Down,
+        K::Left | K::KP_Left => setup::Input::Left,
+        K::Right | K::KP_Right => setup::Input::Right,
+        K::Return | K::KP_Enter | K::ISO_Enter => setup::Input::Enter,
+        K::Tab | K::ISO_Left_Tab | K::KP_Tab => setup::Input::Tab,
+        K::BackSpace | K::Delete | K::KP_Delete => setup::Input::Backspace,
+        _ => {
+            let ch = keyval.to_unicode().filter(|c| !c.is_control())?;
+            if mods.ctrl || mods.alt {
+                return None;
+            }
+            setup::Input::Text(ch.to_string())
+        }
+    })
 }
 
 fn clipboard_for(area: &gtk::GLArea, primary: bool) -> gdk::Clipboard {

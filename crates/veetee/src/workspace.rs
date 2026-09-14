@@ -113,7 +113,9 @@ impl Workspace {
                 }
             }
         };
+        let session_number = (self.panes.borrow().len() + 1) as u8;
         let callbacks = Callbacks {
+            session_number,
             notify: Box::new({
                 let weak = weak.clone();
                 move |msg: &str| {
@@ -187,7 +189,10 @@ impl Workspace {
             return;
         }
         let (tx, rx) = async_channel::bounded(1);
-        let (config, connection) = (self.config.clone(), self.options.connection.clone());
+        let mut config = self.config.clone();
+        crate::setup_store::load_into(&mut config, 2);
+        let connection = self.options.connection.clone();
+        let session_config = config.clone();
         std::thread::spawn(move || {
             let _ = tx.send_blocking(cli::open_transport(&config, &connection));
         });
@@ -196,7 +201,7 @@ impl Workspace {
             let Ok(opened) = rx.recv().await else { return };
             let Some(ws) = weak.upgrade() else { return };
             ws.opening.set(false);
-            let started = opened.and_then(|t| session::Session::start(ws.config.clone(), t, None));
+            let started = opened.and_then(|t| session::Session::start(session_config, t, None));
             match started {
                 Ok((session, notices)) => ws.add_session(session, notices),
                 Err(e) => ws.notify(&format!("Cannot open a session: {e}")),
@@ -369,6 +374,20 @@ impl Workspace {
         *self.theme.borrow_mut() = theme.clone();
         for pane in self.panes.borrow().iter() {
             pane.view.set_theme(theme.clone());
+        }
+    }
+
+    /// Opens Set-Up for the active session, as F3 does.
+    pub fn open_setup(&self) {
+        let view = self
+            .panes
+            .borrow()
+            .iter()
+            .find(|p| p.id == self.active.get())
+            .map(|p| p.view.clone());
+        if let Some(view) = view {
+            view.widget().grab_focus();
+            view.open_setup();
         }
     }
 

@@ -149,6 +149,16 @@ conformance scripts in `tests/conformance/vttest`.
 | DECKPM DECEKBD DECSMKR effects | `CSI ? 81 h`, `APC : ppp mm ST` | ⬜ | Key position reports need the ISO key-position figure of RM520, which is only an image; stored and reported for now |
 | DECPCTERM | `CSI ? Ps1;Ps2 r` | ⬜ | PC scan-code terminal mode with PC code pages; not planned for 1.0 (no OpenVMS use) |
 
+## Set-Up (F3, M7)
+
+| Feature | Status | Notes |
+|---------|--------|-------|
+| Set-Up screens | ✅ | Set-Up Directory, Global, Display, General, Communications, Printer, Keyboard and Tab screens as in Installing and Using the VT420 chapter 5, for every model. 🔎 The VT100 and VT220 had their own Set-Up screens, and the VT500 series menu-driven Set-Up (EK-VT520-RM chapter 2); veetee shows the VT420 layout for all models |
+| Directory actions | ✅ | Clear Display (on exit), Clear Comm, Reset Session (DECSTR), Recall (saved settings, clears the screen), Save, Default (factory settings), Exit, Screen Align (alignment pattern). Enable/Disable Sessions report "Sessions not selected" (no SSU) |
+| Feature settings | ✅ | Columns, autowrap, scroll mode, screen background, cursor, cursor style and blink, status display, page arrangement, lines per screen, couplings, terminal mode and 7/8-bit controls, UDK lock, NRC mode, keypad and cursor key modes, new line, UPSS, terminal ID (also changes the VT420's DA), local echo, answerback message and concealment, auto answerback, typewriter/data processing keys, auto repeat, keyclick and bell volumes, key position mode, backarrow key, F1–F4 functions, keyboard dialect, tab stops, On Line/Local |
+| Stored only | 🟡 | Serial speed, format and flow control, modem control, CRT saver, refresh rate, printer assignment, user features lock, Display Controls, compose/Alt/F5/comma/angle/tilde key options and Smooth-4 are kept, saved and restored but do not change behaviour yet. Set-Up is shown in English only |
+| Saved settings | ✅ | Save writes the features per model and session to the configuration directory; they are the power-up settings and what RIS and Recall restore |
+
 ## Keyboard (vt-core `Key`)
 
 | Keys | Status | Notes |
