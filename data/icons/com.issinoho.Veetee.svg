@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
+  <!-- veetee: a glass terminal with a phosphor prompt. Original artwork, MIT OR Apache-2.0. -->
+  <defs>
+    <linearGradient id="case" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#e6dcc4"/>
+      <stop offset="1" stop-color="#c9bc9c"/>
+    </linearGradient>
+    <radialGradient id="glass" cx="0.5" cy="0.45" r="0.75">
+      <stop offset="0" stop-color="#0d2414"/>
+      <stop offset="1" stop-color="#030906"/>
+    </radialGradient>
+    <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="1.6" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+  <path d="M40 100h48l6 14H34z" fill="#b3a684"/>
+  <rect x="26" y="112" width="76" height="8" rx="3" fill="#a3966f"/>
+  <rect x="8" y="10" width="112" height="92" rx="14" fill="url(#case)"/>
+  <rect x="8" y="10" width="112" height="92" rx="14" fill="none" stroke="#8f8363" stroke-width="2"/>
+  <rect x="18" y="20" width="92" height="66" rx="10" fill="url(#glass)"/>
+  <g fill="#39ff6e" filter="url(#glow)">
+    <path d="M30 38l14 10-14 10v-5l8-5-8-5z"/>
+    <rect x="48" y="54" width="18" height="5"/>
+    <rect x="30" y="70" width="8" height="4" opacity="0.55"/>
+    <rect x="42" y="70" width="20" height="4" opacity="0.55"/>
+  </g>
+  <circle cx="104" cy="94" r="2.5" fill="#e0a030"/>
+</svg>

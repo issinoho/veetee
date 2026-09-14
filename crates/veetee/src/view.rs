@@ -14,7 +14,10 @@ use vt_render::{FrameState, Renderer, Theme};
 
 use crate::session::{self, Notice, Session};
 
+mod area;
 mod review;
+
+pub use area::TerminalArea;
 
 /// Cursor blink half-period.
 const CURSOR_BLINK: Duration = Duration::from_millis(530);
@@ -144,7 +147,7 @@ impl State {
 
 #[derive(Clone)]
 pub struct TerminalView {
-    area: gtk::GLArea,
+    area: TerminalArea,
     /// The terminal with the find bar over it.
     container: gtk::Overlay,
     search: review::SearchBar,
@@ -158,12 +161,7 @@ impl TerminalView {
         callbacks: Callbacks,
         keymap: SharedKeymap,
     ) -> TerminalView {
-        let area = gtk::GLArea::builder()
-            .hexpand(true)
-            .vexpand(true)
-            .focusable(true)
-            .has_depth_buffer(false)
-            .build();
+        let area = TerminalArea::new();
         area.set_required_version(3, 3);
 
         let state = Rc::new(RefCell::new(State {
@@ -215,7 +213,7 @@ impl TerminalView {
         view
     }
 
-    pub fn widget(&self) -> &gtk::GLArea {
+    pub fn widget(&self) -> &TerminalArea {
         &self.area
     }
 
@@ -292,6 +290,7 @@ impl TerminalView {
         let state = self.state.clone();
         self.area.connect_render(move |area, _ctx| {
             let st = &mut *state.borrow_mut();
+            session::frame_drawn(&st.session);
             let back = st.session.terminal().scrollback_len();
             if st.review > 0 && back > st.review_back {
                 st.review += back - st.review_back;
@@ -312,7 +311,6 @@ impl TerminalView {
                 (area.width() * scale).max(1) as u32,
                 (area.height() * scale).max(1) as u32,
             );
-            session::frame_drawn(&st.session);
             if st.saver {
                 // CRT saver: the screen is blank until a key or host data.
                 if let Some(gl) = st.gl.as_ref() {
@@ -848,6 +846,7 @@ impl TerminalView {
         drop(st);
         (callbacks.status)("Set-Up");
         self.area.queue_render();
+        self.update_accessible();
     }
 
     fn setup_input(&self, input: setup::Input) {
@@ -909,6 +908,7 @@ impl TerminalView {
             (callbacks.notify)(&message);
         }
         self.area.queue_render();
+        self.update_accessible();
     }
 
     /// Leaves Set-Up: the features take effect and the host resumes.
@@ -940,18 +940,46 @@ impl TerminalView {
         drop(st);
         (callbacks.status)(status);
         self.area.queue_render();
+        self.update_accessible();
+    }
+
+    /// Tells assistive technologies what the screen shows now: the session's
+    /// page, or Set-Up while it is open.
+    fn update_accessible(&self) {
+        let (lines, cursor) = {
+            let st = self.state.borrow();
+            match &st.setup {
+                Some(setup) => screen_text(&setup.screen),
+                None => screen_text(&st.session.terminal()),
+            }
+        };
+        self.area.set_screen_text(&lines, cursor);
     }
 
     fn connect_notices(&self, notices: async_channel::Receiver<Notice>) {
         let area = self.area.clone();
         let session = self.state.borrow().session.clone();
         let ticking = Rc::new(std::cell::Cell::new(false));
+        let accessible_pending = Rc::new(std::cell::Cell::new(false));
         let view = self.clone();
         let callbacks = self.state.borrow().callbacks.clone();
         glib::spawn_future_local(async move {
             while let Ok(notice) = notices.recv().await {
                 match notice {
                     Notice::Redraw => {
+                        // Assistive technologies hear about changes at most
+                        // ten times a second. The timer also lets the next
+                        // change send a notice when no frame is drawn (a
+                        // hidden window draws none).
+                        if !accessible_pending.replace(true) {
+                            let (view, session, pending) =
+                                (view.clone(), session.clone(), accessible_pending.clone());
+                            glib::timeout_add_local_once(Duration::from_millis(100), move || {
+                                pending.set(false);
+                                session::frame_drawn(&session);
+                                view.update_accessible();
+                            });
+                        }
                         view.wake();
                         // Host output returns the screen to the page.
                         view.leave_review();
@@ -1143,7 +1171,24 @@ fn setup_input(keyval: gdk::Key, mods: Mods, is_setup_key: bool) -> Option<setup
     })
 }
 
-fn clipboard_for(area: &gtk::GLArea, primary: bool) -> gdk::Clipboard {
+/// The lines on the screen, without trailing blanks, and the cursor's
+/// position among them, for assistive technologies.
+fn screen_text(term: &vt_core::Terminal) -> (Vec<String>, (usize, usize)) {
+    let grid = term.display_grid();
+    let (top, lines) = term.window();
+    let text = (top..(top + lines).min(grid.rows()))
+        .map(|row| {
+            let line = grid.line(row);
+            let mut s: String = line.cells()[..line.width()].iter().map(|c| c.ch).collect();
+            s.truncate(s.trim_end().len());
+            s
+        })
+        .collect();
+    let cursor = term.cursor();
+    (text, (cursor.row.saturating_sub(top), cursor.col))
+}
+
+fn clipboard_for(area: &impl IsA<gtk::Widget>, primary: bool) -> gdk::Clipboard {
     if primary {
         area.primary_clipboard()
     } else {

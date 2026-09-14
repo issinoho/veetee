@@ -553,3 +553,15 @@ fn smooth_scroll_paces_each_scrolled_line() {
     });
     assert_eq!(vt520.smooth_scroll_rate(), None, "VT520 factory: jump");
 }
+
+#[test]
+fn text_from_left_of_the_left_margin_wraps_at_the_right_margin() {
+    // esctest DECSET_DECLRMM: printing starts outside the margins.
+    let mut t = vt_core::Terminal::new(vt_core::Config::default());
+    t.advance(b"\x1b[?7h\x1b[?69h\x1b[2;4sabcdefgh\x1b[?69l");
+    let row = |r: usize| -> String { t.grid().line(r).cells()[..4].iter().map(|c| c.ch).collect() };
+    assert_eq!(
+        (row(0), row(1), row(2)),
+        ("abcd".into(), " efg".into(), " h  ".into())
+    );
+}

@@ -48,6 +48,10 @@ jobs:
     env:
       CARGO_PROFILE_RELEASE_DEBUG: "0"
       CARGO_PROFILE_RELEASE_STRIP: symbols
+      # A code-signing certificate (.pfx, base64) and its password, if the
+      # repository has them; see packaging/windows/SIGNING.md.
+      WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
+      WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
     steps:
       - uses: actions/checkout@v4
       - uses: msys2/setup-msys2@v2
@@ -62,14 +66,49 @@ jobs:
             mingw-w64-ucrt-x86_64-gtk4
             mingw-w64-ucrt-x86_64-libadwaita
       - run: cargo build --release --locked -p veetee -p vt-headless
+      - name: Sign the executables
+        if: env.WINDOWS_CERTIFICATE != ''
+        shell: pwsh
+        run: |
+          $pfx = Join-Path $env:RUNNER_TEMP "veetee-signing.pfx"
+          [IO.File]::WriteAllBytes($pfx, [Convert]::FromBase64String($env:WINDOWS_CERTIFICATE))
+          $signtool = Get-ChildItem "C:\Program Files (x86)\Windows Kits\10\bin\*\x64\signtool.exe" |
+            Sort-Object FullName | Select-Object -Last 1
+          try {
+            & $signtool.FullName sign /fd SHA256 /td SHA256 /tr http://timestamp.digicert.com `
+              /f $pfx /p $env:WINDOWS_CERTIFICATE_PASSWORD `
+              target\release\veetee.exe target\release\vt-headless.exe
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          } finally {
+            Remove-Item $pfx
+          }
       - run: packaging/windows/bundle.sh
       - uses: actions/upload-artifact@v4
         with:
           name: windows
           path: target/dist/veetee-*-x86_64-windows.zip
 
+  flatpak:
+    # Builds the Flatpak from packaging/flatpak with the vendored crates.
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/flathub-infra/flatpak-github-actions:gnome-50
+      options: --privileged
+    steps:
+      - uses: actions/checkout@v4
+      - uses: flatpak/flatpak-github-actions/flatpak-builder@v6
+        with:
+          bundle: veetee-x86_64.flatpak
+          manifest-path: packaging/flatpak/com.issinoho.Veetee.yml
+          cache: false
+          upload-artifact: false
+      - uses: actions/upload-artifact@v4
+        with:
+          name: flatpak
+          path: veetee-x86_64.flatpak
+
   publish:
-    needs: [linux, windows]
+    needs: [linux, windows, flatpak]
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
@@ -95,8 +134,9 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           cd dist
-          sha256sum veetee-*.tar.gz veetee_*.deb veetee-*.zip > SHA256SUMS
+          mv veetee-x86_64.flatpak "veetee-$VERSION-x86_64.flatpak"
+          sha256sum veetee-*.tar.gz veetee_*.deb veetee-*.zip veetee-*.flatpak > SHA256SUMS
           gh release create "$GITHUB_REF_NAME" \
             --title "veetee $VERSION" \
             --notes-file ../notes.md \
-            veetee-*.tar.gz veetee_*.deb veetee-*.zip SHA256SUMS
+            veetee-*.tar.gz veetee_*.deb veetee-*.zip veetee-*.flatpak SHA256SUMS

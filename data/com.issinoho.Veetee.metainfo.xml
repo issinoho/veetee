@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>com.issinoho.Veetee</id>
+  <name>veetee</name>
+  <summary>DEC VT terminal for OpenVMS and other DEC hosts</summary>
+  <developer id="com.issinoho">
+    <name>The veetee Authors</name>
+  </developer>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>MIT OR Apache-2.0</project_license>
+  <description>
+    <p>
+      veetee emulates DEC video terminals, from the VT52 and VT100 to the VT420 and the colour
+      VT525, as faithfully as the manuals allow: DEC factory Set-Up defaults, fonts drawn on DEC's
+      own character cells, and the control functions forms and editing applications rely on.
+    </p>
+    <ul>
+      <li>VT100 to VT525 emulation with pages, rectangles, soft fonts, national character sets and dual sessions</li>
+      <li>An LK401 keyboard layout with PF1–PF4, the editing keypad and user-defined keys</li>
+      <li>Telnet, SSH, serial lines and local shells</li>
+      <li>The terminal's own Set-Up, keyclick and bells, smooth scrolling and a CRT picture</li>
+      <li>Saved connections, session logs, a searchable history and screen reader support</li>
+    </ul>
+  </description>
+  <launchable type="desktop-id">com.issinoho.Veetee.desktop</launchable>
+  <url type="homepage">https://issinoho.github.io/veetee/</url>
+  <url type="bugtracker">https://github.com/issinoho/veetee/issues</url>
+  <url type="vcs-browser">https://github.com/issinoho/veetee</url>
+  <url type="help">https://github.com/issinoho/veetee/wiki</url>
+  <screenshots>
+    <screenshot type="default">
+      <caption>A forms application on the VT420 model</caption>
+      <image>https://issinoho.github.io/veetee/img/vt420-order-entry.png</image>
+    </screenshot>
+    <screenshot>
+      <caption>The VT520 Set-Up menus</caption>
+      <image>https://issinoho.github.io/veetee/img/vt520-setup.png</image>
+    </screenshot>
+    <screenshot>
+      <caption>Colour on the VT525 model</caption>
+      <image>https://issinoho.github.io/veetee/img/vt525-colour.png</image>
+    </screenshot>
+  </screenshots>
+  <categories>
+    <category>System</category>
+    <category>TerminalEmulator</category>
+  </categories>
+  <keywords>
+    <keyword>terminal</keyword>
+    <keyword>OpenVMS</keyword>
+    <keyword>VT420</keyword>
+    <keyword>telnet</keyword>
+    <keyword>serial</keyword>
+  </keywords>
+  <provides>
+    <binary>veetee</binary>
+  </provides>
+  <supports>
+    <control>keyboard</control>
+    <control>pointing</control>
+  </supports>
+  <content_rating type="oars-1.1"/>
+  <releases>
+    <release version="0.8.0" date="2026-09-14">
+      <description>
+        <p>Saved connections, session logs, history review and search, and copy and paste that translate DEC characters.</p>
+      </description>
+    </release>
+    <release version="0.7.1" date="2026-09-14">
+      <description>
+        <p>The VT500 menu Set-Up, Display Controls, and hand-drawn 48-line and 132-column fonts.</p>
+      </description>
+    </release>
+  </releases>
+</component>

@@ -36,11 +36,24 @@ documentation.
 ## Installing
 
 [Releases](https://github.com/issinoho/veetee/releases) provide a Debian/Ubuntu package and an
-x86_64 Linux tarball, both needing GTK 4.12+ and libadwaita 1.5+:
+x86_64 Linux tarball, both needing GTK 4.14+ and libadwaita 1.5+:
 
 ```sh
 sudo apt install ./veetee_0.8.0-1_amd64.deb
 ```
+
+Any Linux distribution with Flatpak can install the Flatpak bundle from the next release on
+(it uses the GNOME runtime from Flathub):
+
+```sh
+flatpak install --user ./veetee-VERSION-x86_64.flatpak
+flatpak run com.issinoho.Veetee --telnet vms1
+```
+
+In the Flatpak, local shells, commands and `--ssh` run on the host through `flatpak-spawn`, so
+they see your own shell, files and `~/.ssh`; settings are kept in
+`~/.var/app/com.issinoho.Veetee/config/veetee`. Build it yourself with
+`flatpak-builder --user --install --force-clean build packaging/flatpak/com.issinoho.Veetee.yml`.
 
 For Windows 10 (1809) or later, unzip `veetee-0.8.0-x86_64-windows.zip` and run
 `bin\veetee.exe`; the GTK runtime is included. Local command windows use the Windows pseudo
@@ -50,7 +63,7 @@ Changes are listed in [CHANGELOG.md](CHANGELOG.md).
 
 ## Running
 
-Building from source requires GTK 4.12+ and libadwaita 1.5+ development packages
+Building from source requires GTK 4.14+ and libadwaita 1.5+ development packages
 (`sudo apt install libgtk-4-dev libadwaita-1-dev libasound2-dev` on Ubuntu; ALSA is for sound).
 
 ```sh
@@ -105,6 +118,11 @@ Shift+PgUp/Shift+PgDn moves the screen back through them, as a VT520 reviews pre
 typing or new output from the host returns to the page. *Find…* in the window menu (Ctrl+Shift+F)
 opens a find bar that searches the history and the page, newest first: Enter finds the next older
 match, Shift+Enter the next newer, and Esc closes it.
+
+### Accessibility
+
+The terminal is available to screen readers such as Orca: they can read the lines on the screen
+(and Set-Up), follow the cursor, and hear new output and typed text as it appears.
 
 ### Session logs
 
@@ -206,6 +224,7 @@ cargo xtask openvms                   # replay OpenVMS session recordings
 cargo xtask dist                      # release tarball, .deb (needs cargo-deb) and SHA256SUMS
 cargo run -p vt-headless -- trace --utf8 some-capture.bin
 cargo +nightly fuzz run parser        # requires cargo-fuzz
+cargo run --release -p vt-core --example terminal_throughput   # MB/s for typical host output
 ```
 
 ## License

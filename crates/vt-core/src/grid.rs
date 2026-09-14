@@ -150,19 +150,51 @@ impl Grid {
     /// the lines that left the top, oldest first; partial-width scrolls move
     /// cells only and return nothing.
     pub fn scroll_up(&mut self, rows: Region, n: usize, fill: Cell) -> Vec<Line> {
+        let mut gone = Vec::new();
+        self.scroll_up_with(rows, n, fill, |line| {
+            gone.push(line);
+            None
+        });
+        gone
+    }
+
+    /// Scrolls like [`Grid::scroll_up`], passing each line that leaves a
+    /// full-width region to `leave`, which may return a line whose memory
+    /// the new blank line reuses.
+    pub fn scroll_up_with(
+        &mut self,
+        rows: Region,
+        n: usize,
+        fill: Cell,
+        mut leave: impl FnMut(Line) -> Option<Line>,
+    ) {
         let height = rows.bottom - rows.top + 1;
         let n = n.min(height);
         if n == 0 {
-            return Vec::new();
+            return;
         }
-        if rows.left == 0 && rows.right + 1 >= self.cols {
+        let cols = self.cols;
+        if rows.left == 0 && rows.right + 1 >= cols {
             let span = &mut self.lines[rows.top..=rows.bottom];
             span.rotate_left(n);
-            let fresh = Line::new(self.cols, fill);
-            span[height - n..]
-                .iter_mut()
-                .map(|line| core::mem::replace(line, fresh.clone()))
-                .collect()
+            for slot in &mut span[height - n..] {
+                let empty = Line {
+                    cells: Vec::new(),
+                    size: LineSize::Single,
+                    wrapped: false,
+                };
+                let old = core::mem::replace(slot, empty);
+                *slot = match leave(old) {
+                    Some(mut line) => {
+                        line.cells.clear();
+                        line.cells.resize(cols, fill);
+                        line.size = LineSize::Single;
+                        line.wrapped = false;
+                        line
+                    }
+                    None => Line::new(cols, fill),
+                };
+            }
         } else {
             for row in rows.top..=rows.bottom {
                 let (dst, src) = (row, row + n);
@@ -173,7 +205,6 @@ impl Grid {
                     self.lines[dst].erase(rows.left..rows.right + 1, fill);
                 }
             }
-            Vec::new()
         }
     }
 

@@ -12,7 +12,7 @@ adw = { version = "0.9", package = "libadwaita", features = ["v1_5"] }
 async-channel = "2"
 cpal = "0.18"
 glow = "0.18"
-gtk = { version = "0.11", package = "gtk4", features = ["v4_12"] }
+gtk = { version = "0.11", package = "gtk4", features = ["v4_14"] }
 libloading = "0.9"
 serde = { version = "1", features = ["derive"] }
 toml = "1"
@@ -45,6 +45,8 @@ assets = [
     ["target/release/veetee", "usr/bin/", "755"],
     ["target/release/vt-headless", "usr/bin/", "755"],
     ["../../data/com.issinoho.Veetee.desktop", "usr/share/applications/", "644"],
+    ["../../data/com.issinoho.Veetee.metainfo.xml", "usr/share/metainfo/", "644"],
+    ["../../data/icons/com.issinoho.Veetee.svg", "usr/share/icons/hicolor/scalable/apps/", "644"],
     ["../../README.md", "usr/share/doc/veetee/README.md", "644"],
     ["../../CHANGELOG.md", "usr/share/doc/veetee/CHANGELOG.md", "644"],
     ["../../LICENSE-APACHE", "usr/share/doc/veetee/LICENSE-APACHE", "644"],

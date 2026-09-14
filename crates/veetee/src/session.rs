@@ -291,7 +291,7 @@ fn request_redraw(shared: &Shared, tx: &async_channel::Sender<Notice>) {
     }
 }
 
-/// Called by the UI after it has drawn, so the next change schedules a new frame.
+/// Called by the UI when it handles a redraw notice, so the next change sends another.
 pub fn frame_drawn(session: &Session) {
     session
         .shared

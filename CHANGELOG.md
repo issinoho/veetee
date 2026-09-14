@@ -5,6 +5,26 @@ milestones (0.3 = M3). The format follows [Keep a Changelog](https://keepachange
 
 ## [Unreleased]
 
+- **Flatpak (M8)**: a Flatpak manifest (`packaging/flatpak`) on the GNOME 50 runtime, built in CI
+  and attached to releases as a `.flatpak` bundle. In the sandbox, local shells, commands and SSH
+  run on the host through `flatpak-spawn --host`; Telnet, serial lines and sound work directly.
+- **Signed Windows builds (M8)**: release builds sign `veetee.exe` and `vt-headless.exe` when the
+  repository has a code-signing certificate (see `packaging/windows/SIGNING.md`).
+- An application icon and AppStream metadata, installed by the Debian package and tarball too.
+
+- **Accessibility (M8)**: the terminal is exposed to screen readers such as Orca as a terminal
+  named "Terminal": its text is the lines on the screen (or Set-Up while it is open), the caret is
+  the cursor, and output is reported as the text removed and inserted, so new lines and typed
+  characters are spoken rather than the whole screen. This works while the window is hidden too.
+- **Changed**: veetee now needs GTK 4.14 or later (for accessible text).
+- **Faster output (M8)**: plain text and DEC line drawing are written a run at a time, lines that
+  scroll off reuse memory instead of allocating, smooth scroll is only recorded where it is
+  shown, and control sequence parameters are parsed in a tight loop. The terminal model now
+  handles about 105 MB/s of text lines (from 29), 82 MB/s of cursor-addressed forms (from 39)
+  and 60 MB/s of line drawing, renditions or UTF-8 (from 23–32), measured with
+  `cargo run --release -p vt-core --example terminal_throughput`. A local flood now runs within
+  about 15% of the speed of the pseudo-terminal itself.
+
 ## [0.8.0] - 2026-09-14
 
 The first release of milestone M8, power-user features: saved connections, session logs,

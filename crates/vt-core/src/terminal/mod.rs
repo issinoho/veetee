@@ -163,6 +163,13 @@ impl Terminal {
     /// first line that scrolls, so the caller can show it at DEC speed.
     /// Returns how many bytes were processed; the rest must be passed again.
     pub fn advance_paced(&mut self, bytes: &[u8]) -> usize {
+        self.emu.pacing = true;
+        let used = self.advance_paced_inner(bytes);
+        self.emu.pacing = false;
+        used
+    }
+
+    fn advance_paced_inner(&mut self, bytes: &[u8]) -> usize {
         let mut used = 0;
         while used < bytes.len() {
             let n = if self.emu.stored.display_controls {
@@ -647,6 +654,9 @@ struct Emulator {
     stored: crate::setup::Features,
     /// A smooth scroll that has happened and not yet been taken.
     smooth: Option<SmoothScroll>,
+    /// Processing is paced ([`Terminal::advance_paced`]), so smooth scrolls
+    /// are recorded and stop the parser.
+    pacing: bool,
     /// The last bytes shown in Display Controls mode, to recognise DECSR.
     crm_tail: Vec<u8>,
     /// Text written to the page, for a session log.
@@ -783,6 +793,7 @@ impl Emulator {
             keyprog: crate::keyprog::KeyPrograms::default(),
             stored: crate::setup::Features::factory(model),
             smooth: None,
+            pacing: false,
             crm_tail: Vec::new(),
             capture: None,
             output: Vec::new(),
@@ -1179,7 +1190,7 @@ impl Emulator {
     /// In smooth scroll mode, records the line about to scroll and stops the
     /// parser, so the display can show the scroll before more is processed.
     fn note_smooth_scroll(&mut self, up: bool) {
-        if !self.modes.smooth_scroll {
+        if !self.modes.smooth_scroll || !self.pacing {
             return;
         }
         let row = if up { self.top } else { self.bottom };
@@ -1197,15 +1208,23 @@ impl Emulator {
     fn scroll_up(&mut self, n: usize) {
         let region = self.region(self.top);
         let blank = self.blank();
-        let gone = self.grid.scroll_up(region, n, blank);
-        if self.top == 0 && self.page == 0 && self.config.scrollback_lines > 0 {
-            for line in gone {
-                if self.scrollback.len() == self.config.scrollback_lines {
-                    self.scrollback.pop_front();
-                }
-                self.scrollback.push_back(line);
+        let capacity = self.config.scrollback_lines;
+        let keep = self.top == 0 && self.page == 0 && capacity > 0;
+        let scrollback = &mut self.scrollback;
+        // Lines leaving the page go to the scrollback; the blank lines that
+        // replace them reuse the oldest scrollback line, or the line itself.
+        self.grid.scroll_up_with(region, n, blank, |line| {
+            if !keep {
+                return Some(line);
             }
-        }
+            let spare = if scrollback.len() >= capacity {
+                scrollback.pop_front()
+            } else {
+                None
+            };
+            scrollback.push_back(line);
+            spare
+        });
     }
 
     fn tab(&mut self, n: usize) {
@@ -1267,6 +1286,73 @@ impl Emulator {
                 self.events.push(Event::MarginBell);
             }
         }
+    }
+
+    /// Writes the GL characters at the start of `bytes` in one go, when that
+    /// is exactly what writing them a character at a time would do: ASCII or
+    /// DEC Special Graphics in GL, no single shift, insert mode or national
+    /// mode, and no character reaching the right margin (where autowrap
+    /// applies). Returns how many characters were written; 0 leaves them to
+    /// [`Emulator::print_byte`].
+    fn print_ascii_run(&mut self, bytes: &[u8]) -> usize {
+        let cs = &self.charsets;
+        if !self.modes.ansi
+            || self.modes.national
+            || self.modes.insert
+            || self.cursor.pending_wrap
+            || cs.single_shift.is_some()
+        {
+            return 0;
+        }
+        let set = cs.g[usize::from(cs.gl)];
+        if !matches!(set, Charset::Ascii | Charset::DecSpecialGraphics) {
+            return 0;
+        }
+        let col = self.cursor.col;
+        let last = self.right_limit();
+        // Left of the left margin, the right margin applies once the cursor
+        // enters the margins: stop there and look again.
+        let stop = if !self.status.active && self.modes.lr_margins && col < self.left {
+            self.left.min(last)
+        } else {
+            last
+        };
+        let n = bytes
+            .iter()
+            .take(stop.saturating_sub(col))
+            .take_while(|b| (0x20..0x7F).contains(*b))
+            .count();
+        if n == 0 {
+            return 0;
+        }
+        let attrs = self.writing_attrs();
+        // Every GL code of these sets maps to a character.
+        let glyph = |code: u8| match set {
+            Charset::Ascii => char::from(code),
+            _ => set.map(code).unwrap_or(char::from(code)),
+        };
+        if !self.status.active {
+            if let Some(text) = &mut self.capture {
+                text.extend(bytes[..n].iter().map(|&b| glyph(b)));
+            }
+        }
+        let line = self.cursor_line_mut();
+        for (cell, &code) in line.cells_mut()[col..col + n].iter_mut().zip(bytes) {
+            *cell = Cell {
+                ch: glyph(code),
+                attrs,
+                code,
+            };
+        }
+        self.cursor.col = col + n;
+        // The margin bell rings as the cursor reaches eight columns from the margin.
+        if last >= 8
+            && (col + 1..=col + n).contains(&(last - 8))
+            && self.setup.selection(b" u") != "1"
+        {
+            self.events.push(Event::MarginBell);
+        }
+        n
     }
 
     fn print_byte(&mut self, byte: u8) {
@@ -1647,8 +1733,10 @@ impl Emulator {
         let output = std::mem::take(&mut self.output);
         let events = std::mem::take(&mut self.events);
         let capture = self.capture.take();
+        let pacing = self.pacing;
         *self = Emulator::new(Config { rows, ..config });
         self.capture = capture;
+        self.pacing = pacing;
         self.scrollback = scrollback;
         self.soft_generation = generation;
         self.output = output;
@@ -1927,9 +2015,15 @@ impl Perform for Emulator {
         self.print_byte(byte);
     }
 
-    fn print_run(&mut self, bytes: &[u8]) {
-        for &b in bytes {
-            self.print_byte(b);
+    fn print_run(&mut self, mut bytes: &[u8]) {
+        while let Some(&first) = bytes.first() {
+            let n = self.print_ascii_run(bytes);
+            if n == 0 {
+                self.print_byte(first);
+                bytes = &bytes[1..];
+            } else {
+                bytes = &bytes[n..];
+            }
         }
     }
 

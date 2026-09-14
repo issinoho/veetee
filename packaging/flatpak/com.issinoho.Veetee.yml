@@ -1,0 +1,52 @@
+# Flatpak manifest for veetee.
+#
+#   flatpak-builder --user --install --force-clean build packaging/flatpak/com.issinoho.Veetee.yml
+#
+# cargo-sources.json lists the crates in Cargo.lock so the build works offline;
+# regenerate it after changing dependencies:
+#   python3 flatpak-cargo-generator.py Cargo.lock -o packaging/flatpak/cargo-sources.json
+# (flatpak-cargo-generator.py is in github.com/flatpak/flatpak-builder-tools.)
+id: com.issinoho.Veetee
+runtime: org.gnome.Platform
+runtime-version: '50'
+sdk: org.gnome.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.rust-stable
+command: veetee
+finish-args:
+  - --share=ipc
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --device=dri
+  # Keyclick, bells and DECPS tones.
+  - --socket=pulseaudio
+  # Telnet and SSH.
+  - --share=network
+  # Serial lines (/dev/ttyUSB0 and so on).
+  - --device=all
+  # Local shells, commands and the OpenSSH client run on the host.
+  - --talk-name=org.freedesktop.Flatpak
+  # Session logs and recordings named on the command line or in saved connections.
+  - --filesystem=home
+build-options:
+  append-path: /usr/lib/sdk/rust-stable/bin
+  env:
+    CARGO_HOME: /run/build/veetee/cargo
+    CARGO_NET_OFFLINE: 'true'
+modules:
+  - name: veetee
+    buildsystem: simple
+    build-commands:
+      - cargo --offline build --release --locked -p veetee
+      - install -Dm755 target/release/veetee /app/bin/veetee
+      - install -Dm644 data/com.issinoho.Veetee.desktop -t /app/share/applications
+      - install -Dm644 data/com.issinoho.Veetee.metainfo.xml -t /app/share/metainfo
+      - install -Dm644 data/icons/com.issinoho.Veetee.svg -t /app/share/icons/hicolor/scalable/apps
+    sources:
+      - type: dir
+        path: ../..
+        skip:
+          - target
+          - .git
+          - site
+      - cargo-sources.json

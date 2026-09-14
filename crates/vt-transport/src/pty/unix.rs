@@ -13,6 +13,31 @@ use rustix::fs::{OFlags, open};
 use rustix::pty::{OpenptFlags, grantpt, openpt, ptsname, unlockpt};
 use rustix::termios::{Winsize, tcsetwinsize};
 
+/// Whether veetee runs inside a Flatpak sandbox.
+pub fn in_flatpak() -> bool {
+    std::path::Path::new("/.flatpak-info").exists()
+}
+
+/// A command for `program`. Inside Flatpak, programs such as the user's
+/// shell and OpenSSH run on the host through `flatpak-spawn --host`, which
+/// passes the PTY on and makes it their controlling terminal.
+fn host_command<S: AsRef<OsStr>>(program: &str, args: &[S], term: &str) -> Command {
+    if !in_flatpak() {
+        let mut cmd = Command::new(program);
+        cmd.args(args);
+        return cmd;
+    }
+    let mut cmd = Command::new("flatpak-spawn");
+    cmd.arg("--host")
+        .arg("--watch-bus")
+        .arg(format!("--env=TERM={term}"));
+    if let Ok(dir) = std::env::current_dir() {
+        cmd.arg(format!("--directory={}", dir.display()));
+    }
+    cmd.arg(program).args(args);
+    cmd
+}
+
 /// A running child process attached to a PTY.
 #[derive(Debug)]
 pub struct Pty {
@@ -38,9 +63,8 @@ impl Pty {
         let slave: OwnedFd = open(name.as_c_str(), OFlags::RDWR | OFlags::NOCTTY, 0.into())?;
         tcsetwinsize(&slave, winsize(rows, cols))?;
 
-        let mut cmd = Command::new(program);
-        cmd.args(args)
-            .env("TERM", term)
+        let mut cmd = host_command(program, args, term);
+        cmd.env("TERM", term)
             .stdin(Stdio::from(slave.try_clone()?))
             .stdout(Stdio::from(slave.try_clone()?))
             .stderr(Stdio::from(slave));

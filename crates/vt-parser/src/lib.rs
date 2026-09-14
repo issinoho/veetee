@@ -247,11 +247,30 @@ impl Parser {
         while i < bytes.len() {
             if self.state == State::Ground && self.utf8.needed == 0 {
                 let start = i;
-                while i < bytes.len() && self.is_run_byte(bytes[i]) {
+                // Find the run's end with the mode decided once, not per byte.
+                let rest = &bytes[i..];
+                let len = match self.mode {
+                    InputMode::SevenBit | InputMode::Utf8 => {
+                        rest.iter().position(|b| !(0x20..=0x7F).contains(b))
+                    }
+                    InputMode::EightBit | InputMode::EightBitNoC1 => rest
+                        .iter()
+                        .position(|&b| !((0x20..=0x7F).contains(&b) || b >= 0xA0)),
+                };
+                i += len.unwrap_or(rest.len());
+                if i > start {
+                    performer.print_run(&bytes[start..i]);
+                    continue;
+                }
+            }
+            if self.state == State::CsiParam {
+                // Parameter digits and separators need no other state.
+                let start = i;
+                while let Some(&b @ 0x30..=0x3B) = bytes.get(i) {
+                    self.param(b);
                     i += 1;
                 }
                 if i > start {
-                    performer.print_run(&bytes[start..i]);
                     continue;
                 }
             }
@@ -277,15 +296,6 @@ impl Parser {
             }
             InputMode::Utf8 if byte >= 0x80 => self.high_non_control(p, byte),
             _ => self.step(p, byte),
-        }
-    }
-
-    fn is_run_byte(&self, b: u8) -> bool {
-        match self.mode {
-            InputMode::SevenBit | InputMode::Utf8 => (0x20..=0x7F).contains(&b),
-            InputMode::EightBit | InputMode::EightBitNoC1 => {
-                (0x20..=0x7F).contains(&b) || b >= 0xA0
-            }
         }
     }
 

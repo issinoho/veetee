@@ -117,6 +117,20 @@ jobs:
             target/dist/smoke/help.txt
           if-no-files-found: warn
 
+  flatpak:
+    # Builds the Flatpak from packaging/flatpak with the vendored crates.
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/flathub-infra/flatpak-github-actions:gnome-50
+      options: --privileged
+    steps:
+      - uses: actions/checkout@v4
+      - uses: flatpak/flatpak-github-actions/flatpak-builder@v6
+        with:
+          bundle: veetee-x86_64.flatpak
+          manifest-path: packaging/flatpak/com.issinoho.Veetee.yml
+          cache-key: flatpak-builder-${{ hashFiles('packaging/flatpak/cargo-sources.json') }}
+
   licenses:
     runs-on: ubuntu-latest
     steps:
