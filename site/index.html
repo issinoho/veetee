@@ -419,7 +419,7 @@ footer p { margin: 0 0 8px; }
         <div class="feature"><span class="key"><small>DECCRA</small><strong>Rectangle</strong></span><h3>VT420 rectangles and pages</h3><p>Left/right margins, rectangular copy, fill, erase and attribute changes, checksums that match the hardware, page memory, macros and state reports.</p></div>
         <div class="feature"><span class="key light"><small>F4</small><strong>Session</strong></span><h3>Dual sessions</h3><p>Two independent sessions in a split window, just like a VT520 on two comm lines. The host can name each session and make it active.</p></div>
         <div class="feature"><span class="key gold"><small>F5</small><strong>Break</strong></span><h3>Telnet, SSH and serial</h3><p>Native Telnet with binary mode and BREAK, SSH through your OpenSSH setup, and serial lines at DEC factory defaults (9600 8N1 XON/XOFF), on Linux and on Windows COM ports. LAT is on the roadmap.</p></div>
-        <div class="feature"><span class="key"><small>F1</small><strong>Hold Screen</strong></span><h3>Power-user touches</h3><p>Saved connections, session logs with timestamps, a searchable scrollback, copy and paste that translate DEC characters, Hold Screen with real flow control, a visual LK401 keymap editor, VT520 key programming and session recordings that replay as tests.</p></div>
+        <div class="feature"><span class="key"><small>F1</small><strong>Hold Screen</strong></span><h3>Power-user touches</h3><p>Saved connections, session logs with timestamps, a searchable scrollback, screen reader support, copy and paste that translate DEC characters, Hold Screen with real flow control, a visual LK401 keymap editor, VT520 key programming and session recordings that replay as tests.</p></div>
         <div class="feature"><span class="key gold"><small>F3</small><strong>Set-Up</strong></span><h3>Set-Up, as DEC built it</h3><p>The VT420 Set-Up Directory and its screens, or on a VT520 the pull-right menus and summary line, with Save, Recall and Default. Saved settings are the power-up settings, and Display Controls shows exactly what the host sends.</p></div>
         <div class="feature"><span class="key"><small>BEL</small><strong>Bell</strong></span><h3>Sound and motion</h3><p>Keyclick, warning and margin bells and DECPS tunes at the Set-Up volumes; smooth scroll at DEC speed with flow control; a CRT saver that blanks an idle screen.</p></div>
         <div class="feature"><span class="key light"><small>SET TERM</small><strong>Inquire</strong></span><h3>Honest identity</h3><p>Device attributes, mode reports, DECRQSS and terminal state reports answer as the chosen model, so <code>SET TERMINAL/INQUIRE</code> sees the terminal you picked.</p></div>
@@ -477,11 +477,16 @@ footer p { margin: 0 0 8px; }
       <div class="two">
         <div>
           <h3>Debian and Ubuntu</h3>
-          <p>Download the package from the <a href="https://github.com/issinoho/veetee/releases/latest">latest release</a> and install it. GTK 4.12 and libadwaita 1.5 or later are required.</p>
+          <p>Download the package from the <a href="https://github.com/issinoho/veetee/releases/latest">latest release</a> and install it. GTK 4.14 and libadwaita 1.5 or later are required.</p>
           <div class="term"><span class="c"># fetch and install veetee 0.8.0</span>
 $ curl -LO https://github.com/issinoho/veetee/\
     releases/download/v0.8.0/veetee_0.8.0-1_amd64.deb
 $ sudo apt install ./veetee_0.8.0-1_amd64.deb</div>
+          <h3 style="margin-top:32px">Any distribution, with Flatpak</h3>
+          <p>From the next release, a Flatpak bundle runs on any distribution with the GNOME runtime from Flathub. Local shells and <code>--ssh</code> run on the host, so your own shell and <code>~/.ssh</code> apply.</p>
+          <div class="term"><span class="c"># install the bundle from a release</span>
+$ flatpak install --user ./veetee-VERSION-x86_64.flatpak
+$ flatpak run com.issinoho.Veetee --telnet vms1</div>
           <h3 style="margin-top:32px">Windows 10 and 11</h3>
           <p>One zip with GTK included: unzip it anywhere and run <code>bin\veetee.exe</code>. Local sessions use the Windows pseudo console, <code>--ssh</code> uses Windows' OpenSSH client, and <code>--serial COM3</code> opens a COM port.</p>
           <div class="term"><span class="c">REM fetch, unzip and connect in Command Prompt</span>
@@ -493,7 +498,7 @@ $ sudo apt install ./veetee_0.8.0-1_amd64.deb</div>
 &gt; bin\veetee --telnet vms1</div>
           <h3 style="margin-top:32px">From source</h3>
           <div class="term"><span class="c"># Rust stable plus GTK 4 development files</span>
-$ sudo apt install libgtk-4-dev libadwaita-1-dev
+$ sudo apt install libgtk-4-dev libadwaita-1-dev libasound2-dev
 $ git clone https://github.com/issinoho/veetee.git
 $ cd veetee && cargo run --release -p veetee</div>
         </div>
@@ -531,7 +536,7 @@ $ SHOW TERMINAL</div>
         <div class="milestone done"><span class="dot"></span><div><b>M5 · Transports</b><span>PTY, Telnet, SSH, serial · LAT to come</span></div></div>
         <div class="milestone done"><span class="dot"></span><div><b>M6 · Keyboard &amp; apps</b><span>Keymap editor, key programming, recordings · 0.6.0</span></div></div>
         <div class="milestone done"><span class="dot"></span><div><b>M7 · Fonts &amp; look</b><span>DEC-cell fonts, Set-Up, sound, CRT · 0.7.1</span></div></div>
-        <div class="milestone next"><span class="dot"></span><div><b>M8 · 1.0</b><span>Connections, logs, search ✓ · accessibility, Flatpak to come · 0.8.0</span></div></div>
+        <div class="milestone next"><span class="dot"></span><div><b>M8 · 1.0</b><span>Connections, logs, search, screen readers, Flatpak ✓ · signed Windows builds to come</span></div></div>
       </div>
     </div>
   </section>

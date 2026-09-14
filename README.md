@@ -10,7 +10,8 @@ and SSH, Telnet, serial and LAT connections.
 dual sessions, page memory, rectangular operations, soft fonts), an LK401 keyboard map with a
 visual editor and VT520 key programming, session recordings, fonts drawn on DEC's own
 character cells, VT420 and VT520 Set-Up, sound, smooth scrolling, a CRT picture, saved connections,
-session logs and a searchable history. vttest VT100–VT520 menus pass headless,
+session logs, a searchable history and screen reader support, on Linux (including Flatpak) and
+Windows. vttest VT100–VT520 menus pass headless,
 and esctest2 runs at VT level 5 with every difference from xterm explained against DEC
 documentation.
 
@@ -29,8 +30,9 @@ documentation.
 | `xtask` | `cargo xtask vttest` / `esctest` run the conformance suites against pinned upstream versions; `dist` builds release packages |
 | `tests/conformance` | vttest session scripts with golden screens; esctest2 expected failures |
 | `docs/compat-matrix.md` | Per-function DEC compatibility status and sources |
-| `data/` | Desktop entry |
-| `packaging/windows` | Windows zip bundling (MSYS2 GTK runtime) |
+| `data/` | Desktop entry, AppStream metadata and application icon |
+| `packaging/flatpak` | Flatpak manifest and vendored crate sources |
+| `packaging/windows` | Windows zip bundling (MSYS2 GTK runtime) and code signing |
 | `fuzz/` | cargo-fuzz targets (nightly) |
 
 ## Installing
@@ -56,7 +58,8 @@ they see your own shell, files and `~/.ssh`; settings are kept in
 `flatpak-builder --user --install --force-clean build packaging/flatpak/com.issinoho.Veetee.yml`.
 
 For Windows 10 (1809) or later, unzip `veetee-0.8.0-x86_64-windows.zip` and run
-`bin\veetee.exe`; the GTK runtime is included. Local command windows use the Windows pseudo
+`bin\veetee.exe`; the GTK runtime is included. Release builds are code-signed once the project
+has a certificate (see `packaging/windows/SIGNING.md`). Local command windows use the Windows pseudo
 console, `--ssh` uses Windows' OpenSSH client and `--serial COM3` opens a COM port.
 
 Changes are listed in [CHANGELOG.md](CHANGELOG.md).
