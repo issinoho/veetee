@@ -322,7 +322,7 @@ footer p { margin: 0 0 8px; }
         <h1>The DEC terminal,<br><em>kept alive.</em></h1>
         <p>veetee is an open-source DEC VT terminal for Linux and Windows. It is built from DEC's own programmer references and tested screen by screen, so OpenVMS, DECforms, FMS and EDT behave exactly as they did on the glass.</p>
         <div class="cta">
-          <a class="key gold wide" href="https://github.com/issinoho/veetee/releases/latest"><small>PF1 · Gold</small><strong>Download 0.6.0</strong></a>
+          <a class="key gold wide" href="https://github.com/issinoho/veetee/releases/latest"><small>PF1 · Gold</small><strong>Download 0.7.0</strong></a>
           <a class="key light" href="https://github.com/issinoho/veetee"><small>Find</small><strong>Source</strong></a>
           <a class="key" href="https://github.com/issinoho/veetee/wiki"><small>Help</small><strong>Wiki</strong></a>
         </div>
@@ -368,7 +368,7 @@ footer p { margin: 0 0 8px; }
     <div class="wrap">
       <p class="eyebrow">Real screens, real renderer</p>
       <h2>Every screenshot is veetee.</h2>
-      <p class="lead">No mock-ups: each screen was captured from veetee's own OpenGL renderer, running vttest or a demo script. Original bitmap fonts are drawn dot by dot on DEC's own 10×16 character cells, with scan lines, double-size lines made by doubling the dots, and 132 columns that really narrow the characters.</p>
+      <p class="lead">No mock-ups: each screen was captured from veetee's own OpenGL renderer, running vttest or a demo script, with its phosphor glow. Original bitmap fonts are drawn dot by dot on DEC's own 10×16 character cells, with scan lines, double-size lines made by doubling the dots, and 132 columns that really narrow the characters.</p>
 
       <div class="gallery">
         <figure class="shot">
@@ -386,6 +386,14 @@ footer p { margin: 0 0 8px; }
         <figure class="shot">
           <div class="crt"><div class="screen"><img loading="lazy" src="img/vt525-colour.png" alt="A colour status dashboard using ANSI SGR colours on the VT525 model" width="1024" height="774"></div><span class="led"></span></div>
           <figcaption><b>VT525 colour.</b> SGR colours, alternate text colours for attribute combinations, and a host-loadable 16-colour map reported in RGB or DEC HLS.</figcaption>
+        </figure>
+        <figure class="shot">
+          <div class="crt"><div class="screen"><img loading="lazy" src="img/vt420-setup.png" alt="The VT420 Set-Up Directory in veetee, with the field cursor on Global" width="1024" height="774"></div><span class="led"></span></div>
+          <figcaption><b>F3 is Set-Up.</b> The VT420's own Set-Up screens, field cursor and all: change the display, keyboard and communications settings, then Save them as the power-up settings.</figcaption>
+        </figure>
+        <figure class="shot">
+          <div class="crt"><div class="screen"><img loading="lazy" src="img/vt420-curved-green.png" alt="The order entry form in green phosphor on a curved screen with glow and darker corners" width="1024" height="774"></div><span class="led"></span></div>
+          <figcaption><b>Glass, not pixels.</b> Phosphor glow and afterglow, and an optional curved tube face with darker corners. Lines scroll smoothly at nine a second, as a VT420's did.</figcaption>
         </figure>
         <figure class="shot big">
           <div class="window-shot"><img loading="lazy" src="img/dual-sessions.png" alt="A veetee window split into two sessions, VMS1 order entry above and VMS2 queue monitor below, each with its own title bar" width="1024" height="820"></div>
@@ -408,6 +416,8 @@ footer p { margin: 0 0 8px; }
         <div class="feature"><span class="key light"><small>F4</small><strong>Session</strong></span><h3>Dual sessions</h3><p>Two independent sessions in a split window, just like a VT520 on two comm lines. The host can name each session and make it active.</p></div>
         <div class="feature"><span class="key gold"><small>F5</small><strong>Break</strong></span><h3>Telnet, SSH and serial</h3><p>Native Telnet with binary mode and BREAK, SSH through your OpenSSH setup, and serial lines at DEC factory defaults (9600 8N1 XON/XOFF), on Linux and on Windows COM ports. LAT is on the roadmap.</p></div>
         <div class="feature"><span class="key"><small>F1</small><strong>Hold Screen</strong></span><h3>Power-user touches</h3><p>Hold Screen with real flow control, a visual LK401 keymap editor, VT520 key programming, copy that understands VMS file specs, session recordings that replay as tests, and phosphor, scan-line and dot-stretch rendering.</p></div>
+        <div class="feature"><span class="key gold"><small>F3</small><strong>Set-Up</strong></span><h3>Set-Up, as DEC built it</h3><p>The VT420 Set-Up Directory and its Global, Display, General, Communications, Keyboard and Tab screens, with Save, Recall and Default. Saved settings are the power-up settings.</p></div>
+        <div class="feature"><span class="key"><small>BEL</small><strong>Bell</strong></span><h3>Sound and motion</h3><p>Keyclick, warning and margin bells and DECPS tunes at the Set-Up volumes; smooth scroll at DEC speed with flow control; a CRT saver that blanks an idle screen.</p></div>
         <div class="feature"><span class="key light"><small>SET TERM</small><strong>Inquire</strong></span><h3>Honest identity</h3><p>Device attributes, mode reports, DECRQSS and terminal state reports answer as the chosen model, so <code>SET TERMINAL/INQUIRE</code> sees the terminal you picked.</p></div>
       </div>
     </div>
@@ -427,7 +437,7 @@ footer p { margin: 0 0 8px; }
           <li><span class="year">1987</span><span class="model">VT320</span><span class="note">ISO Latin-1, status lines, presentation and mode reports.</span></li>
           <li><span class="year">1990</span><span class="model">VT420</span><span class="note">Left/right margins, rectangles, page memory, macros, dual sessions.</span></li>
           <li><span class="year">1994</span><span class="model">VT520 · VT525</span><span class="note">VT500 character sets, cursor styles, framed sessions, colour on the VT525.</span></li>
-          <li><span class="year">2026</span><span class="model">veetee 0.6.0</span><span class="note">All of the above, on a Linux or Windows desktop near you. Default: VT420.</span></li>
+          <li><span class="year">2026</span><span class="model">veetee 0.7.0</span><span class="note">All of the above, on a Linux or Windows desktop near you. Default: VT420.</span></li>
         </ul>
       </div>
     </div>
@@ -441,7 +451,7 @@ footer p { margin: 0 0 8px; }
       <div class="stats">
         <div class="stat"><div class="n">18</div><div class="l">vttest scripts across menus 1–8 and 11.1–11.4, compared with golden screens on every commit</div></div>
         <div class="stat"><div class="n">368</div><div class="l">esctest2 tests pass at VT level 5; every other difference is written down with its DEC reason</div></div>
-        <div class="stat"><div class="n">300</div><div class="l">unit tests, written against the manual sections they cite, run on Linux and Windows</div></div>
+        <div class="stat"><div class="n">318</div><div class="l">unit tests, written against the manual sections they cite, run on Linux and Windows</div></div>
         <div class="stat"><div class="n">0</div><div class="l">xterm-isms by default: autowrap off at power-up, Backspace sends DEL, SU/SD pan through page memory</div></div>
       </div>
       <div class="manuals" aria-label="DEC manuals followed">
@@ -464,18 +474,18 @@ footer p { margin: 0 0 8px; }
         <div>
           <h3>Debian and Ubuntu</h3>
           <p>Download the package from the <a href="https://github.com/issinoho/veetee/releases/latest">latest release</a> and install it. GTK 4.12 and libadwaita 1.5 or later are required.</p>
-          <div class="term"><span class="c"># fetch and install veetee 0.6.0</span>
+          <div class="term"><span class="c"># fetch and install veetee 0.7.0</span>
 $ curl -LO https://github.com/issinoho/veetee/\
-    releases/download/v0.6.0/veetee_0.6.0-1_amd64.deb
-$ sudo apt install ./veetee_0.6.0-1_amd64.deb</div>
+    releases/download/v0.7.0/veetee_0.7.0-1_amd64.deb
+$ sudo apt install ./veetee_0.7.0-1_amd64.deb</div>
           <h3 style="margin-top:32px">Windows 10 and 11</h3>
           <p>One zip with GTK included: unzip it anywhere and run <code>bin\veetee.exe</code>. Local sessions use the Windows pseudo console, <code>--ssh</code> uses Windows' OpenSSH client, and <code>--serial COM3</code> opens a COM port.</p>
           <div class="term"><span class="c">REM fetch, unzip and connect in Command Prompt</span>
 &gt; curl.exe -LO https://github.com/issinoho/^
-    veetee/releases/download/v0.6.0/^
-    veetee-0.6.0-x86_64-windows.zip
-&gt; tar -xf veetee-0.6.0-x86_64-windows.zip
-&gt; cd veetee-0.6.0-x86_64-windows
+    veetee/releases/download/v0.7.0/^
+    veetee-0.7.0-x86_64-windows.zip
+&gt; tar -xf veetee-0.7.0-x86_64-windows.zip
+&gt; cd veetee-0.7.0-x86_64-windows
 &gt; bin\veetee --telnet vms1</div>
           <h3 style="margin-top:32px">From source</h3>
           <div class="term"><span class="c"># Rust stable plus GTK 4 development files</span>
@@ -515,9 +525,9 @@ $ SHOW TERMINAL</div>
         <div class="milestone done"><span class="dot"></span><div><b>M3 · VT420</b><span>Margins, rectangles, pages · 0.3.0</span></div></div>
         <div class="milestone done"><span class="dot"></span><div><b>M4 · VT520 / VT525</b><span>Colour, sessions, VT500 sets · 0.4.0</span></div></div>
         <div class="milestone done"><span class="dot"></span><div><b>M5 · Transports</b><span>PTY, Telnet, SSH, serial · LAT to come</span></div></div>
-        <div class="milestone done"><span class="dot"></span><div><b>M6 · Keyboard &amp; apps</b><span>Keymap editor, key programming, recordings · 0.6.0</span></div></div>
-        <div class="milestone next"><span class="dot"></span><div><b>M7 · Fonts &amp; look</b><span>DEC-cell fonts ✓ · sound, CRT mode, Set-Up</span></div></div>
-        <div class="milestone"><span class="dot"></span><div><b>M8 · 1.0</b><span>Profiles, logging, Flatpak</span></div></div>
+        <div class="milestone done"><span class="dot"></span><div><b>M6 · Keyboard &amp; apps</b><span>Keymap editor, key programming, recordings · 0.7.0</span></div></div>
+        <div class="milestone done"><span class="dot"></span><div><b>M7 · Fonts &amp; look</b><span>DEC-cell fonts, Set-Up, sound, CRT · 0.7.0</span></div></div>
+        <div class="milestone next"><span class="dot"></span><div><b>M8 · 1.0</b><span>Profiles, logging, Flatpak</span></div></div>
       </div>
     </div>
   </section>

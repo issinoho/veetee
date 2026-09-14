@@ -5,6 +5,12 @@ milestones (0.3 = M3). The format follows [Keep a Changelog](https://keepachange
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-09-14
+
+Milestone M7, the look and feel of the terminal: DEC character cell fonts (in 0.6.0), Set-Up,
+sound, smooth scrolling and a CRT picture. The VT500 menu-driven Set-Up and more hand-drawn
+fonts are still to come.
+
 - **CRT look (M7)**: the page is drawn through a post-processing pass with a soft glow around lit
   dots and phosphor afterglow that fades with the phosphor's persistence (short for P4 white,
   longer for P1 green and P3 amber), both on by default, and an optional curved screen with
@@ -135,7 +141,8 @@ The first release: VT100 through VT420 emulation with local, Telnet, SSH and ser
   `cargo deny` licence checks and parser fuzzing.
 - `cargo xtask dist` builds the release tarball and Debian package.
 
-[Unreleased]: https://github.com/issinoho/veetee/compare/v0.6.0...HEAD
+[Unreleased]: https://github.com/issinoho/veetee/compare/v0.7.0...HEAD
+[0.7.0]: https://github.com/issinoho/veetee/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/issinoho/veetee/compare/v0.4.0...v0.6.0
 [0.4.0]: https://github.com/issinoho/veetee/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/issinoho/veetee/releases/tag/v0.3.0
