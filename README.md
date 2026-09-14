@@ -6,7 +6,7 @@ and SSH, Telnet, serial and LAT connections.
 
 **Website:** [veetee.issinoho.com](http://veetee.issinoho.com/) · **Documentation:** [wiki](https://github.com/issinoho/veetee/wiki)
 
-**Status:** early development — 0.7.0: the VT100 through VT525 (colour, VT500 character sets,
+**Status:** early development — 0.7.1: the VT100 through VT525 (colour, VT500 character sets,
 dual sessions, page memory, rectangular operations, soft fonts), an LK401 keyboard map with a
 visual editor and VT520 key programming, session recordings, fonts drawn on DEC's own
 character cells, VT420 and VT520 Set-Up, sound, smooth scrolling and a CRT picture. vttest VT100–VT520 menus pass headless,
@@ -38,10 +38,10 @@ documentation.
 x86_64 Linux tarball, both needing GTK 4.12+ and libadwaita 1.5+:
 
 ```sh
-sudo apt install ./veetee_0.7.0-1_amd64.deb
+sudo apt install ./veetee_0.7.1-1_amd64.deb
 ```
 
-For Windows 10 (1809) or later, unzip `veetee-0.7.0-x86_64-windows.zip` and run
+For Windows 10 (1809) or later, unzip `veetee-0.7.1-x86_64-windows.zip` and run
 `bin\veetee.exe`; the GTK runtime is included. Local command windows use the Windows pseudo
 console, `--ssh` uses Windows' OpenSSH client and `--serial COM3` opens a COM port.
 

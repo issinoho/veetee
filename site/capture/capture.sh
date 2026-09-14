@@ -30,6 +30,7 @@ shot vt420-132-amber vt420 amber "$here/132-columns.sh"
 shot vttest-green vt420 green target/conformance/vttest-20251205/vttest
 shot vt420-curved-green vt420 green "$here/hero.sh" "$curved"
 VEETEE_STARTUP_ACTION=setup shot vt420-setup vt420 white "$here/hero.sh"
+VEETEE_STARTUP_ACTION=setup shot vt520-setup vt520 white "$here/hero.sh"
 python3 - "$here" "$img" <<'PY'
 import sys, pathlib
 from PIL import Image

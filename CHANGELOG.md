@@ -5,6 +5,8 @@ milestones (0.3 = M3). The format follows [Keep a Changelog](https://keepachange
 
 ## [Unreleased]
 
+## [0.7.1] - 2026-09-14
+
 Finishes milestone M7.
 
 - **VT500 Set-Up (M7)**: the VT510, VT520 and VT525 open the menu-driven Set-Up of their
@@ -160,7 +162,8 @@ The first release: VT100 through VT420 emulation with local, Telnet, SSH and ser
   `cargo deny` licence checks and parser fuzzing.
 - `cargo xtask dist` builds the release tarball and Debian package.
 
-[Unreleased]: https://github.com/issinoho/veetee/compare/v0.7.0...HEAD
+[Unreleased]: https://github.com/issinoho/veetee/compare/v0.7.1...HEAD
+[0.7.1]: https://github.com/issinoho/veetee/compare/v0.7.0...v0.7.1
 [0.7.0]: https://github.com/issinoho/veetee/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/issinoho/veetee/compare/v0.4.0...v0.6.0
 [0.4.0]: https://github.com/issinoho/veetee/compare/v0.3.0...v0.4.0
