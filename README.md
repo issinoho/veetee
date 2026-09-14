@@ -50,7 +50,7 @@ Changes are listed in [CHANGELOG.md](CHANGELOG.md).
 ## Running
 
 Building from source requires GTK 4.12+ and libadwaita 1.5+ development packages
-(`sudo apt install libgtk-4-dev libadwaita-1-dev` on Ubuntu).
+(`sudo apt install libgtk-4-dev libadwaita-1-dev libasound2-dev` on Ubuntu; ALSA is for sound).
 
 ```sh
 cargo run -p veetee                              # local shell, VT420
@@ -113,6 +113,9 @@ The PC keyboard is mapped to LK401 key positions:
 | Ctrl+Shift+C, Ctrl+Shift+V | Copy, Paste |
 | Ctrl+↑ ↓, Ctrl+End, Ctrl+PgDn | Pan the view through page memory (lines, pages) |
 | Ctrl+Shift+M | Mark a checkpoint in the session recording |
+
+Keys click, BEL rings the warning bell and hosts can play notes (DECPS), as on the terminal;
+Keyboard Set-Up (F3) turns the keyclick and bells down or off.
 
 Ctrl and Alt with the editing, cursor and function keys pass on to the DEC key, so a VT520
 receives its DECFNK sequences (Ctrl+Insert is Ctrl+Find, `CSI 1;5~`).

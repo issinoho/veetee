@@ -41,6 +41,17 @@ impl Terminal {
         self.emu.stored.on_line
     }
 
+    /// Keyclick, warning bell and margin bell volumes (Keyboard Set-Up,
+    /// DECSKCV, DECSWBV, DECSMBV).
+    pub fn sound_volumes(&self) -> SoundVolumes {
+        let s = &self.emu.setup;
+        SoundVolumes {
+            keyclick: volume_of(s.selection(b" r")),
+            warning_bell: volume_of(s.selection(b" t")),
+            margin_bell: volume_of(s.selection(b" u")),
+        }
+    }
+
     /// The power-up settings, or `None` for the factory settings.
     pub fn saved_setup_features(&self) -> Option<&Features> {
         self.emu.config.setup.as_ref()
@@ -89,6 +100,14 @@ impl Terminal {
         self.emu.grid.clear(Cell::BLANK);
         self.emu.goto(0, 0);
     }
+}
+
+/// The volumes of the terminal's sounds.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SoundVolumes {
+    pub keyclick: Volume,
+    pub warning_bell: Volume,
+    pub margin_bell: Volume,
 }
 
 impl Config {
@@ -376,6 +395,30 @@ mod tests {
         term.restore_factory_setup();
         assert!(!term.modes().autowrap);
         assert_eq!(term.saved_setup_features(), None);
+    }
+
+    #[test]
+    fn margin_bell_rings_eight_columns_from_the_margin() {
+        let mut term = Terminal::new(Config::default());
+        term.advance(&[b'x'; 72]);
+        assert!(
+            term.take_events().is_empty(),
+            "margin bell is off by default"
+        );
+        let mut f = term.setup_features();
+        f.margin_bell = Volume::High;
+        term.apply_setup_features(&f);
+        term.advance(b"\r");
+        term.advance(&[b'x'; 70]);
+        assert!(term.take_events().is_empty());
+        term.advance(b"x");
+        assert_eq!(term.take_events(), [crate::Event::MarginBell]);
+        term.advance(b"xx");
+        assert!(
+            term.take_events().is_empty(),
+            "only when the cursor reaches it"
+        );
+        assert_eq!(term.sound_volumes().margin_bell, Volume::High);
     }
 
     #[test]

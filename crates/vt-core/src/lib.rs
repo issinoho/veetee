@@ -27,4 +27,6 @@ pub use config::{Config, Extensions, Model, StatusDisplay, Supplemental};
 pub use keyboard::{Key, KeyMods};
 pub use modes::Modes;
 pub use selection::{Point, Selection};
-pub use terminal::{Cursor, CursorStyle, Event, KeyOutcome, LocalKeyAction, Terminal};
+pub use terminal::{
+    Cursor, CursorStyle, Event, KeyOutcome, LocalKeyAction, SoundVolumes, Terminal,
+};

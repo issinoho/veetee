@@ -16,7 +16,8 @@ use vt_transport::{Transport, TransportWriter};
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Notice {
     Redraw,
-    Bell,
+    /// A bell or DECPS note, at the volume the terminal selected.
+    Sound(crate::sound::Sound),
     /// The host named the session (DECSWT).
     Title(String),
     /// The host made this session active (DECES).
@@ -265,13 +266,19 @@ fn io_loop(
         if n > 0 {
             record(&shared, |r| r.host(&buf[..n]));
         }
-        let (reply, events, rows, cols) = {
+        let (reply, events, rows, cols, volumes) = {
             let mut term = shared.term.lock().unwrap_or_else(|e| e.into_inner());
             if n > 0 {
                 term.advance(&buf[..n]);
             }
             let (rows, cols) = (term.grid().rows(), term.grid().cols());
-            (term.take_output(), term.take_events(), rows, cols)
+            (
+                term.take_output(),
+                term.take_events(),
+                rows,
+                cols,
+                term.sound_volumes(),
+            )
         };
         // Without data there may still be events from local changes (Set-Up).
         if n == 0 && reply.is_empty() && events.is_empty() {
@@ -285,7 +292,25 @@ fn io_loop(
         for event in events {
             match event {
                 Event::Bell => {
-                    let _ = tx.try_send(Notice::Bell);
+                    let _ = tx.try_send(Notice::Sound(crate::sound::Sound::Bell(
+                        volumes.warning_bell,
+                    )));
+                }
+                Event::MarginBell => {
+                    let _ = tx.try_send(Notice::Sound(crate::sound::Sound::Bell(
+                        volumes.margin_bell,
+                    )));
+                }
+                Event::PlaySound {
+                    volume,
+                    duration_ms,
+                    note,
+                } => {
+                    let _ = tx.try_send(Notice::Sound(crate::sound::Sound::Note {
+                        volume,
+                        duration_ms,
+                        note,
+                    }));
                 }
                 // The host addresses the whole page, so that is its size.
                 Event::ColumnsChanged(_) | Event::LinesChanged(_) => {
@@ -297,10 +322,7 @@ fn io_loop(
                 Event::SessionActivated => {
                     let _ = tx.try_send(Notice::Activate);
                 }
-                // Tones (DECPS) arrive with bell and keyclick sounds (M7).
-                Event::ScreenLinesChanged(_)
-                | Event::IconNameChanged(_)
-                | Event::PlaySound { .. } => {}
+                Event::ScreenLinesChanged(_) | Event::IconNameChanged(_) => {}
                 Event::LedsChanged(_) => {}
             }
         }

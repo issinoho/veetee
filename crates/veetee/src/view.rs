@@ -278,7 +278,9 @@ impl TerminalView {
 
         let state = self.state.clone();
         im.connect_commit(move |_, text| {
-            state.borrow().session.type_text(text);
+            let session = state.borrow().session.clone();
+            session.type_text(text);
+            keyclick(&session);
         });
 
         let view = self.clone();
@@ -321,8 +323,12 @@ impl TerminalView {
                 let alt_graph = false;
                 let session = view.state.borrow().session.clone();
                 match session.alphanumeric_key(station, mods, alt_graph) {
-                    vt_core::KeyOutcome::Handled => return glib::Propagation::Stop,
+                    vt_core::KeyOutcome::Handled => {
+                        keyclick(&session);
+                        return glib::Propagation::Stop;
+                    }
                     vt_core::KeyOutcome::LocalFunction(n) => {
+                        keyclick(&session);
                         view.programmed_local_function(n);
                         return glib::Propagation::Stop;
                     }
@@ -353,6 +359,9 @@ impl TerminalView {
                     vt_core::KeyOutcome::Handled
                 }
             };
+            if outcome != vt_core::KeyOutcome::NotProgrammed {
+                keyclick(&session);
+            }
             if let vt_core::KeyOutcome::LocalFunction(n) = outcome {
                 view.programmed_local_function(n);
             }
@@ -774,7 +783,13 @@ impl TerminalView {
             while let Ok(notice) = notices.recv().await {
                 match notice {
                     Notice::Redraw => area.queue_render(),
-                    Notice::Bell => area.error_bell(),
+                    Notice::Sound(sound) => {
+                        // Without an audio device the desktop's bell stands in.
+                        let bell = matches!(sound, crate::sound::Sound::Bell(v) if v != vt_core::setup::Volume::Off);
+                        if !crate::sound::play(sound) && bell {
+                            area.error_bell();
+                        }
+                    }
                     Notice::Title(name) => (callbacks.title)(&name),
                     Notice::Activate => (callbacks.activate)(),
                     Notice::Exited(reason) => {
@@ -833,6 +848,15 @@ fn indicator_line(term: &vt_core::Terminal, held: bool) -> String {
     let cols = term.grid().cols();
     let pad = cols.saturating_sub(left.len() + right.len());
     format!("{left}{}{right}", " ".repeat(pad))
+}
+
+/// The keyboard clicks for a key that sends a code or acts (Installing and
+/// Using the VT420, chapter 4), at the Keyboard Set-Up volume.
+fn keyclick(session: &Session) {
+    let volume = session.terminal().sound_volumes().keyclick;
+    if volume != vt_core::setup::Volume::Off {
+        crate::sound::play(crate::sound::Sound::Click(volume));
+    }
 }
 
 /// The Set-Up key a key press stands for, if any.

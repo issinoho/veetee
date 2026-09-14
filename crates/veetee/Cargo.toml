@@ -10,6 +10,7 @@ authors.workspace = true
 [dependencies]
 adw = { version = "0.9", package = "libadwaita", features = ["v1_5"] }
 async-channel = "2"
+cpal = "0.18"
 glow = "0.18"
 gtk = { version = "0.11", package = "gtk4", features = ["v4_12"] }
 libloading = "0.9"

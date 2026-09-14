@@ -15,6 +15,7 @@ mod dcs;
 mod rect;
 mod reports;
 mod setup;
+pub use setup::SoundVolumes;
 mod vt520;
 
 pub use vt520::{CursorStyle, LocalKeyAction};
@@ -22,7 +23,11 @@ pub use vt520::{CursorStyle, LocalKeyAction};
 /// Something the host application (GUI, headless driver) must act on.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Event {
+    /// BEL: sound the warning bell.
     Bell,
+    /// A printed character brought the cursor eight columns from the right
+    /// margin with the margin bell on (Installing and Using the VT420, chapter 4).
+    MarginBell,
     /// DECCOLM changed the page width; the window should follow.
     ColumnsChanged(usize),
     /// DECLL: bit 0 = L1 … bit 3 = L4.
@@ -1138,6 +1143,9 @@ impl Emulator {
         } else {
             self.cursor.col = col + 1;
             self.cursor.pending_wrap = false;
+            if last >= 8 && self.cursor.col == last - 8 && self.setup.selection(b" u") != "1" {
+                self.events.push(Event::MarginBell);
+            }
         }
     }
 

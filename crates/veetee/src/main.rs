@@ -8,6 +8,7 @@ mod keymap_editor;
 mod keymaps;
 mod session;
 mod setup_store;
+mod sound;
 mod view;
 mod workspace;
 
@@ -108,6 +109,9 @@ fn build_window(app: &adw::Application, config: Config, options: Options) {
     add_window_actions(&window);
     window.present();
     capture_window_later(&window);
+
+    // Open the audio output now rather than on the first keyclick.
+    std::thread::spawn(sound::warm_up);
 
     // The saved Set-Up settings are the terminal's power-up settings.
     let mut first = config.clone();

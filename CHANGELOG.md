@@ -5,6 +5,11 @@ milestones (0.3 = M3). The format follows [Keep a Changelog](https://keepachange
 
 ## [Unreleased]
 
+- **Sound (M7)**: the warning bell and margin bell sound as 125 ms beeps and keys click with a
+  2 ms beep (EK-VT520-RM section 2.17), at the keyclick, warning bell and margin bell volumes of
+  Keyboard Set-Up (factory: click and warning bell high, margin bell off) or DECSKCV, DECSWBV and
+  DECSMBV. DECPS plays notes C5–C7 in turn. Sound uses the system's default audio output (cpal);
+  building on Linux needs the ALSA development package.
 - **Set-Up (M7)**: F3 opens the terminal's Set-Up screens, laid out like a VT420's: the Set-Up
   Directory with Clear Display, Clear Comm, Reset Session, Recall, Save, Default and Screen Align,
   and the Global, Display, General, Communications, Printer, Keyboard and Tab screens. The host is
