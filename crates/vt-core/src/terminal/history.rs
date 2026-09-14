@@ -157,6 +157,24 @@ mod tests {
     }
 
     #[test]
+    fn selections_are_in_history_lines_and_follow_scrolling() {
+        use crate::{Point, Selection};
+        let mut t = term();
+        let at = |row, a, b| Selection::new(Point { row, col: a }, Point { row, col: b });
+        // Line 1 scrolled off the page; it can still be selected and copied.
+        assert_eq!(t.selection_text(&at(1, 0, 8)), "LOGIN.COM");
+        let word = t.word_at(Point { row: 3, col: 9 });
+        assert_eq!(t.selection_text(&word), "LOGIN.COM");
+        // More output scrolls the page; the selection keeps its text.
+        t.advance(b"\r\n\r\n\r\n");
+        assert_eq!(t.selection_text(&word), "LOGIN.COM");
+        assert_eq!(
+            t.selection_text(&Selection::new(Point { row: 0, col: 2 }, Point { row: 1, col: 4 })),
+            "DIR\nLOGIN"
+        );
+    }
+
+    #[test]
     fn a_single_match_is_found_again() {
         let t = term();
         let only = t.find_text("TYPE", None, true).unwrap();

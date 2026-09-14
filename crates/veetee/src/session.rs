@@ -167,6 +167,16 @@ impl Session {
         self.send(&output);
     }
 
+    /// Pasted text, translated for the host's character sets.
+    pub fn paste(&self, text: &str) {
+        let output = {
+            let mut term = self.terminal();
+            term.paste(text);
+            term.take_output()
+        };
+        self.send(&output);
+    }
+
     pub fn send_answerback(&self) {
         let output = {
             let mut term = self.terminal();

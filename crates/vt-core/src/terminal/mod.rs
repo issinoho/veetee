@@ -15,6 +15,7 @@ mod capture;
 mod crm;
 mod dcs;
 mod history;
+pub(crate) mod paste;
 mod rect;
 mod reports;
 mod setup;
@@ -510,11 +511,6 @@ impl Terminal {
             return;
         }
         let e = &self.emu;
-        let national = e
-            .modes
-            .national
-            .then_some(e.config.keyboard_language)
-            .flatten();
         let mut bytes = Vec::new();
         for ch in text.chars() {
             if e.config.extensions.utf8 {
@@ -522,23 +518,40 @@ impl Terminal {
                 bytes.extend_from_slice(ch.encode_utf8(&mut buf).as_bytes());
             } else if ch.is_ascii_control() {
                 bytes.push(ch as u8);
-            } else if let Some(nrc) = national {
-                bytes.extend(nrc.encode(ch));
-            } else if ch.is_ascii() {
-                bytes.push(ch as u8);
-            } else if e.level >= 2 && !e.modes.national {
-                let encoded = match e.upss {
-                    Charset::IsoLatin1 => charset::encode_latin1(ch),
-                    // A VT500 supplemental set as GR, with ASCII as GL.
-                    set @ Charset::Vt500(_) => (0x20..=0x7F)
-                        .find(|&c| set.map(c) == Some(ch) && ch != charset::ERROR_CHARACTER)
-                        .map(|c| c | 0x80),
-                    _ => charset::encode_dec_multinational(ch),
-                };
+            } else if let Some(encoded) = self.encode_typed(ch) {
                 bytes.extend(encoded);
             }
         }
         self.transmit(&bytes);
+    }
+
+    /// The bytes a typed graphic character is sent as, or `None` if the
+    /// character sets in use cannot send it.
+    fn encode_typed(&self, ch: char) -> Option<Vec<u8>> {
+        let e = &self.emu;
+        let national = e
+            .modes
+            .national
+            .then_some(e.config.keyboard_language)
+            .flatten();
+        if let Some(nrc) = national {
+            return nrc.encode(ch).map(|b| vec![b]);
+        }
+        if ch.is_ascii() {
+            return Some(vec![ch as u8]);
+        }
+        if e.level < 2 || e.modes.national {
+            return None;
+        }
+        let encoded = match e.upss {
+            Charset::IsoLatin1 => charset::encode_latin1(ch),
+            // A VT500 supplemental set as GR, with ASCII as GL.
+            set @ Charset::Vt500(_) => (0x20..=0x7F)
+                .find(|&c| set.map(c) == Some(ch) && ch != charset::ERROR_CHARACTER)
+                .map(|c| c | 0x80),
+            _ => charset::encode_dec_multinational(ch),
+        };
+        encoded.map(|b| vec![b])
     }
 
     /// The Ctrl+Break local function: transmits the Set-Up answerback message.

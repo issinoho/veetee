@@ -19,6 +19,13 @@ Milestone M8 begins.
   newest first, highlighting and scrolling to each match, and keeps its place while output
   continues. A saved keymap from an earlier version needs Shift+Page_Up and Shift+Page_Down bound
   to *Review Back* and *Review Forward* in *Keyboard Map…* (or *Restore Defaults*).
+- **Copy and paste (M8)**: pasted text is translated for the host's character sets instead of
+  losing what they cannot send: typographic quotes, dashes and ellipses become ASCII, accented
+  letters without an encoding their base letter, separately written accents are joined, and
+  anything else is `?`. Control characters other than tab and line breaks are no longer pasted.
+  Copied text turns DEC Technical pieces, soft-font characters and Display Controls symbols into
+  Unicode or names. Selections can be made in the reviewed history and stay with their text as
+  output scrolls.
 - **Session logs (M8)**: *Log to File…* in the window menu logs the active session's text as it
   is shown — character sets translated to Unicode, a line break for each new line, the status
   line left out — with optional timestamps on each line (*Timestamp Log Lines*). `--log FILE`

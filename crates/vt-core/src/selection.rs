@@ -1,9 +1,10 @@
-//! Text selection on the visible page and extraction for the clipboard.
+//! Text selection in the session's history and extraction for the clipboard.
 
 use crate::terminal::Terminal;
 
-/// A position on the page (zero-based row and column in addressable columns,
-/// so double-width lines have half as many).
+/// A position in the history (see [`Terminal::history_line`]: scrollback
+/// lines, then the displayed page), in addressable columns, so double-width
+/// lines have half as many. With no scrollback the row is the page row.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Point {
     pub row: usize,
@@ -54,10 +55,11 @@ impl Terminal {
     /// joined by autowrap are not separated by a newline.
     pub fn selection_text(&self, selection: &Selection) -> String {
         let (start, end) = selection.ordered();
-        let grid = self.display_grid();
         let mut out = String::new();
-        for row in start.row..=end.row.min(grid.rows().saturating_sub(1)) {
-            let line = grid.line(row);
+        for row in start.row..=end.row.min(self.history_len().saturating_sub(1)) {
+            let Some(line) = self.history_line(row) else {
+                break;
+            };
             let width = line.width();
             let from = if row == start.row {
                 start.col.min(width)
@@ -70,10 +72,17 @@ impl Terminal {
             } else {
                 width
             };
-            let text: String = line.cells()[from..to.max(from)]
-                .iter()
-                .map(|c| if c.ch == '\u{A0}' { ' ' } else { c.ch })
-                .collect();
+            let mut text = String::new();
+            for cell in &line.cells()[from..to.max(from)] {
+                match crate::terminal::paste::copied_char(cell) {
+                    crate::terminal::paste::CopiedChar::One(c) => text.push(c),
+                    crate::terminal::paste::CopiedChar::Name(name) => {
+                        text.push('<');
+                        text.push_str(name);
+                        text.push('>');
+                    }
+                }
+            }
             if to_end {
                 out.push_str(text.trim_end_matches(' '));
                 if row != end.row && !line.wrapped {
@@ -88,9 +97,10 @@ impl Terminal {
 
     /// The word under `p` (for double-click), or just `p` if it is blank.
     pub fn word_at(&self, p: Point) -> Selection {
-        let line = self
-            .display_grid()
-            .line(p.row.min(self.display_grid().rows() - 1));
+        let line = self.history_line(p.row).unwrap_or_else(|| {
+            self.history_line(self.history_len() - 1)
+                .expect("the page has lines")
+        });
         let cells = &line.cells()[..line.width()];
         let col = p.col.min(cells.len() - 1);
         if !is_word_char(cells[col].ch) {
@@ -119,8 +129,8 @@ impl Terminal {
 
     /// The whole line containing `p` (for triple-click).
     pub fn line_at(&self, p: Point) -> Selection {
-        let row = p.row.min(self.display_grid().rows() - 1);
-        let last = self.display_grid().line(row).width() - 1;
+        let row = p.row.min(self.history_len() - 1);
+        let last = self.history_line(row).map_or(1, |l| l.width()) - 1;
         Selection::new(Point { row, col: 0 }, Point { row, col: last })
     }
 }

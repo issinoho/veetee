@@ -153,9 +153,6 @@ impl TerminalView {
         let review = st.review.saturating_add_signed(lines).min(max);
         if review != st.review {
             st.review = review;
-            if review > 0 {
-                st.selection = None;
-            }
             self.area.queue_render();
         }
     }
@@ -226,7 +223,6 @@ impl TerminalView {
         st.found = found;
         if let Some(review) = review {
             st.review = review;
-            st.selection = None;
         }
         drop(st);
         self.search.status.set_text(match found {

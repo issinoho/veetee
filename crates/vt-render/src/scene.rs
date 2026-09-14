@@ -318,7 +318,7 @@ pub fn build_instances(
                 font,
                 soft,
                 &colors,
-                (Some(index), index.checked_sub(back).unwrap_or(usize::MAX)),
+                Some(index),
                 line,
                 None,
                 Placement {
@@ -348,7 +348,7 @@ pub fn build_instances(
             font,
             soft,
             &colors,
-            (Some(back + row), row),
+            Some(back + row),
             line,
             cursor_col,
             Placement {
@@ -373,7 +373,7 @@ pub fn build_instances(
                     font,
                     soft,
                     &colors,
-                    (None, usize::MAX),
+                    None,
                     term.status_line(),
                     cursor_col,
                     Placement {
@@ -399,7 +399,7 @@ pub fn build_instances(
                     font,
                     soft,
                     &colors,
-                    (None, usize::MAX),
+                    None,
                     &line,
                     None,
                     Placement {
@@ -424,7 +424,7 @@ pub fn build_instances(
             font,
             soft,
             &colors,
-            (Some(back + row), row),
+            Some(back + row),
             grid.line(row),
             cursor_col,
             Placement {
@@ -448,7 +448,7 @@ pub fn build_instances(
         font,
         soft,
         &colors,
-        (None, usize::MAX),
+        None,
         &s.outgoing,
         None,
         Placement {
@@ -507,7 +507,7 @@ fn draw_line(
     font: &Glyphs,
     soft: &mut SoftAtlas,
     colors: &Colors,
-    (history, page_row): (Option<usize>, usize),
+    history: Option<usize>,
     line: &Line,
     cursor_col: Option<usize>,
     placement: Placement,
@@ -580,7 +580,8 @@ fn draw_line(
         let found = frame
             .found
             .is_some_and(|f| history == Some(f.line) && (f.col..f.col + f.len).contains(&col));
-        if found || frame.selection.is_some_and(|s| s.contains(page_row, col)) {
+        let selected = history.is_some_and(|h| frame.selection.is_some_and(|s| s.contains(h, col)));
+        if found || selected {
             flags |= flag::SELECTED;
         }
 

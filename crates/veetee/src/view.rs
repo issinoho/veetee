@@ -648,10 +648,6 @@ impl TerminalView {
     /// The page cell under a widget position, clamped to the page.
     fn point_at(&self, x: f64, y: f64) -> Option<Point> {
         let st = self.state.borrow();
-        // Selections are on the page, not in reviewed history.
-        if st.review > 0 {
-            return None;
-        }
         let term = st.session.terminal();
         let grid = term.display_grid();
         let (window_top, screen_lines) = term.window();
@@ -664,8 +660,11 @@ impl TerminalView {
         let px = ((x * scale) as f32).clamp(layout.x, layout.x + layout.width - 1.0);
         let py = ((y * scale) as f32).clamp(layout.y, layout.y + layout.height - 1.0);
         let (row, col) = layout.cell_at(px, py)?;
-        let row = (window_top + row.min(screen_lines - 1)).min(grid.rows() - 1);
-        let line = grid.line(row);
+        // A history line: the screen may be moved back into the scrollback.
+        let back = term.scrollback_len();
+        let top = back + window_top - st.review.min(back + window_top);
+        let row = (top + row.min(screen_lines - 1)).min(back + grid.rows() - 1);
+        let line = term.history_line(row)?;
         let col = if line.size.is_double_width() {
             col / 2
         } else {
@@ -705,14 +704,13 @@ impl TerminalView {
         }
     }
 
-    /// Types clipboard text into the session. Line breaks are sent as Return
-    /// (CR), as a user would type them.
+    /// Sends clipboard text to the session as typed (see
+    /// [`vt_core::Terminal::paste`]).
     fn paste(&self, clipboard: gdk::Clipboard) {
         let session = self.state.borrow().session.clone();
         glib::spawn_future_local(async move {
             if let Ok(Some(text)) = clipboard.read_text_future().await {
-                let text = text.replace("\r\n", "\r").replace('\n', "\r");
-                session.type_text(&text);
+                session.paste(&text);
             }
         });
     }

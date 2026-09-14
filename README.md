@@ -121,6 +121,13 @@ Drag to select (double-click selects a word, including whole VMS file specificat
 primary selection, so middle-click pastes it. Ctrl+Shift+C copies to the clipboard and
 Ctrl+Shift+V pastes; both are also on the right-click menu.
 
+Text can be selected in the history as well as on the page, and a selection stays with its text
+as output scrolls. Copied text is Unicode: DEC line drawing, technical symbols and national
+characters come out as the characters they show. Pasted text is sent as if typed through the
+host's character sets: line breaks become Return, other control characters are dropped, and
+characters the sets lack are replaced by the nearest ones they have (“quotes” and dashes by ASCII,
+ł by l, € by EUR), or `?`.
+
 ### Serial lines
 
 ```sh
