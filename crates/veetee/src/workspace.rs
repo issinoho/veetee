@@ -96,6 +96,22 @@ impl Workspace {
         workspace
     }
 
+    /// The window's connection and options as a profile to save, named
+    /// after the connection.
+    pub fn profile(&self) -> crate::profiles::Profile {
+        let name = match &self.options.connection {
+            cli::Connection::Telnet { host, .. } => host.clone(),
+            cli::Connection::Ssh(s) => s.destination.clone(),
+            cli::Connection::Serial(s) => s
+                .device
+                .file_name()
+                .map_or_else(String::new, |n| n.to_string_lossy().into_owned()),
+            cli::Connection::Shell => "Local shell".into(),
+            cli::Connection::Command(c) => c.split_whitespace().next().unwrap_or("").into(),
+        };
+        crate::profiles::Profile::from_options(&name, &self.config, &self.options)
+    }
+
     fn notify(&self, msg: &str) {
         self.toasts.add_toast(adw::Toast::new(msg));
     }
@@ -353,10 +369,11 @@ impl Workspace {
             return;
         };
         let name = active.name.borrow();
-        let window_title = if name.is_empty() {
-            "veetee"
-        } else {
+        // A host-supplied session name, else the saved connection's name.
+        let window_title = if !name.is_empty() {
             name.as_str()
+        } else {
+            self.options.profile.as_deref().unwrap_or("veetee")
         };
         self.title.set_title(window_title);
         self.window.set_title(Some(window_title));

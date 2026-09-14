@@ -5,6 +5,15 @@ milestones (0.3 = M3). The format follows [Keep a Changelog](https://keepachange
 
 ## [Unreleased]
 
+Milestone M8 begins.
+
+- **Saved connections (M8)**: *Connections…* in the window menu lists saved connections (Telnet,
+  SSH, serial, local shell or command, with the terminal model, phosphor and sessions) to open in
+  a new window, add, edit or delete; *Save as Connection…* saves the current window's. They live
+  in `profiles.toml` in the configuration directory. `--profile NAME` opens one from the command
+  line, with other options overriding it, and `--list-profiles` lists them. A window opened from a
+  saved connection is titled with its name.
+
 ## [0.7.1] - 2026-09-14
 
 Finishes milestone M7.

@@ -10,9 +10,11 @@ use vt_transport::ssh::{self, SshConfig};
 use vt_transport::telnet::{Telnet, TelnetConfig};
 
 pub const USAGE: &str = "\
-usage: veetee [--model MODEL] [--record FILE] [CONNECTION]
+usage: veetee [--profile NAME] [--model MODEL] [--record FILE] [CONNECTION]
 
 connections (default: your login shell):
+  --profile NAME         a saved connection (options given with it override it)
+  --list-profiles        list the saved connections
   --telnet HOST[:PORT]   Telnet, e.g. --telnet vms1 or telnet://vms1:2323
   --ssh [USER@]HOST      SSH via OpenSSH (uses ~/.ssh/config), e.g. ssh://system@vms1
   --serial DEVICE        serial line, e.g. --serial /dev/ttyUSB0 or --serial COM3
@@ -85,6 +87,8 @@ pub struct Options {
     pub phosphor: String,
     /// Keymap file to use instead of the saved or built-in keymap.
     pub keymap: Option<std::path::PathBuf>,
+    /// The saved connection the window was opened from.
+    pub profile: Option<String>,
 }
 
 // Parsed once at start-up, so the size difference does not matter.
@@ -92,20 +96,41 @@ pub struct Options {
 pub enum Parsed {
     Run(Config, Options),
     Help,
+    ListProfiles,
 }
 
 pub fn parse_args(args: impl Iterator<Item = String>) -> Result<Parsed, String> {
+    parse_args_with(args, crate::profiles::find)
+}
+
+/// Parses the arguments, looking up `--profile` with `find`.
+pub fn parse_args_with(
+    args: impl Iterator<Item = String>,
+    find: impl Fn(&str) -> Result<crate::profiles::Profile, String>,
+) -> Result<Parsed, String> {
     let mut config = Config::default();
     let mut options = Options {
         sessions: 1,
         phosphor: "white".into(),
         ..Options::default()
     };
+    // A profile sets the starting point; the other options change it.
+    let args: Vec<String> = args.collect();
+    let mut rest = Vec::new();
+    let mut iter = args.into_iter();
+    while let Some(arg) = iter.next() {
+        if arg == "--profile" {
+            let name = iter.next().ok_or("--profile needs a value")?;
+            find(&name)?.apply(&mut config, &mut options);
+        } else {
+            rest.push(arg);
+        }
+    }
     let mut line: Vec<(String, String)> = Vec::new();
     let mut port: Option<u16> = None;
     let mut chosen = 0;
     let mut record_keys = false;
-    let mut args = args.peekable();
+    let mut args = rest.into_iter().peekable();
     while let Some(arg) = args.next() {
         let mut value = || args.next().ok_or_else(|| format!("{arg} needs a value"));
         let connection = match arg.as_str() {
@@ -166,6 +191,7 @@ pub fn parse_args(args: impl Iterator<Item = String>) -> Result<Parsed, String> 
                 None
             }
             "-h" | "--help" => return Ok(Parsed::Help),
+            "--list-profiles" => return Ok(Parsed::ListProfiles),
             url if url.starts_with("telnet://") => Some(telnet(
                 url.trim_start_matches("telnet://").trim_end_matches('/'),
             )?),
@@ -339,10 +365,39 @@ mod tests {
     use vt_transport::serial::{FlowControl, Parity};
 
     fn parse(args: &[&str]) -> Result<Options, String> {
-        match parse_args(args.iter().map(|a| a.to_string()))? {
-            Parsed::Run(_, o) => Ok(o),
-            Parsed::Help => Err("help".into()),
+        parse_with_model(args).map(|(_, o)| o)
+    }
+
+    fn parse_with_model(args: &[&str]) -> Result<(Model, Options), String> {
+        let profiles = crate::profiles::parse(
+            "[[profile]]\nname = \"vms1\"\nconnection = \"telnet\"\nhost = \"vms1\"\nmodel = \"vt520\"\nphosphor = \"amber\"\n",
+        )
+        .unwrap();
+        let find = |name: &str| {
+            profiles
+                .iter()
+                .find(|p| p.name == name)
+                .cloned()
+                .ok_or_else(|| format!("no profile {name:?}"))
+        };
+        match parse_args_with(args.iter().map(|a| a.to_string()), find)? {
+            Parsed::Run(c, o) => Ok((c.model, o)),
+            _ => Err("not run".into()),
         }
+    }
+
+    #[test]
+    fn profiles_are_a_starting_point() {
+        let (model, o) = parse_with_model(&["--profile", "vms1"]).unwrap();
+        assert_eq!((model, o.phosphor.as_str()), (Model::Vt520, "amber"));
+        assert_eq!(o.connection.label(), "telnet vms1");
+        let (model, o) =
+            parse_with_model(&["--model", "vt420", "--profile", "vms1", "--port", "2323"]).unwrap();
+        assert_eq!(model, Model::Vt420, "options override the profile");
+        assert_eq!(o.connection.label(), "telnet vms1:2323");
+        let o = parse(&["--profile", "vms1", "--ssh", "alpha"]).unwrap();
+        assert_eq!(o.connection.label(), "ssh alpha");
+        assert!(parse(&["--profile", "nope"]).is_err());
     }
 
     #[test]

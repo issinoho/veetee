@@ -4,9 +4,11 @@
 
 mod appearance;
 mod cli;
+mod connections;
 mod gl_loader;
 mod keymap_editor;
 mod keymaps;
+mod profiles;
 mod session;
 mod setup_store;
 mod sound;
@@ -45,6 +47,23 @@ fn main() -> glib::ExitCode {
             println!("{}", cli::USAGE);
             return glib::ExitCode::SUCCESS;
         }
+        Ok(Parsed::ListProfiles) => {
+            return match profiles::load() {
+                Ok(list) => {
+                    for p in &list {
+                        println!("{:<20} {}", p.name, p.summary());
+                    }
+                    if list.is_empty() {
+                        println!("No saved connections ({}).", profiles::path().display());
+                    }
+                    glib::ExitCode::SUCCESS
+                }
+                Err(e) => {
+                    eprintln!("veetee: {e}");
+                    glib::ExitCode::FAILURE
+                }
+            };
+        }
         Err(msg) => {
             eprintln!("veetee: {msg}\n\n{}", cli::USAGE);
             return glib::ExitCode::FAILURE;
@@ -63,7 +82,8 @@ fn main() -> glib::ExitCode {
 fn build_window(app: &adw::Application, config: Config, options: Options) {
     let connection = options.connection.label();
     let base_subtitle = format!("{} · {connection}", cli::model_name(config.model));
-    let title = adw::WindowTitle::new("veetee", &base_subtitle);
+    let name = options.profile.clone().unwrap_or_else(|| "veetee".into());
+    let title = adw::WindowTitle::new(&name, &base_subtitle);
     let header = adw::HeaderBar::builder().title_widget(&title).build();
 
     let menu = gio::Menu::new();
@@ -78,6 +98,10 @@ fn build_window(app: &adw::Application, config: Config, options: Options) {
     effects.append(Some("Curved Screen"), Some("win.curvature"));
     effects.append(Some("Visible Bell"), Some("win.visible-bell"));
     menu.append_section(Some("Screen"), &effects);
+    let connection_section = gio::Menu::new();
+    connection_section.append(Some("Connections…"), Some("win.connections"));
+    connection_section.append(Some("Save as Connection…"), Some("win.save-connection"));
+    menu.append_section(None, &connection_section);
     let session_section = gio::Menu::new();
     session_section.append(Some("Set-Up"), Some("win.setup"));
     session_section.append(Some("Open Second Session"), Some("win.new-session"));
@@ -108,7 +132,7 @@ fn build_window(app: &adw::Application, config: Config, options: Options) {
 
     let window = adw::ApplicationWindow::builder()
         .application(app)
-        .title("veetee")
+        .title(name.as_str())
         .default_width(1024)
         .default_height(820)
         .content(&toolbar)
@@ -161,6 +185,18 @@ fn build_window(app: &adw::Application, config: Config, options: Options) {
             gtk::prelude::ActionGroupExt::activate_action(&window, &action, None);
         }
     });
+}
+
+/// Opens a saved connection in a new window.
+pub fn open_profile(app: &adw::Application, profile: &profiles::Profile) {
+    let mut config = Config::default();
+    let mut options = Options {
+        sessions: 1,
+        phosphor: "white".into(),
+        ..Options::default()
+    };
+    profile.apply(&mut config, &mut options);
+    build_window(app, config, options);
 }
 
 fn phosphor_named(name: &str) -> Phosphor {
@@ -250,6 +286,17 @@ fn add_session_actions(window: &adw::ApplicationWindow, workspace: &Rc<workspace
     });
     window.add_action(&mark);
 
+    let save_connection = gio::SimpleAction::new("save-connection", None);
+    save_connection.connect_activate({
+        let (workspace, window) = (Rc::downgrade(workspace), window.downgrade());
+        move |_, _| {
+            if let (Some(ws), Some(w)) = (workspace.upgrade(), window.upgrade()) {
+                connections::save_as(&w, ws.profile());
+            }
+        }
+    });
+    window.add_action(&save_connection);
+
     let keymap = gio::SimpleAction::new("keymap", None);
     keymap.connect_activate({
         let (workspace, window) = (Rc::downgrade(workspace), window.downgrade());
@@ -273,6 +320,17 @@ fn add_window_actions(window: &adw::ApplicationWindow) {
         }
     });
     window.add_action(&fullscreen);
+
+    let connections = gio::SimpleAction::new("connections", None);
+    connections.connect_activate({
+        let window = window.downgrade();
+        move |_, _| {
+            if let Some(w) = window.upgrade() {
+                connections::open(&w);
+            }
+        }
+    });
+    window.add_action(&connections);
 
     let about = gio::SimpleAction::new("about", None);
     about.connect_activate({

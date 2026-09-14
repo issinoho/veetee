@@ -79,6 +79,24 @@ saver blanks an idle screen after the Set-Up time (30 minutes on a VT420). Below
 the page is the VT420 indicator status line (reverse video: printer, Hold Screen, keyboard lock,
 page number and cursor position); hosts can switch it to a host-writable status line.
 
+### Saved connections
+
+*Connections…* in the window menu lists saved connections: open one in a new window, add, edit
+or delete them. *Save as Connection…* saves the current window's connection, model, phosphor and
+sessions. They are kept in `~/.config/veetee/profiles.toml`, which can also be edited by hand:
+
+```toml
+[[profile]]
+name = "vms1"
+connection = "telnet"       # shell, command, telnet, ssh or serial
+host = "vms1"
+model = "vt420"
+phosphor = "green"
+```
+
+`veetee --profile vms1` opens one from the command line (other options override it, e.g.
+`--profile vms1 --model vt520`), and `veetee --list-profiles` lists them.
+
 ### Copy and paste
 
 Drag to select (double-click selects a word, including whole VMS file specifications such as
