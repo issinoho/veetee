@@ -61,6 +61,11 @@
   </supports>
   <content_rating type="oars-1.1"/>
   <releases>
+    <release version="0.8.1" date="2026-09-14">
+      <description>
+        <p>Screen reader support, output about three times faster, and a Flatpak bundle.</p>
+      </description>
+    </release>
     <release version="0.8.0" date="2026-09-14">
       <description>
         <p>Saved connections, session logs, history review and search, and copy and paste that translate DEC characters.</p>

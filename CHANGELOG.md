@@ -5,13 +5,17 @@ milestones (0.3 = M3). The format follows [Keep a Changelog](https://keepachange
 
 ## [Unreleased]
 
+## [0.8.1] - 2026-09-14
+
+Completes the planned work of milestone M8: screen reader support, much faster output, a Flatpak
+bundle and the means to sign Windows builds.
+
 - **Flatpak (M8)**: a Flatpak manifest (`packaging/flatpak`) on the GNOME 50 runtime, built in CI
   and attached to releases as a `.flatpak` bundle. In the sandbox, local shells, commands and SSH
   run on the host through `flatpak-spawn --host`; Telnet, serial lines and sound work directly.
 - **Signed Windows builds (M8)**: release builds sign `veetee.exe` and `vt-headless.exe` when the
   repository has a code-signing certificate (see `packaging/windows/SIGNING.md`).
 - An application icon and AppStream metadata, installed by the Debian package and tarball too.
-
 - **Accessibility (M8)**: the terminal is exposed to screen readers such as Orca as a terminal
   named "Terminal": its text is the lines on the screen (or Set-Up while it is open), the caret is
   the cursor, and output is reported as the text removed and inserted, so new lines and typed
@@ -213,7 +217,8 @@ The first release: VT100 through VT420 emulation with local, Telnet, SSH and ser
   `cargo deny` licence checks and parser fuzzing.
 - `cargo xtask dist` builds the release tarball and Debian package.
 
-[Unreleased]: https://github.com/issinoho/veetee/compare/v0.8.0...HEAD
+[Unreleased]: https://github.com/issinoho/veetee/compare/v0.8.1...HEAD
+[0.8.1]: https://github.com/issinoho/veetee/compare/v0.8.0...v0.8.1
 [0.8.0]: https://github.com/issinoho/veetee/compare/v0.7.1...v0.8.0
 [0.7.1]: https://github.com/issinoho/veetee/compare/v0.7.0...v0.7.1
 [0.7.0]: https://github.com/issinoho/veetee/compare/v0.6.0...v0.7.0
