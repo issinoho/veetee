@@ -322,7 +322,7 @@ footer p { margin: 0 0 8px; }
         <h1>The DEC terminal,<br><em>kept alive.</em></h1>
         <p>veetee is an open-source DEC VT terminal for Linux and Windows. It is built from DEC's own programmer references and tested screen by screen, so OpenVMS, DECforms, FMS and EDT behave exactly as they did on the glass.</p>
         <div class="cta">
-          <a class="key gold wide" href="https://github.com/issinoho/veetee/releases/latest"><small>PF1 · Gold</small><strong>Download 0.8.2</strong></a>
+          <a class="key gold wide" href="https://github.com/issinoho/veetee/releases/latest"><small>PF1 · Gold</small><strong>Download 0.8.3</strong></a>
           <a class="key light" href="https://github.com/issinoho/veetee"><small>Find</small><strong>Source</strong></a>
           <a class="key" href="https://github.com/issinoho/veetee/wiki"><small>Help</small><strong>Wiki</strong></a>
         </div>
@@ -441,7 +441,7 @@ footer p { margin: 0 0 8px; }
           <li><span class="year">1987</span><span class="model">VT320</span><span class="note">ISO Latin-1, status lines, presentation and mode reports.</span></li>
           <li><span class="year">1990</span><span class="model">VT420</span><span class="note">Left/right margins, rectangles, page memory, macros, dual sessions.</span></li>
           <li><span class="year">1994</span><span class="model">VT520 · VT525</span><span class="note">VT500 character sets, cursor styles, framed sessions, colour on the VT525.</span></li>
-          <li><span class="year">2026</span><span class="model">veetee 0.8.2</span><span class="note">All of the above, on a Linux or Windows desktop near you. Default: VT420.</span></li>
+          <li><span class="year">2026</span><span class="model">veetee 0.8.3</span><span class="note">All of the above, on a Linux or Windows desktop near you. Default: VT420.</span></li>
         </ul>
       </div>
     </div>
@@ -478,25 +478,25 @@ footer p { margin: 0 0 8px; }
         <div>
           <h3>Debian and Ubuntu</h3>
           <p>Download the package from the <a href="https://github.com/issinoho/veetee/releases/latest">latest release</a> and install it. GTK 4.14 and libadwaita 1.5 or later are required.</p>
-          <div class="term"><span class="c"># fetch and install veetee 0.8.2</span>
+          <div class="term"><span class="c"># fetch and install veetee 0.8.3</span>
 $ curl -LO https://github.com/issinoho/veetee/\
-    releases/download/v0.8.2/veetee_0.8.2-1_amd64.deb
-$ sudo apt install ./veetee_0.8.2-1_amd64.deb</div>
+    releases/download/v0.8.3/veetee_0.8.3-1_amd64.deb
+$ sudo apt install ./veetee_0.8.3-1_amd64.deb</div>
           <h3 style="margin-top:32px">Any distribution, with Flatpak</h3>
           <p>A Flatpak bundle runs on any distribution with the GNOME runtime from Flathub. Local shells and <code>--ssh</code> run on the host, so your own shell and <code>~/.ssh</code> apply.</p>
           <div class="term"><span class="c"># install the bundle from a release</span>
 $ curl -LO https://github.com/issinoho/veetee/\
-    releases/download/v0.8.2/veetee-0.8.2-x86_64.flatpak
-$ flatpak install --user ./veetee-0.8.2-x86_64.flatpak
+    releases/download/v0.8.3/veetee-0.8.3-x86_64.flatpak
+$ flatpak install --user ./veetee-0.8.3-x86_64.flatpak
 $ flatpak run com.issinoho.Veetee --telnet vms1</div>
           <h3 style="margin-top:32px">Windows 10 and 11</h3>
           <p>One zip with GTK included: unzip it anywhere and run <code>bin\veetee.exe</code>. Local sessions use the Windows pseudo console, <code>--ssh</code> uses Windows' OpenSSH client, and <code>--serial COM3</code> opens a COM port.</p>
           <div class="term"><span class="c">REM fetch, unzip and connect in Command Prompt</span>
 &gt; curl.exe -LO https://github.com/issinoho/^
-    veetee/releases/download/v0.8.2/^
-    veetee-0.8.2-x86_64-windows.zip
-&gt; tar -xf veetee-0.8.2-x86_64-windows.zip
-&gt; cd veetee-0.8.2-x86_64-windows
+    veetee/releases/download/v0.8.3/^
+    veetee-0.8.3-x86_64-windows.zip
+&gt; tar -xf veetee-0.8.3-x86_64-windows.zip
+&gt; cd veetee-0.8.3-x86_64-windows
 &gt; bin\veetee --telnet vms1</div>
           <h3 style="margin-top:32px">From source</h3>
           <div class="term"><span class="c"># Rust stable plus GTK 4 development files</span>

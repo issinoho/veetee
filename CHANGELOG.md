@@ -5,6 +5,11 @@ milestones (0.3 = M3). The format follows [Keep a Changelog](https://keepachange
 
 ## [Unreleased]
 
+## [0.8.3] - 2026-09-15
+
+Fixes veetee failing to start on Windows computers whose graphics driver left an old
+Vulkan loader in System32.
+
 - **Fixed (Windows)**: veetee would not start on computers whose graphics driver leaves an old
   Vulkan loader in System32 ("The procedure entry point vkBindImageMemory2 could not be located
   in the dynamic link library ...\bin\libgtk-4-1.dll"). GTK imports the Vulkan loader, which
@@ -237,7 +242,8 @@ The first release: VT100 through VT420 emulation with local, Telnet, SSH and ser
   `cargo deny` licence checks and parser fuzzing.
 - `cargo xtask dist` builds the release tarball and Debian package.
 
-[Unreleased]: https://github.com/issinoho/veetee/compare/v0.8.2...HEAD
+[Unreleased]: https://github.com/issinoho/veetee/compare/v0.8.3...HEAD
+[0.8.3]: https://github.com/issinoho/veetee/compare/v0.8.2...v0.8.3
 [0.8.2]: https://github.com/issinoho/veetee/compare/v0.8.1...v0.8.2
 [0.8.1]: https://github.com/issinoho/veetee/compare/v0.8.0...v0.8.1
 [0.8.0]: https://github.com/issinoho/veetee/compare/v0.7.1...v0.8.0
