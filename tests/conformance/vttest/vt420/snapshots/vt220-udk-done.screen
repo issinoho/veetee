@@ -1,5 +1,5 @@
 page 24x80 cursor 23,14 visible
-modes
+modes decawm
  1  |Test User-Defined Keys (DECUDK)
  2  |Press 'q' to quit.  Function keys should echo their labels.
  3  |(On a DEC terminal you must press SHIFT as well).
