@@ -161,10 +161,18 @@ fn build_vttest() -> Result<PathBuf> {
         .arg(&tarball)
         .output()
         .map_err(|e| e.to_string())?;
-    let digest = String::from_utf8_lossy(&output.stdout);
-    if !digest.starts_with(VTTEST_SHA256) {
+    // coreutils escapes a backslash in the file name by prefixing the whole
+    // line with one, which every Windows path triggers, so take the first
+    // field rather than matching the line.
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let digest = stdout
+        .split_ascii_whitespace()
+        .next()
+        .unwrap_or_default()
+        .trim_start_matches('\\');
+    if digest != VTTEST_SHA256 {
         let _ = fs::remove_file(&tarball);
-        return Err(format!("checksum mismatch for {url}: got {digest}"));
+        return Err(format!("checksum mismatch for {url}: got {digest:?}"));
     }
 
     run(Command::new("tar")
