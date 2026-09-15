@@ -1,0 +1,83 @@
+# veetee roadmap
+
+The working roadmap: what is done, what is left before 1.0, and what is parked. The wiki's
+[Roadmap](https://github.com/issinoho/veetee/wiki/Roadmap) page is the public summary; details of
+every control function are in [compat-matrix.md](compat-matrix.md), and released changes in
+[CHANGELOG.md](../CHANGELOG.md).
+
+Latest release: **0.8.5**. Until 1.0 the minor version follows the milestone reached; patch
+releases carry fixes and work that completes a milestone.
+
+## Goal
+
+A DEC VT terminal for the Linux (and Windows) desktop with SmarTerm/Reflection-class compatibility:
+VT52 through VT525, DECforms, FMS, EDT, EVE and SMG$ applications on OpenVMS without glitches,
+fonts drawn on DEC's own character cells, and the depth power users expect. It passes vttest and
+esctest2, and defaults to DEC and OpenVMS behaviour everywhere (see [CLAUDE.md](../CLAUDE.md)).
+
+## Milestones
+
+| Milestone | Scope | Status |
+|-----------|-------|--------|
+| M0 Foundations | Workspace, licences, CI, parser, fuzzing, headless driver | Done |
+| M1 VT100/VT102/VT52 | Screen model, GTK window, OpenGL renderer, PTY, first font, vttest 1–8 | Done |
+| M2 VT220/VT320 | Character sets and NRCS, soft fonts, UDKs, 8-bit controls, selective erase, status line, reports | Done |
+| M3 VT420 | Left/right margins, rectangles, checksums, pages, macros, state reports, esctest2 | Done (0.3.0) |
+| M4 VT510/VT520/VT525 | Colour, dual sessions, cursor styles, VT500 modes, reports, keyboard controls, character sets | Done (0.4.0) |
+| M5 Transports | PTY, serial, Telnet, SSH; RFC 2217; LAT | Partly done |
+| M6 Keyboard and DEC applications | Keymap and LK401 editor, DECFNK, VT520 key programming, recordings; OpenVMS acceptance recordings | Mostly done (0.6.0) |
+| M7 Fonts and look | DEC-cell fonts for every model and width, VT420 and VT500 Set-Up, sound, smooth scroll, CRT picture, Display Controls | Done (0.7.1) |
+| M8 Polish and 1.0 | Saved connections, logs, history search, copy and paste translation, screen readers, throughput, Flatpak, signed Windows builds | Planned work done (0.8.1–0.8.5) |
+
+## Left before 1.0
+
+### M5: connections
+
+- **RFC 2217** (Telnet COM Port Control) to terminal servers such as DECserver, Lantronix and Moxa:
+  set speed, data bits, parity, stop bits and flow control, and send BREAK, over Telnet.
+- **LAT** (Local Area Transport): a clean-room client written from packet captures of OpenVMS
+  LATACP (latd is GPL, so no code or detailed reading of it), with a small helper binary holding
+  `CAP_NET_RAW` so the GUI stays unprivileged. Document the protocol in `docs/lat-protocol.md`.
+  Not available in the Flatpak (raw sockets). The largest item left.
+
+### M6: OpenVMS acceptance
+
+- **Recordings** of FMS demo forms, DECforms samples, the EDT keypad, EVE/TPU, MAIL, SMG$
+  applications, DCL line editing and `SET TERMINAL/INQUIRE`, made by the user with
+  `veetee --record FILE.vtrec` on their OpenVMS system (recordings are kept outside the repository
+  until reviewed, and exclude typed keys unless `--record-keys`), then replayed in CI by
+  `cargo xtask openvms`.
+- PCTerm mode and key position reports (DECPCTERM, DECKPM, DECEKBD): not planned for 1.0; OpenVMS
+  does not use them.
+
+### Smaller gaps (from compat-matrix.md)
+
+- **Stored-only Set-Up settings**: serial line settings in Set-Up are not applied to `--serial`
+  connections; zero style, energy saver, host wake-up, overscan, transmit rate limits, modem
+  control and the compose/Alt/F5 key options are saved and reported but do not change behaviour.
+- **Sessions**: a window holds two sessions (a VT520 has four), with no session management over one
+  line (TD/SMP, SSU).
+- **Indicator status line** field layout not yet checked against hardware; DECTST resets without a
+  visible self-test.
+- **Printing**: printer controller and print screen data are swallowed; printing is post-1.0.
+
+### Release and distribution
+
+- **1.0**: decide when to call it; the version is the user's call.
+- **Flathub** (parked 2026-09-15): the Flatpak builds in CI and ships with releases. To submit:
+  make a copy of `packaging/flatpak/com.issinoho.Veetee.yml` with a `type: git` source pinned to a
+  release tag and commit; pass Flathub's `flatpak-builder-lint` (the `org.flatpak.Builder` Flatpak,
+  about 1 GB; ask before installing) and consider `<branding>` colours in the metainfo; justify
+  `--talk-name=org.freedesktop.Flatpak` (host shells and ssh), `--device=all` (serial) and
+  `--filesystem=home` (logs; may be asked to narrow). The user forks `flathub/flathub`, opens the
+  pull request against the `new-pr` branch, and may publish the verification token at
+  `https://issinoho.com/.well-known/org.flathub.VerifiedApps.txt`.
+- **Windows signing**: each release's zip is signed after publishing with
+  `pwsh -File packaging\windows\sign-release.ps1 -Version X.Y.Z` on Windows with Certum SimplySign
+  Desktop signed in (see `packaging/windows/SIGNING.md`).
+
+## After 1.0
+
+VT340 Sixel and ReGIS graphics, Tektronix 4010/4014, printer controller output to CUPS or PDF,
+Kermit and X/Y/ZMODEM file transfer, scripting and macros. The parser already accepts and safely
+ignores their sequences.
