@@ -1,0 +1,36 @@
+page 24x80 cursor 24,1 visible
+modes decawm deckpam
+ 1  |┌────────┬────────┬────────┬────────┐      ┌────────┬────────┬────────┬────────┐
+ 2  |│   ^    │  DOWN  │        │        │      │        │        │ FNDNXT │ DEL L  │
+   ~............................................88888888
+ 3  |│   │    │   │    │ <────  │  ────> │      │  GOLD  │  HELP  │        │        │
+   ~............................................88888888
+ 4  |│   │    │   │    │  LEFT  │  RIGHT │      │        │        │  FIND  │ UND L  │
+   ~............................................88888888..........88888888.88888888
+ 5  |│   UP   │   v    │        │        │      ├────────┼────────┼────────┼────────┤
+ 6  |└────────┴────────┴────────┴────────┘      │  PAGE  │  SECT  │ APPEND │ DEL W  │
+ 7  |DELETE      Delete character               │        │        │        │        │
+ 8  |LINEFEED    Delete to beginning of word    │ COMMAND│  FILL  │ REPLACE│ UND W  │
+   ~............................................88888888.88888888.88888888.88888888
+ 9  |BACKSPACE   Backup to beginning of line    ├────────┼────────┼────────┼────────┤
+10  |CTRL/A      Compute tab level              │ ADVANCE│ BACKUP │  CUT   │ DEL C  │
+11  |CTRL/D      Decrease tab level             │        │        │        │        │
+12  |CTRL/E      Increase tab level             │ BOTTOM │  TOP   │ PASTE  │ UND C  │
+   ~............................................88888888.88888888.88888888.88888888
+13  |CTRL/K      Define key                     ├────────┼────────┼────────┼────────┤
+14  |CTRL/R      Refresh screen                 │  WORD  │  EOL   │  CHAR  │        │
+15  |CTRL/T      Adjust tabs                    │        │        │        │ ENTER  │
+16  |CTRL/U      Delete to beginning of line    │CHNGCASE│ DEL EOL│ SPECINS│        │
+   ~............................................88888888.88888888.88888888
+17  |CTRL/W      Refresh screen                 ├────────┴────────┼────────┤        │
+18  |CTRL/Z      Exit to line mode              │      LINE       │ SELECT │        │
+19  |                                           │                 │        │  SUBS  │
+   ~.......................................................................88888888
+20  |Press a key for help on that key.          │    OPEN LINE    │ RESET  │        │
+   ~111111111111111111111111111111111...........88888888888888888.88888888
+21  |To exit, press the spacebar.               └─────────────────┴────────┴────────┘
+   ~1111111111111111111111111111
+22  |
+23  |
+24  |
+status indicator

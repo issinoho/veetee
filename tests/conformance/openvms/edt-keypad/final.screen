@@ -1,0 +1,27 @@
+page 24x80 cursor 24,1 visible
+modes decawm
+ 1  |Line 47 of the veetee EDT keypad acceptance recording
+ 2  |Line 48 of the veetee EDT keypad acceptance recording
+ 3  |Line 50 of the veetee EDT keypad acceptance recording
+ 4  |Line 51 of the veetee EDT keypad acceptance recording
+ 5  |Line 52 of the veetee EDT keypad acceptance recording
+ 6  |Line 53 of the veetee EDT keypad acceptance recording
+ 7  |Line 54 of the veetee EDT keypad acceptance recording
+ 8  |Line 55 of the veetee EDT keypad acceptance recording
+ 9  |Line 56 of the veetee EDT keypad acceptance recording
+10  |Line 57 of the veetee EDT keypad acceptance recording
+11  |Line 58 of the veetee EDT keypad acceptance recording
+12  |Line 59 of the veetee EDT keypad acceptance recording
+13  |Line 49 of the veetee EDT keypad acceptance recording
+14  |Line 60 of the veetee EDT keypad acceptance recording
+15  |[EOB]
+16  |
+17  |
+18  |*
+19  |[EOB]
+20  |*quit
+21  |
+22  |
+23  |Myi64::lo
+24  |  IRS          logged out at 15-SEP-2026 22:11:49.68
+status indicator
