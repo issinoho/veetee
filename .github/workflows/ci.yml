@@ -74,17 +74,19 @@ jobs:
       - run: cargo --version && pkg-config --modversion gtk4 libadwaita-1
       - run: cargo build --release -p veetee -p vt-headless
       - run: cargo test --workspace
-      - run: packaging/windows/bundle.sh
+      # target comes back from the cache with the zips of earlier runs in
+      # target/dist, which the globs below would pick up as well.
+      - run: rm -rf target/dist && packaging/windows/bundle.sh
       - name: Smoke test with software OpenGL
-        continue-on-error: true
         run: |
           set -x +e
           pacman -Ql mingw-w64-ucrt-x86_64-mesa | grep -i '\.dll$' || true
           dir=target/dist/smoke
           rm -rf "$dir" && mkdir -p "$dir"
-          unzip -q target/dist/veetee-*-x86_64-windows.zip -d "$dir"
-          app=$(echo "$dir"/veetee-*/bin)
-          "$app/veetee.exe" --help > "$dir/help.txt"; echo "help exit $?"
+          name=veetee-$(sed -n 's/^version = "\(.*\)"$/\1/p' Cargo.toml | head -n 1)-x86_64-windows
+          unzip -q "target/dist/$name.zip" -d "$dir"
+          app="$dir/$name/bin"
+          "$app/veetee.exe" --help > "$dir/help.txt"; help=$?; echo "help exit $help"
           # A console build first, so GTK's own messages are visible.
           cargo build -p veetee
           # Mesa's software OpenGL stands in for a graphics driver; it and its
@@ -99,15 +101,19 @@ jobs:
           command="echo veetee on Windows & ver & ping -n 60 127.0.0.1 >NUL"
           VEETEE_CAPTURE="$(cygpath -w "$PWD/$dir/debug.ppm")" \
             timeout 120 target/debug/veetee.exe --model vt420 --command "$command"
-          echo "debug exit $?"
+          debug=$?; echo "debug exit $debug"
           # Then the bundle, with no MSYS2 GTK on the PATH, as a user would have.
           VEETEE_CAPTURE="$(cygpath -w "$PWD/$dir/bundle.ppm")" PATH=/usr/bin:/c/Windows/system32:/c/Windows \
             /usr/bin/timeout 120 "$app/veetee.exe" --model vt525 --command "$command"
-          echo "bundle exit $?"
+          bundle=$?; echo "bundle exit $bundle"
           # Without Mesa the release build must at least load every DLL it needs.
           rm -f "$app/opengl32.dll" "$app/libgallium_wgl.dll"
-          PATH=/usr/bin:/c/Windows/system32:/c/Windows "$app/vt-headless.exe" --help > /dev/null; echo "vt-headless exit $?"
+          PATH=/usr/bin:/c/Windows/system32:/c/Windows "$app/vt-headless.exe" --help > /dev/null
+          headless=$?; echo "vt-headless exit $headless"
           ls -l "$dir"
+          # Nothing here may fail quietly: a bundle that cannot even load its
+          # DLLs exits 127 and must stop the build.
+          [ "$help" = 0 ] && [ "$debug" = 0 ] && [ "$bundle" = 0 ] && [ "$headless" = 0 ]
       - uses: actions/upload-artifact@v4
         with:
           name: veetee-windows
