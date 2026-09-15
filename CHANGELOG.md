@@ -12,6 +12,10 @@ milestones (0.3 = M3). The format follows [Keep a Changelog](https://keepachange
   `ESC [ K` then erased it, so a long line lost its last character and the line after it vanished.
   Set-Up still turns it off, and `SET TERM/NOWRAP` makes VMS insert the CR LF itself.
 
+- **Changed: a soft reset (DECSTR) returns Auto Wrap to the Set-Up value** instead of resetting it,
+  as DEC's table has it. EDT sends DECSTR as it exits, so with the old behaviour turning Auto Wrap
+  on fixed one editing session and the next was broken again.
+
 ## [0.8.3] - 2026-09-15
 
 Fixes veetee failing to start on Windows computers whose graphics driver left an old

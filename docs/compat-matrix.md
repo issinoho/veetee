@@ -62,7 +62,7 @@ conformance scripts in `tests/conformance/vttest`.
 | DECSCA | `CSI Ps " q` | ✅ | VT220+. SGR 0 does not clear protection (RM510 DECSCA) |
 | DECSED DECSEL | `CSI ? Ps J/K` | ✅ | Erase only unprotected characters; ED, EL, ECH, ICH, DCH ignore protection (vttest 11.1.2.4) |
 | DECSCL | `CSI 6n ; Pc " p` | ✅ | **Performs a hard reset** (RM510), then selects level; Pc 1 = 7-bit, 0/2/omitted = 8-bit. Clamped to the model's highest level |
-| DECSTR | `CSI ! p` | ✅ | Per RM510 table 5-9: also resets DECNRCM, DECSCA, UPSS, DECSASD and the saved cursor; DECSCNM, DECCOLM, tabs unchanged |
+| DECSTR | `CSI ! p` | ✅ | Per RM510 table 5-9: also resets DECNRCM, DECSCA, UPSS, DECSASD and the saved cursor; DECSCNM, DECCOLM, tabs unchanged. DECAWM returns to the Set-Up value rather than being reset, since EDT sends DECSTR as it exits |
 | S7C1T S8C1T | `ESC SP F/G` | ✅ | |
 | DECTCEM | `CSI ? 25 h/l` | ✅ | VT220+ |
 | SCS national sets | `ESC ( A…=`, `%6` | ✅ | Tables from EK-VT220-RM 2-5…2-15. Accepted only in NRC mode (DECNRCM) at level ≥ 2; British also in VT100 mode. 🔎 Dutch 7/13 transcription |
