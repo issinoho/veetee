@@ -170,7 +170,10 @@ pub struct Config {
     pub model: Model,
     pub rows: usize,
     pub cols: usize,
-    /// Set-Up "Auto Wrap". DEC factory default: off.
+    /// Set-Up "Auto Wrap". DEC's factory setting is off, but veetee powers up
+    /// with it on: hosts assume a wrapping terminal (VMS sets terminals
+    /// `/WRAP` by default, and EDT writes the line after an 80-column one
+    /// without a CR LF, expecting the wrap to start it).
     pub autowrap: bool,
     /// Set-Up "New Line" (LNM). DEC factory default: off.
     pub new_line: bool,
@@ -199,7 +202,7 @@ impl Default for Config {
             model: Model::Vt420,
             rows: 24,
             cols: 80,
-            autowrap: false,
+            autowrap: true,
             new_line: false,
             answerback: Vec::new(),
             scrollback_lines: 10_000,

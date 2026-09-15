@@ -5,6 +5,13 @@ milestones (0.3 = M3). The format follows [Keep a Changelog](https://keepachange
 
 ## [Unreleased]
 
+- **Changed: Auto Wrap is on at power-up**, the one place veetee's Set-Up differs from DEC's
+  factory table. Hosts assume a wrapping terminal: VMS sets terminals `/WRAP` by default, and its
+  editors rely on it, EDT writing the line after an 80-column one with no CR LF and expecting the
+  wrap to start it. With Auto Wrap off those characters piled into the last column and EDT's
+  `ESC [ K` then erased it, so a long line lost its last character and the line after it vanished.
+  Set-Up still turns it off, and `SET TERM/NOWRAP` makes VMS insert the CR LF itself.
+
 ## [0.8.3] - 2026-09-15
 
 Fixes veetee failing to start on Windows computers whose graphics driver left an old

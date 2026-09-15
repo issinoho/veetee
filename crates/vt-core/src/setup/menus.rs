@@ -1512,8 +1512,13 @@ mod tests {
         choose(&mut m, "Fast smooth");
         assert_eq!(m.features().scroll, Scroll::Smooth4);
         assert_eq!(m.path.len(), 2, "a radio choice closes its menu");
+        let wrapped = m.features().autowrap;
         choose(&mut m, "Auto wrap");
-        assert!(m.features().autowrap);
+        assert_eq!(
+            m.features().autowrap,
+            !wrapped,
+            "a toggle flips its feature"
+        );
     }
 
     #[test]

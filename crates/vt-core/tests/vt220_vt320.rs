@@ -141,8 +141,12 @@ fn dsr_variants() {
 #[test]
 fn decrqm_reports_modes() {
     let mut t = term(Model::Vt420);
-    assert_eq!(reply(&mut t, b"\x1b[?7$p"), "ESC [?7;2$y");
-    assert_eq!(reply(&mut t, b"\x1b[?7h\x1b[?7$p"), "ESC [?7;1$y");
+    assert_eq!(
+        reply(&mut t, b"\x1b[?7$p"),
+        "ESC [?7;1$y",
+        "auto wrap is on at power-up"
+    );
+    assert_eq!(reply(&mut t, b"\x1b[?7l\x1b[?7$p"), "ESC [?7;2$y");
     assert_eq!(reply(&mut t, b"\x1b[20$p"), "ESC [20;2$y");
     assert_eq!(
         reply(&mut t, b"\x1b[13$p"),

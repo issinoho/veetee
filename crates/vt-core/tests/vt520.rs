@@ -238,9 +238,9 @@ fn dectme_switches_between_vt500_vt100_and_vt52() {
 #[test]
 fn decsr_resets_and_confirms() {
     let mut t = vt520();
-    t.advance(b"text\x1b[?7h\x1b[1234+p");
+    t.advance(b"text\x1b[?7l\x1b[1234+p");
     assert_eq!(row(&t, 1), "");
-    assert!(!t.modes().autowrap);
+    assert!(t.modes().autowrap, "back to the power-up setting");
     assert_eq!(reply(&mut t), "\x1b[1234*q");
     t.advance(b"\x1b[+p");
     assert_eq!(reply(&mut t), "");
