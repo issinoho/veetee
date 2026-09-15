@@ -104,8 +104,8 @@ fn decscl_selects_level_and_hard_resets() {
     t.advance(b"\x1b[c");
     assert_eq!(
         t.take_output(),
-        b"\x1b[?6c",
-        "VT100 mode reports as a VT102"
+        b"\x1b[?64;1;2;6;7;8;9;15;18;21c",
+        "VT100 mode keeps the Terminal ID (EK-VT510-RM 2.6.2)"
     );
     t.advance(b"\x1b[65;1\"p");
     assert_eq!(t.level(), 4, "clamped to the model's highest level");

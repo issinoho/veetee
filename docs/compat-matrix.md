@@ -124,7 +124,7 @@ conformance scripts in `tests/conformance/vttest`.
 | DECNCSM | `CSI ? 95 h/l` | ✅ | DECCOLM keeps page memory; margins still reset and the cursor homes |
 | VT500 private modes | `CSI ? 34…117 h/l` | 🟡 | All modes of RM520 table 5-3 are stored and reported with factory defaults; DECNCSM, DECECM, DECBBSM, DECATCUM/BM and DECKPM (reset by DECSTR) have effect so far |
 | Set-Up selections | DECSKCV DECSWBV DECSMBV DECSSCLS DECSLCK DECARR DECCRTST DECSEST DECSZS DECSPRTT DECSPPCS DECSDPT DECSDDT DECSSL DECSCP DECSCS DECSFC DECSPP DECSTRL DECSRFR | 🟡 | Validated, stored and reported with DECRQSS (factory values from RM520). Keyclick, warning bell and margin bell volumes set the sounds and DECSSCLS the smooth scroll speed; zero style is not rendered yet. DECSRFR is VT510 only |
-| DECTID | `CSI Ps , q` | ✅ | Selects the DA1 identity (VT100 … VT520) |
+| DECTID | `CSI Ps , q` | ✅ | Selects the DA1 identity (VT100 … VT520), the same setting as Set-Up’s *Terminal ID to host*; the default is the terminal’s own. Only VT52 mode ignores it, so VT100 mode still answers with the selected ID (EK-VT510-RM 2.6.2, EK-VT220-RM 4.17.1.1) |
 | DECTME | `CSI Ps SP ~` | 🟡 | VT500, VT100 and VT52 operation with a soft reset; Wyse/TVI/ADDS/SCO emulations are not provided |
 | DECSR / DECSRC | `CSI Pr + p`, `CSI Pr * q` | ✅ | VT420 and VT500. Reset to power-up without disconnecting; confirmation when Pr is given |
 | DECLANS DECLBAN DECLTOD | `DCS 1 v`, `DCS Ps r`, `CSI Ph;Pm , p` | ✅ | Answerback from hex pairs (30 bytes), banner and time of day stored |

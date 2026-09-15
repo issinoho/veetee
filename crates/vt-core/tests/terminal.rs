@@ -533,6 +533,25 @@ fn device_attributes_by_model() {
 }
 
 #[test]
+fn vt100_mode_keeps_the_terminal_id() {
+    // DECSCL does not change DA1. A VT220 answers as a VT100, VT101 or VT102
+    // only when that ID is selected in Set-Up (EK-VT220-RM 4.17.1.1 note),
+    // and the default ID is the terminal's own (EK-VT510-RM DECTID).
+    for (model, primary) in [
+        (Model::Vt220, &b"[?62;1;2;6;7;8;9c"[..]),
+        (Model::Vt420, b"[?64;1;2;6;7;8;9;15;18;21c"),
+    ] {
+        let mut t = term(model);
+        t.advance(b"[61\"p");
+        t.take_output();
+        t.advance(b"[c");
+        assert_eq!(t.take_output(), primary, "{model:?} DA1 in VT100 mode");
+        t.advance(b"Z");
+        assert_eq!(t.take_output(), primary, "{model:?} DECID in VT100 mode");
+    }
+}
+
+#[test]
 fn s8c1t_selects_eight_bit_replies() {
     let mut t = term(Model::Vt220);
     t.advance(b"\x1b G\x1b[5n");

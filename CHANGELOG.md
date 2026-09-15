@@ -5,6 +5,14 @@ milestones (0.3 = M3). The format follows [Keep a Changelog](https://keepachange
 
 ## [Unreleased]
 
+- **Fixed: VT100 mode no longer changes the terminal's identity.** A VT220 or later in VT100 mode
+  (DECSCL level 1) answered Primary DA with `CSI ? 6 c`, claiming to be a VT102. The DA1 identity
+  comes from Set-Up's *Terminal ID to host* (DECTID), whose default is the terminal's own, and
+  which "has no effect when the terminal is in VT52 mode" — VT100 mode is not an exception
+  (EK-VT510-RM 2.6.2). EK-VT220-RM 4.17.1.1 agrees: the VT100, VT101 and VT102 responses apply in
+  VT100 mode only when that ID is selected. A VT420 in VT100 mode now answers
+  `CSI ? 64 ; 1 ; 2 ; 6 ; 7 ; 8 ; 9 ; 15 ; 18 ; 21 c` as it does at every other level.
+
 ## [0.8.4] - 2026-09-15
 
 Fixes two ways veetee and OpenVMS disagreed: Backspace ran the command it should have been

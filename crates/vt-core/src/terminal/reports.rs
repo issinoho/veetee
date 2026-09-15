@@ -2,7 +2,7 @@
 //! requests, presentation state reports.
 
 use super::{Emulator, Flags, charset::Charset};
-use crate::config::{Model, StatusDisplay};
+use crate::config::StatusDisplay;
 
 impl Emulator {
     pub(super) fn reply_csi(&mut self, body: &str) {
@@ -29,15 +29,14 @@ impl Emulator {
     // -------------------------------------------------------- attributes
 
     pub(super) fn device_attributes(&mut self) {
-        let da = self.config.model.primary_da();
-        // In VT100 mode a VT220+ reports its VT100-compatible identity.
-        let da = if let Some(id) = self.terminal_id_attributes() {
-            id
-        } else if self.level == 1 && self.config.model.max_level() > 1 {
-            Model::Vt102.primary_da()
-        } else {
-            da
-        };
+        // DA1 reports the identity Set-Up's Terminal ID selects (DECTID),
+        // whose default is the terminal's own. Only VT52 mode ignores it, and
+        // answers ESC / Z instead; VT100 mode is not an exception, so a VT220
+        // answers as a VT100, VT101 or VT102 there only when that ID is
+        // selected (EK-VT510-RM 2.6.2, EK-VT220-RM 4.17.1.1).
+        let da = self
+            .terminal_id_attributes()
+            .unwrap_or_else(|| self.config.model.primary_da());
         self.reply_csi(&format!("?{da}c"));
     }
 
