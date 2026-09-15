@@ -106,9 +106,11 @@ jobs:
           VEETEE_CAPTURE="$(cygpath -w "$PWD/$dir/bundle.ppm")" PATH=/usr/bin:/c/Windows/system32:/c/Windows \
             /usr/bin/timeout 120 "$app/veetee.exe" --model vt525 --command "$command"
           bundle=$?; echo "bundle exit $bundle"
-          # Without Mesa the release build must at least load every DLL it needs.
+          # Without Mesa the release build must at least load every DLL it
+          # needs: tracing an empty stream does that and exits 0, where
+          # --help is not an option and exits 2.
           rm -f "$app/opengl32.dll" "$app/libgallium_wgl.dll"
-          PATH=/usr/bin:/c/Windows/system32:/c/Windows "$app/vt-headless.exe" --help > /dev/null
+          PATH=/usr/bin:/c/Windows/system32:/c/Windows "$app/vt-headless.exe" trace < /dev/null > /dev/null
           headless=$?; echo "vt-headless exit $headless"
           ls -l "$dir"
           # Nothing here may fail quietly: a bundle that cannot even load its
