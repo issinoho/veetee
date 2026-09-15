@@ -5,6 +5,13 @@ milestones (0.3 = M3). The format follows [Keep a Changelog](https://keepachange
 
 ## [Unreleased]
 
+- **Fixed (Telnet): idle connections are held open with TCP keepalives.** A terminal sits idle for
+  as long as the user is reading, and OpenVMS sends nothing meanwhile, so a firewall or NAT between
+  the two is free to forget the connection; the next keystroke then failed with "an established
+  connection was aborted by the software in your host machine", losing the session. The socket now
+  asks for a keepalive after a minute of silence, repeated every fifteen seconds. SSH is unaffected:
+  it runs through the OpenSSH client, which has its own `ServerAliveInterval`.
+
 ## [0.8.5] - 2026-09-15
 
 Corrects the identity veetee reports in VT100 mode, and documents why OpenVMS gives an SSH session

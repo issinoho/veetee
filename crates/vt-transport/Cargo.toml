@@ -24,3 +24,6 @@ windows-sys = { version = "0.61", features = [
 
 [lints]
 workspace = true
+
+[dependencies]
+socket2 = "0.6.5"

@@ -11,6 +11,7 @@
 //! Option negotiation follows the RFC 1143 rule that prevents loops: we only
 //! answer a request that changes an option's state, or that we initiated.
 
+use socket2::{SockRef, TcpKeepalive};
 use std::io::{self, Read, Write};
 use std::net::{TcpStream, ToSocketAddrs};
 use std::sync::{Arc, Mutex};
@@ -350,6 +351,16 @@ impl Telnet {
         }
         let mut stream = stream.ok_or(last_error)?;
         stream.set_nodelay(true)?;
+        // A terminal session sits idle for as long as the user is reading, and
+        // OpenVMS sends nothing meanwhile, so a firewall or NAT between the two
+        // is free to forget the connection: the next keystroke then fails with
+        // "an established connection was aborted". Keepalives hold the path
+        // open. The times are the BSD defaults rather than the two hours of
+        // RFC 1122, which is longer than the idle timeout of most firewalls.
+        let keepalive = TcpKeepalive::new()
+            .with_time(Duration::from_secs(60))
+            .with_interval(Duration::from_secs(15));
+        SockRef::from(&stream).set_tcp_keepalive(&keepalive)?;
 
         let mut options = Options {
             rows: config.rows,
@@ -587,6 +598,23 @@ mod tests {
         out.clear();
         encode(b"\r\n\r", true, &mut out);
         assert_eq!(out, b"\r\n\r");
+    }
+
+    #[test]
+    fn keeps_the_connection_alive() {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let server = std::thread::spawn(move || listener.accept().unwrap());
+        let t = Telnet::connect(TelnetConfig {
+            port,
+            ..TelnetConfig::new("127.0.0.1", "VT420")
+        })
+        .unwrap();
+        assert!(
+            SockRef::from(&t.stream).keepalive().unwrap(),
+            "an idle session must survive a firewall that forgets it"
+        );
+        drop(server.join().unwrap());
     }
 
     #[test]
