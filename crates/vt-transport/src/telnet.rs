@@ -2,6 +2,12 @@
 //! 8-bit controls, ECHO (857), SUPPRESS-GO-AHEAD (858), TERMINAL-TYPE (1091),
 //! NAWS window size (1073) and TERMINAL-SPEED (1079).
 //!
+//! BINARY is offered only when the caller asks for it. DEC's telnet server
+//! answers it by putting the terminal in PASSALL, where the driver passes
+//! input through untouched and DELETE no longer erases (OpenVMS restores it
+//! with SET TERMINAL/INTERACTIVE). A server that proposes BINARY itself is
+//! still answered.
+//!
 //! Option negotiation follows the RFC 1143 rule that prevents loops: we only
 //! answer a request that changes an option's state, or that we initiated.
 
@@ -39,6 +45,27 @@ fn remote_supported(option: u8) -> bool {
     matches!(option, BINARY | ECHO | SGA)
 }
 
+/// The options offered on connect: what a DEC terminal wants, which the
+/// server may refuse. BINARY goes out only when `binary` asks for it.
+fn hello(options: &mut Options, binary: bool) -> Vec<u8> {
+    let mut hello = Vec::new();
+    for option in [BINARY, SGA, TTYPE, NAWS] {
+        if option == BINARY && !binary {
+            continue;
+        }
+        options.us_pending[usize::from(option)] = true;
+        hello.extend_from_slice(&[IAC, WILL, option]);
+    }
+    for option in [BINARY, SGA] {
+        if option == BINARY && !binary {
+            continue;
+        }
+        options.them_pending[usize::from(option)] = true;
+        hello.extend_from_slice(&[IAC, DO, option]);
+    }
+    hello
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TelnetConfig {
     pub host: String,
@@ -47,6 +74,9 @@ pub struct TelnetConfig {
     pub terminal_type: String,
     pub rows: u16,
     pub cols: u16,
+    /// Offer BINARY, for 8-bit controls. Off by default: OpenVMS answers it
+    /// by putting the terminal in PASSALL, which loses DCL line editing.
+    pub binary: bool,
 }
 
 impl TelnetConfig {
@@ -57,6 +87,7 @@ impl TelnetConfig {
             terminal_type: terminal_type.into(),
             rows: 24,
             cols: 80,
+            binary: false,
         }
     }
 }
@@ -325,17 +356,7 @@ impl Telnet {
             cols: config.cols,
             ..Options::default()
         };
-        // Offer what a DEC terminal wants; the server may refuse any of it.
-        let mut hello = Vec::new();
-        for option in [BINARY, SGA, TTYPE, NAWS] {
-            options.us_pending[usize::from(option)] = true;
-            hello.extend_from_slice(&[IAC, WILL, option]);
-        }
-        for option in [BINARY, SGA] {
-            options.them_pending[usize::from(option)] = true;
-            hello.extend_from_slice(&[IAC, DO, option]);
-        }
-        stream.write_all(&hello)?;
+        stream.write_all(&hello(&mut options, config.binary))?;
 
         let description = if config.port == 23 {
             format!("telnet {}", config.host)
@@ -473,6 +494,27 @@ mod tests {
         o.them[usize::from(BINARY)] = true;
         let (data, _) = decode(&mut d, &mut o, b"\r\0");
         assert_eq!(data, b"\r\0", "binary mode keeps NUL");
+    }
+
+    #[test]
+    fn binary_is_offered_only_when_asked_for() {
+        let mut options = Options::default();
+        assert_eq!(
+            hello(&mut options, false),
+            [
+                IAC, WILL, SGA, IAC, WILL, TTYPE, IAC, WILL, NAWS, IAC, DO, SGA
+            ]
+        );
+        assert!(!options.us_pending[usize::from(BINARY)]);
+        // A server that proposes BINARY itself is still answered.
+        let mut decoder = Decoder::new("VT420".into());
+        let (_, replies) = decode(&mut decoder, &mut options, &[IAC, WILL, BINARY]);
+        assert_eq!(replies, [IAC, DO, BINARY]);
+
+        let mut options = Options::default();
+        let offered = hello(&mut options, true);
+        assert!(offered.starts_with(&[IAC, WILL, BINARY]));
+        assert!(offered.windows(3).any(|w| w == [IAC, DO, BINARY]));
     }
 
     #[test]

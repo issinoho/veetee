@@ -93,6 +93,8 @@ struct Entry {
     #[serde(skip_serializing_if = "Option::is_none")]
     port: Option<u16>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    telnet_binary: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     device: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     baud: Option<u32>,
@@ -143,6 +145,7 @@ impl Entry {
             "telnet" => Connection::Telnet {
                 host: need(&self.host, "a host")?,
                 port: self.port.unwrap_or(23),
+                binary: self.telnet_binary.unwrap_or(false),
             },
             "ssh" => Connection::Ssh(SshConfig {
                 destination: need(&self.host, "a host")?,
@@ -214,10 +217,11 @@ impl Entry {
                 e.connection = "command".into();
                 e.command = Some(c.clone());
             }
-            Connection::Telnet { host, port } => {
+            Connection::Telnet { host, port, binary } => {
                 e.connection = "telnet".into();
                 e.host = Some(host.clone());
                 e.port = (*port != 23).then_some(*port);
+                e.telnet_binary = binary.then_some(true);
             }
             Connection::Ssh(s) => {
                 e.connection = "ssh".into();

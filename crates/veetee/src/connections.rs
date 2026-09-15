@@ -320,6 +320,7 @@ fn editor(
         connection: Connection::Telnet {
             host: String::new(),
             port: 23,
+            binary: false,
         },
         phosphor: "white".into(),
         sessions: 1,
@@ -328,6 +329,9 @@ fn editor(
         log_timestamps: false,
         log_raw: false,
     });
+    // The dialog has no control for 8-bit Telnet, so an edited connection
+    // keeps what it was saved with.
+    let keep_binary = matches!(&p.connection, Connection::Telnet { binary: true, .. });
 
     let name = adw::EntryRow::builder().title("Name").text(&p.name).build();
     let kind = combo("Type", &KINDS);
@@ -373,7 +377,9 @@ fn editor(
         "/dev/ttyUSB0"
     });
     match &p.connection {
-        Connection::Telnet { host: h, port: n } => {
+        Connection::Telnet {
+            host: h, port: n, ..
+        } => {
             kind.set_selected(0);
             host.set_text(h);
             port.set_value(if *n == 23 { 0.0 } else { f64::from(*n) });
@@ -522,6 +528,7 @@ fn editor(
                         Connection::Telnet {
                             host: h,
                             port: if port_value == 0 { 23 } else { port_value },
+                            binary: keep_binary,
                         }
                     } else {
                         Connection::Ssh(SshConfig {

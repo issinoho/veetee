@@ -23,6 +23,8 @@ connections (default: your login shell):
 options:
   --model MODEL          vt100 vt102 vt220 vt320 vt420 (default) vt510 vt520 vt525
   --port PORT            TCP port for --telnet or --ssh
+  --telnet-binary        negotiate 8-bit Telnet (BINARY). OpenVMS answers it by
+                         setting the terminal PASSALL, where DELETE stops erasing
   --record FILE          record the session to FILE (.vtrec) for replay and tests;
                          Ctrl+Shift+M marks a checkpoint
   --record-keys          also record typed keys (includes passwords)
@@ -51,6 +53,8 @@ pub enum Connection {
     Telnet {
         host: String,
         port: u16,
+        /// Negotiate the Telnet BINARY option, for 8-bit controls.
+        binary: bool,
     },
     Ssh(SshConfig),
 }
@@ -71,8 +75,8 @@ impl Connection {
             Connection::Shell => "Local shell".into(),
             Connection::Command(cmd) => cmd.clone(),
             Connection::Serial(s) => s.to_string(),
-            Connection::Telnet { host, port: 23 } => format!("telnet {host}"),
-            Connection::Telnet { host, port } => format!("telnet {host}:{port}"),
+            Connection::Telnet { host, port: 23, .. } => format!("telnet {host}"),
+            Connection::Telnet { host, port, .. } => format!("telnet {host}:{port}"),
             Connection::Ssh(s) => match s.port {
                 Some(port) => format!("ssh {}:{port}", s.destination),
                 None => format!("ssh {}", s.destination),
@@ -136,6 +140,7 @@ pub fn parse_args_with(
     let mut port: Option<u16> = None;
     let mut chosen = 0;
     let mut record_keys = false;
+    let mut telnet_binary = false;
     let (mut log_timestamps, mut log_raw) = (false, false);
     let mut args = rest.into_iter().peekable();
     while let Some(arg) = args.next() {
@@ -195,6 +200,10 @@ pub fn parse_args_with(
                     "2" => 2,
                     _ => return Err(format!("--sessions: 1 or 2, not {v:?}")),
                 };
+                None
+            }
+            "--telnet-binary" => {
+                telnet_binary = true;
                 None
             }
             "--port" => {
@@ -257,6 +266,13 @@ pub fn parse_args_with(
         }
     }
 
+    if telnet_binary {
+        match &mut options.connection {
+            Connection::Telnet { binary, .. } => *binary = true,
+            _ => return Err("--telnet-binary applies to --telnet".into()),
+        }
+    }
+
     match &mut options.connection {
         Connection::Serial(serial) => {
             for (flag, v) in line {
@@ -309,6 +325,7 @@ fn telnet(spec: &str) -> Result<Connection, String> {
     Ok(Connection::Telnet {
         host,
         port: port.unwrap_or(23),
+        binary: false,
     })
 }
 
@@ -394,10 +411,11 @@ pub fn open_transport(config: &Config, connection: &Connection) -> io::Result<Bo
             Box::new(Pty::spawn(&shell, &[flag, cmd.as_str()], rows, cols, term)?)
         }
         Connection::Serial(serial) => Box::new(Serial::open(serial.clone())?),
-        Connection::Telnet { host, port } => Box::new(Telnet::connect(TelnetConfig {
+        Connection::Telnet { host, port, binary } => Box::new(Telnet::connect(TelnetConfig {
             port: *port,
             rows,
             cols,
+            binary: *binary,
             // Telnet terminal types are conventionally upper case (RFC 1091).
             ..TelnetConfig::new(host.clone(), model_name(config.model))
         })?),
@@ -484,7 +502,8 @@ mod tests {
             parse(&["--telnet", "vms1"]).unwrap().connection,
             Connection::Telnet {
                 host: "vms1".into(),
-                port: 23
+                port: 23,
+                binary: false
             }
         );
         assert_eq!(
@@ -498,7 +517,8 @@ mod tests {
             parse(&["telnet://vms1:24/"]).unwrap().connection,
             Connection::Telnet {
                 host: "vms1".into(),
-                port: 24
+                port: 24,
+                binary: false
             }
         );
         assert_eq!(
@@ -507,23 +527,41 @@ mod tests {
                 .connection,
             Connection::Telnet {
                 host: "vms1".into(),
-                port: 2001
+                port: 2001,
+                binary: false
             }
         );
         assert_eq!(
             parse(&["--telnet", "[fe80::1]:23"]).unwrap().connection,
             Connection::Telnet {
                 host: "fe80::1".into(),
-                port: 23
+                port: 23,
+                binary: false
             }
         );
         assert_eq!(
             parse(&["--telnet", "fe80::1"]).unwrap().connection,
             Connection::Telnet {
                 host: "fe80::1".into(),
-                port: 23
+                port: 23,
+                binary: false
             }
         );
+    }
+
+    #[test]
+    fn telnet_binary_is_off_unless_asked_for() {
+        assert_eq!(
+            parse(&["--telnet", "vms1", "--telnet-binary"])
+                .unwrap()
+                .connection,
+            Connection::Telnet {
+                host: "vms1".into(),
+                port: 23,
+                binary: true
+            }
+        );
+        assert!(parse(&["--telnet-binary"]).is_err());
     }
 
     #[test]

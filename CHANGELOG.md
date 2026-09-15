@@ -16,6 +16,13 @@ milestones (0.3 = M3). The format follows [Keep a Changelog](https://keepachange
   as DEC's table has it. EDT sends DECSTR as it exits, so with the old behaviour turning Auto Wrap
   on fixed one editing session and the next was broken again.
 
+- **Fixed (Telnet)**: veetee asked for the Telnet BINARY option on every connection, and OpenVMS
+  answers that by putting the terminal in PASSALL, where the driver passes input through untouched:
+  DELETE stopped erasing (it ended the line instead, so `DIR` ran as soon as Backspace was pressed)
+  and DCL command recall went with it. BINARY is now offered only when asked for, with
+  `--telnet-binary` or `telnet-binary = true` in a saved connection; a host that proposes it is
+  still answered. On OpenVMS, `SET TERMINAL/INTERACTIVE` undoes an earlier session's PASSALL.
+
 ## [0.8.3] - 2026-09-15
 
 Fixes veetee failing to start on Windows computers whose graphics driver left an old
