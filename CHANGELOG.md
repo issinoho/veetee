@@ -5,6 +5,11 @@ milestones (0.3 = M3). The format follows [Keep a Changelog](https://keepachange
 
 ## [Unreleased]
 
+## [0.8.5] - 2026-09-15
+
+Corrects the identity veetee reports in VT100 mode, and documents why OpenVMS gives an SSH session
+a VT102 whatever model is selected.
+
 - **Fixed: VT100 mode no longer changes the terminal's identity.** A VT220 or later in VT100 mode
   (DECSCL level 1) answered Primary DA with `CSI ? 6 c`, claiming to be a VT102. The DA1 identity
   comes from Set-Up's *Terminal ID to host* (DECTID), whose default is the terminal's own, and
@@ -273,7 +278,8 @@ The first release: VT100 through VT420 emulation with local, Telnet, SSH and ser
   `cargo deny` licence checks and parser fuzzing.
 - `cargo xtask dist` builds the release tarball and Debian package.
 
-[Unreleased]: https://github.com/issinoho/veetee/compare/v0.8.4...HEAD
+[Unreleased]: https://github.com/issinoho/veetee/compare/v0.8.5...HEAD
+[0.8.5]: https://github.com/issinoho/veetee/compare/v0.8.4...v0.8.5
 [0.8.4]: https://github.com/issinoho/veetee/compare/v0.8.3...v0.8.4
 [0.8.3]: https://github.com/issinoho/veetee/compare/v0.8.2...v0.8.3
 [0.8.2]: https://github.com/issinoho/veetee/compare/v0.8.1...v0.8.2
