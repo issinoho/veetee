@@ -1,0 +1,27 @@
+page 24x80 cursor 24,8 visible
+modes decawm
+ 1  |   Advanced_video     Edit_mode          DEC_CRT            No DEC_CRT2
+ 2  |   No DEC_CRT3        No DEC_CRT4        No DEC_CRT5        No Ansi_Color
+ 3  |   VMS Style Input    <CTRL-H> Backspace
+ 4  |Myi64::sh term opa0
+ 5  |Terminal: _OPA0:      Device_Type: VT100         Owner: No Owner
+ 6  |
+ 7  |   Input:    9600     LFfill:  0      Width:  80      Parity: None
+ 8  |   Output:   9600     CRfill:  0      Page:   24
+ 9  |
+10  |Terminal Characteristics:
+11  |   Interactive        Echo               Type_ahead         No Escape
+12  |   No Hostsync        TTsync             Lowercase          No Tab
+13  |   Wrap               Scope              No Remote          No Eightbit
+14  |   No Broadcast       No Readsync        No Form            Fulldup
+15  |   No Modem           No Local_echo      No Autobaud        No Hangup
+16  |   No Brdcstmbx       No DMA             No Altypeahd       Set_speed
+17  |   No Commsync        Line Editing       Overstrike editing No Fallback
+18  |   No Dialup          No Secure server   No Disconnect      No Pasthru
+19  |   No Syspassword     No SIXEL Graphics  No Soft Characters No Printer Port
+20  |   Numeric Keypad     No ANSI_CRT        No Regis           No Block_mode
+21  |   No Advanced_video  No Edit_mode       No DEC_CRT         No DEC_CRT2
+22  |   No DEC_CRT3        No DEC_CRT4        No DEC_CRT5        No Ansi_Color
+23  |   VMS Style Input    <CTRL-H> Backspace
+24  |Myi64::
+status indicator

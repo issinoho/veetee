@@ -1,0 +1,27 @@
+page 24x80 cursor 24,8 visible
+modes decawm
+ 1  |
+ 2  |Myi64::set term/inq
+ 3  |Myi64::sh term
+ 4  |Terminal: _FTA25:     Device_Type: VT102         Owner: FTA25_IRS
+ 5  |                                              Username: IRS
+ 6  |
+ 7  |   Input:    9600     LFfill:  0      Width:  80      Parity: None
+ 8  |   Output:   9600     CRfill:  0      Page:   24
+ 9  |
+10  |Terminal Characteristics:
+11  |   Interactive        Echo               Type_ahead         No Escape
+12  |   Hostsync           TTsync             Lowercase          Tab
+13  |   Wrap               Scope              No Remote          No Eightbit
+14  |   Broadcast          No Readsync        No Form            Fulldup
+15  |   No Modem           No Local_echo      No Autobaud        No Hangup
+16  |   No Brdcstmbx       No DMA             No Altypeahd       Set_speed
+17  |   No Commsync        Line Editing       Overstrike editing No Fallback
+18  |   No Dialup          Secure server      No Disconnect      No Pasthru
+19  |   No Syspassword     No SIXEL Graphics  No Soft Characters Printer port
+20  |   Numeric Keypad     ANSI_CRT           Regis              No Block_mode
+21  |   Advanced_video     Edit_mode          DEC_CRT            No DEC_CRT2
+22  |   No DEC_CRT3        No DEC_CRT4        No DEC_CRT5        No Ansi_Color
+23  |   VMS Style Input    <CTRL-H> Backspace
+24  |Myi64::
+status indicator

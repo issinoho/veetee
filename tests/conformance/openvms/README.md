@@ -37,6 +37,8 @@ recording (for node names, user names, file contents) before committing it.
 | Recording | Application | What to exercise |
 |-----------|-------------|------------------|
 | `set-terminal-inquire` | DCL | `SET TERMINAL/INQUIRE`, `SHOW TERMINAL`, DCL line editing (arrows, Ctrl/B, Ctrl/E, insert/overstrike) |
+| `set-terminal-inquire-ssh` | DCL over SSH | The same over SSH, where OpenVMS never sends the
+  inquiry and the terminal must answer nothing |
 | `edt-keypad` | EDT | Keypad mode, PF1 Gold functions, Help (PF2), Find, Cut/Paste, scrolling regions |
 | `eve-tpu` | EVE/TPU | Two windows, Do commands, Find/Select/Remove/Insert Here, 132 columns (`SET WIDTH 132`) |
 | `mail` | MAIL | Directory listing, reading and scrolling a message, double-size headers |

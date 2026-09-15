@@ -1,0 +1,27 @@
+page 24x80 cursor 23,8 visible
+modes decawm
+ 1  |Myi64::sh term
+ 2  |Terminal: _TNA11:     Device_Type: VT400_Series  Owner: _TNA11:
+ 3  |                                              Username: IRS
+ 4  |Remote Port Info: Host: WORKSTATION Port: 64955
+ 5  |
+ 6  |   Input:    9600     LFfill:  0      Width:  80      Parity: None
+ 7  |   Output:   9600     CRfill:  0      Page:   24
+ 8  |
+ 9  |Terminal Characteristics:
+10  |   Interactive        Echo               Type_ahead         No Escape
+11  |   Hostsync           TTsync             Lowercase          Tab
+12  |   Wrap               Scope              No Remote          Eightbit
+13  |   Broadcast          No Readsync        No Form            Fulldup
+14  |   No Modem           No Local_echo      No Autobaud        Hangup
+15  |   No Brdcstmbx       No DMA             No Altypeahd       Set_speed
+16  |   No Commsync        Line Editing       Overstrike editing No Fallback
+17  |   No Dialup          No Secure server   No Disconnect      No Pasthru
+18  |   No Syspassword     No SIXEL Graphics  Soft Characters    Printer port
+19  |   Numeric Keypad     ANSI_CRT           No Regis           No Block_mode
+20  |   Advanced_video     Edit_mode          DEC_CRT            DEC_CRT2
+21  |   DEC_CRT3           DEC_CRT4           No DEC_CRT5        No Ansi_Color
+22  |   VMS Style Input    <CTRL-H> Backspace
+23  |Myi64::
+24  |
+status indicator
