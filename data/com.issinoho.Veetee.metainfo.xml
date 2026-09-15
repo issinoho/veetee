@@ -61,6 +61,11 @@
   </supports>
   <content_rating type="oars-1.1"/>
   <releases>
+    <release version="0.8.4" date="2026-09-15">
+      <description>
+        <p>OpenVMS: Backspace deletes again over Telnet, and editors no longer lose the line after a long one.</p>
+      </description>
+    </release>
     <release version="0.8.3" date="2026-09-15">
       <description>
         <p>Windows: veetee starts on computers whose graphics driver left an old Vulkan loader in place.</p>

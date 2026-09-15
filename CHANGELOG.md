@@ -5,6 +5,11 @@ milestones (0.3 = M3). The format follows [Keep a Changelog](https://keepachange
 
 ## [Unreleased]
 
+## [0.8.4] - 2026-09-15
+
+Fixes two ways veetee and OpenVMS disagreed: Backspace ran the command it should have been
+editing, and EDT lost a line of the file for every line longer than the screen.
+
 - **Changed: Auto Wrap is on at power-up**, the one place veetee's Set-Up differs from DEC's
   factory table. Hosts assume a wrapping terminal: VMS sets terminals `/WRAP` by default, and its
   editors rely on it, EDT writing the line after an 80-column one with no CR LF and expecting the
@@ -260,7 +265,8 @@ The first release: VT100 through VT420 emulation with local, Telnet, SSH and ser
   `cargo deny` licence checks and parser fuzzing.
 - `cargo xtask dist` builds the release tarball and Debian package.
 
-[Unreleased]: https://github.com/issinoho/veetee/compare/v0.8.3...HEAD
+[Unreleased]: https://github.com/issinoho/veetee/compare/v0.8.4...HEAD
+[0.8.4]: https://github.com/issinoho/veetee/compare/v0.8.3...v0.8.4
 [0.8.3]: https://github.com/issinoho/veetee/compare/v0.8.2...v0.8.3
 [0.8.2]: https://github.com/issinoho/veetee/compare/v0.8.1...v0.8.2
 [0.8.1]: https://github.com/issinoho/veetee/compare/v0.8.0...v0.8.1

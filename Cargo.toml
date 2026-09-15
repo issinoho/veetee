@@ -3,19 +3,19 @@ resolver = "3"
 members = ["crates/*", "xtask"]
 
 [workspace.package]
-version = "0.8.3"
+version = "0.8.4"
 edition = "2024"
 rust-version = "1.85"
 license = "MIT OR Apache-2.0"
 authors = ["Iain Smith <iain@issinoho.com>"]
 
 [workspace.dependencies]
-vt-parser = { path = "crates/vt-parser", version = "0.8.3" }
-vt-core = { path = "crates/vt-core", version = "0.8.3" }
-vt-fonts = { path = "crates/vt-fonts", version = "0.8.3" }
-vt-keyboard = { path = "crates/vt-keyboard", version = "0.8.3" }
-vt-render = { path = "crates/vt-render", version = "0.8.3" }
-vt-transport = { path = "crates/vt-transport", version = "0.8.3" }
+vt-parser = { path = "crates/vt-parser", version = "0.8.4" }
+vt-core = { path = "crates/vt-core", version = "0.8.4" }
+vt-fonts = { path = "crates/vt-fonts", version = "0.8.4" }
+vt-keyboard = { path = "crates/vt-keyboard", version = "0.8.4" }
+vt-render = { path = "crates/vt-render", version = "0.8.4" }
+vt-transport = { path = "crates/vt-transport", version = "0.8.4" }
 
 [workspace.lints.rust]
 unsafe_code = "deny"
