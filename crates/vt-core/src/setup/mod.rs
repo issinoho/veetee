@@ -278,7 +278,10 @@ impl Features {
             printer_session: 0,
             columns_132: false,
             display_controls: false,
-            autowrap: false,
+            // DEC's factory setting is No Auto Wrap; veetee differs, so that
+            // Set-Up Default leaves the terminal working with hosts that
+            // assume a wrapping terminal. See Config::autowrap.
+            autowrap: true,
             scroll: if model.smooth_scroll_default() {
                 Scroll::Smooth2
             } else {

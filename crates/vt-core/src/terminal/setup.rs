@@ -552,7 +552,9 @@ mod tests {
         term.recall_setup_features();
         assert!(term.modes().autowrap && term.modes().new_line);
         term.restore_factory_setup();
-        assert!(!term.modes().autowrap);
+        // New Line is off in the factory settings; Auto Wrap is the one
+        // place veetee differs from DEC's table, so it stays on.
+        assert!(!term.modes().new_line && term.modes().autowrap);
         assert_eq!(term.saved_setup_features(), None);
     }
 

@@ -34,10 +34,13 @@ fn cursor(t: &Terminal) -> (usize, usize) {
 // ------------------------------------------------------------ defaults
 
 #[test]
-fn power_up_uses_dec_factory_setup() {
+fn power_up_uses_the_factory_setup() {
     let t = Terminal::new(Config::default());
     assert_eq!(t.config().model, Model::Vt420);
-    assert!(!t.modes().autowrap, "DEC factory Set-Up: no auto wrap");
+    assert!(
+        t.modes().autowrap,
+        "auto wrap on, the one place veetee differs from DEC's factory Set-Up"
+    );
     assert!(!t.modes().new_line);
     assert!(t.modes().send_receive, "no local echo");
     assert!(t.modes().ansi);
@@ -64,9 +67,20 @@ fn last_column_flag_defers_wrap() {
 #[test]
 fn no_autowrap_overwrites_last_column() {
     let mut t = small(Model::Vt102, 3, 5);
-    t.advance(b"ABCDEFG");
+    t.advance(b"\x1b[?7lABCDEFG");
     assert_eq!(row(&t, 1), "ABCDG");
     assert_eq!(cursor(&t), (1, 5));
+}
+
+#[test]
+fn a_full_row_wraps_the_text_that_follows_it() {
+    // EDT on OpenVMS writes the next line straight after one that fills
+    // the row, with no CR LF, and relies on the wrap to start it.
+    let mut t = small(Model::Vt420, 3, 5);
+    t.advance(b"ABCDEnext\x1b[K\r\n");
+    assert_eq!(row(&t, 1), "ABCDE");
+    assert_eq!(row(&t, 2), "next");
+    assert_eq!(cursor(&t), (3, 1));
 }
 
 #[test]
@@ -567,11 +581,11 @@ fn decll_leds() {
 #[test]
 fn ris_restores_power_up_state() {
     let mut t = term(Model::Vt220);
-    t.advance(b"\x1b[?7h\x1b[5;10r\x1b[1mtext\x1b[?3h\x1b G\x1bc");
+    t.advance(b"\x1b[?7l\x1b[5;10r\x1b[1mtext\x1b[?3h\x1b G\x1bc");
     assert_eq!(row(&t, 1), "");
     assert_eq!(t.grid().cols(), 80);
     assert_eq!(t.margins(), (0, 23));
-    assert!(!t.modes().autowrap);
+    assert!(t.modes().autowrap, "back to the power-up setting");
     assert!(!t.eight_bit_replies());
     assert_eq!(cursor(&t), (1, 1));
 }
