@@ -5,6 +5,13 @@ milestones (0.3 = M3). The format follows [Keep a Changelog](https://keepachange
 
 ## [Unreleased]
 
+- **Fixed (Windows)**: veetee would not start on computers whose graphics driver leaves an old
+  Vulkan loader in System32 ("The procedure entry point vkBindImageMemory2 could not be located
+  in the dynamic link library ...\bin\libgtk-4-1.dll"). GTK imports the Vulkan loader, which
+  `ldd` resolves to the System32 copy, so it was never bundled; the zip now ships MSYS2's
+  `vulkan-1.dll` next to the other libraries, and `bundle.sh` fails if anything else GTK imports
+  is left to the machine's own copy.
+
 ## [0.8.2] - 2026-09-14
 
 Fixes local shells and SSH in the Flatpak, and adds signing of Windows releases.
