@@ -131,7 +131,6 @@ DECSETTiteInhibitTests.test_SaveRestoreCursor_Protection  xterm alternate screen
 DECSETTiteInhibitTests.test_SaveRestoreCursor_Reset  xterm alternate screen modes 1047-1049; no DEC equivalent
 DECSETTiteInhibitTests.test_SaveRestoreCursor_ResetsOriginMode  xterm alternate screen modes 1047-1049; no DEC equivalent
 DECSETTiteInhibitTests.test_SaveRestoreCursor_WorksInLRM  xterm alternate screen modes 1047-1049; no DEC equivalent
-DECSTRTests.test_DECSTR_DECAWM  DECSTR resets DECAWM to no autowrap; EK-VT520-RM table 5-6
 ECHTests.test_ECH_DefaultParam  checksum: xterm counts cells blanked by ECH/ICH/EL/ED 1/DECIC/DECERA etc. as spaces but cleared cells as NUL; DEC terminals give erased positions no checksum weight (vttest DECRQCRA)
 ECHTests.test_ECH_ExplicitParam  checksum: xterm counts cells blanked by ECH/ICH/EL/ED 1/DECIC/DECERA etc. as spaces but cleared cells as NUL; DEC terminals give erased positions no checksum weight (vttest DECRQCRA)
 ECHTests.test_ECH_IgnoresScrollRegion  checksum: xterm counts cells blanked by ECH/ICH/EL/ED 1/DECIC/DECERA etc. as spaces but cleared cells as NUL; DEC terminals give erased positions no checksum weight (vttest DECRQCRA)

@@ -1753,7 +1753,11 @@ impl Emulator {
         self.modes.cursor_visible = true;
         self.modes.insert = false;
         self.modes.origin = false;
-        self.modes.autowrap = false;
+        // DEC's table resets DECAWM here. veetee returns it to the Set-Up
+        // value instead: EDT sends DECSTR as it exits, and a terminal left
+        // with no auto wrap cannot draw the next EDT session (see
+        // Config::autowrap).
+        self.modes.autowrap = self.config.autowrap;
         self.modes.national = false;
         self.modes.keyboard_locked = false;
         self.modes.keypad_application = false;

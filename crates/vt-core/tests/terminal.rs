@@ -593,9 +593,10 @@ fn ris_restores_power_up_state() {
 #[test]
 fn decstr_soft_reset() {
     let mut t = term(Model::Vt220);
-    t.advance(b"\x1b[?7h\x1b[?6h\x1b[4h\x1b[5;10r\x1b[?25l\x1b[1m\x1b[!p");
+    t.advance(b"\x1b[?7l\x1b[?6h\x1b[4h\x1b[5;10r\x1b[?25l\x1b[1m\x1b[!p");
     let m = t.modes();
-    assert!(!m.autowrap && !m.origin && !m.insert && m.cursor_visible);
+    // Auto Wrap comes back from Set-Up rather than being reset.
+    assert!(m.autowrap && !m.origin && !m.insert && m.cursor_visible);
     assert_eq!(t.margins(), (0, 23));
 }
 
