@@ -77,10 +77,12 @@ left here is a limitation rather than work.
   Everything needed for that — circuit start, run messages, slots, sequence and acknowledgement —
   is read and written by `vt-lat`.
 
-  Left: **typing back**. Nothing sends a keystroke yet, so a session reaches the username prompt
-  and waits there until OpenVMS times it out. After that, a `Transport` implementation so a
-  terminal can use a LAT session as it uses Telnet, the helper binary holding `CAP_NET_RAW` so the
-  interface need not run privileged, and a service browser in the connection dialog. Several
+  Traffic goes both ways: typing a username gets the echo and then `Password:`, so the protocol
+  work is done in substance.
+
+  Left is plumbing rather than protocol: a `Transport` implementation so a terminal can use a LAT
+  session as it uses Telnet, the helper binary holding `CAP_NET_RAW` so the interface need not run
+  privileged, and a service browser in the connection dialog. Several
   fields of the messages are still copied rather than understood; they are marked in
   [`lat-protocol.md`](lat-protocol.md). Not available in the Flatpak, which has no raw sockets, nor
   on Windows, which has no raw Ethernet without a driver.

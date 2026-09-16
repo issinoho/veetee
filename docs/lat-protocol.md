@@ -179,10 +179,15 @@ ends will then acknowledge each other indefinitely.
 ### A session, end to end
 
 Opening a circuit and asking for a service is enough to be given a terminal. OpenVMS answers with
-five slots naming the device it has created — `LTA5040` — then its login banner, then
+five slots naming the device it has created — an `LTA` unit — then its login banner, then
 `Username:`, and holds the circuit for as long as it is acknowledged. Left alone it ends the login
 itself with *Error reading command input* and *Timeout period expired*, which is the ordinary
 behaviour of a VMS terminal nobody types at.
+
+Typing back is a slot like any other, with a control byte of `0x00` and the characters as data.
+Sending a username produced the echo and then `Password:`, so a session carries traffic both ways
+on the reading here. **The far end will not read before it has prompted**: a slot sent before it
+says anything is ignored.
 
 ### Starting a session
 

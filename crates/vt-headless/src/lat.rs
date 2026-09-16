@@ -151,32 +151,6 @@ pub fn lat(args: impl Iterator<Item = String>) -> io::Result<()> {
                     let ack = vt_lat::Run::acknowledgement(c.theirs, c.ours, c.sequence, c.heard);
                     listener.send(c.peer, &ack)?;
                 }
-                // Type once there is something to type at: the far end sends
-                // its prompt before it will read anything.
-                if let (Some(text), Some(c)) = (&typing, &mut circuit)
-                    && r.ours == c.theirs
-                    && r.slots.iter().any(|slot| !slot.data.is_empty())
-                {
-                    let mut line = text.clone().into_bytes();
-                    line.push(b'\r');
-                    c.sequence = c.sequence.wrapping_add(1);
-                    let typed = vt_lat::Run {
-                        flags: 2,
-                        theirs: c.theirs,
-                        ours: c.ours,
-                        sequence: c.sequence,
-                        acknowledged: c.heard,
-                        slots: vec![vt_lat::Slot {
-                            to: 1,
-                            from: 1,
-                            control: 0, // data, against SLOT_START for the request
-                            data: &line,
-                        }],
-                    };
-                    listener.send(c.peer, &typed.build())?;
-                    println!("      typed {text:?}");
-                    typing = None;
-                }
                 if r.slots.is_empty() {
                     // An idle circuit says only what it has heard.
                     println!("{from}  circuit {:#06x}: heard {}", r.ours, r.acknowledged);
@@ -208,6 +182,32 @@ pub fn lat(args: impl Iterator<Item = String>) -> io::Result<()> {
                         slot.to,
                         slot.data.len()
                     );
+                }
+                // Type once there is something to type at: the far end sends
+                // its prompt before it will read anything.
+                if let (Some(text), Some(c)) = (&typing, &mut circuit)
+                    && r.ours == c.theirs
+                    && r.slots.iter().any(|slot| !slot.data.is_empty())
+                {
+                    let mut line = text.clone().into_bytes();
+                    line.push(b'\r');
+                    c.sequence = c.sequence.wrapping_add(1);
+                    let typed = vt_lat::Run {
+                        flags: 2,
+                        theirs: c.theirs,
+                        ours: c.ours,
+                        sequence: c.sequence,
+                        acknowledged: c.heard,
+                        slots: vec![vt_lat::Slot {
+                            to: 1,
+                            from: 1,
+                            control: 0, // data, against SLOT_START for the request
+                            data: &line,
+                        }],
+                    };
+                    listener.send(c.peer, &typed.build())?;
+                    println!("      typed {text:?}");
+                    typing = None;
                 }
             }
             Ok(Message::Stop(c)) => {
