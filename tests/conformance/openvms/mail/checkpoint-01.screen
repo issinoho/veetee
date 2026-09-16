@@ -1,0 +1,27 @@
+page 24x80 cursor 7,7 visible
+modes decawm deckpam
+ 1  |                                                                         NEWMAIL
+ 2  |      # From                 Date         Subject
+ 3  |
+ 4  |      1 MYI64::IRS           16-SEP-2026  veetee acceptance one
+ 5  |      2 MYI64::IRS           16-SEP-2026  veetee acceptance one
+ 6  |
+ 7  |MAIL>
+ 8  |
+ 9  |
+10  |
+11  |
+12  |
+13  |
+14  |
+15  |
+16  |
+17  |
+18  |
+19  |
+20  |
+21  |
+22  |
+23  |
+24  |
+status indicator

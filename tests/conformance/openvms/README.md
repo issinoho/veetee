@@ -41,7 +41,7 @@ recording (for node names, user names, file contents) before committing it.
   inquiry and the terminal must answer nothing |
 | `edt-keypad` | EDT | Keypad mode, PF1 Gold functions, Help (PF2), Find, Cut/Paste, scrolling regions |
 | `eve-tpu` | EVE/TPU | Two windows, Do commands, Find/Select/Remove/Insert Here, 132 columns (`SET WIDTH 132`) |
-| `mail` | MAIL | Directory listing, reading and scrolling a message, double-size headers |
+| `mail` | MAIL | Directory listing, reading and paging a long message, cursor addressing |
 | `fms-forms` | FMS | Form display, protected fields, field navigation, video attributes |
 | `decforms` | DECforms | Panels, status line messages, function keys, list boxes |
 | `monitor` | MONITOR | `MONITOR SYSTEM` and `MONITOR PROCESSES/TOPCPU` updating in place |
