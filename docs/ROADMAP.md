@@ -63,10 +63,21 @@ left here is a limitation rather than work.
   dropped line goes unnoticed; the server's replies are ignored rather than checked against what
   was asked for; and none of it has met real hardware. The tests assert the bytes match the RFC,
   which is a weaker claim. A session with a DECserver would settle it.
-- **LAT** (Local Area Transport): a clean-room client written from packet captures of OpenVMS
-  LATACP (latd is GPL, so no code or detailed reading of it), with a small helper binary holding
-  `CAP_NET_RAW` so the GUI stays unprivileged. Document the protocol in `docs/lat-protocol.md`.
-  Not available in the Flatpak (raw sockets). The largest item left.
+- **LAT** (Local Area Transport), clean-room from packet captures of OpenVMS LATACP: `latd` is
+  GPL, so none of it is read. Still the largest item left, but no longer untouched.
+
+  Done: [`docs/lat-protocol.md`](lat-protocol.md) records what the captures show; `vt-lat` reads a
+  service announcement and a solicit and builds a solicit, with the captured frames as fixtures;
+  and `vt-headless lat INTERFACE` finds the services announcing on a wire, which is discovery
+  working end to end against two OpenVMS nodes.
+
+  Left: a **session** — circuits, slots, credits, keepalives — and that is blocked rather than
+  merely unwritten. Nothing of it has been captured, because it needs two LAT nodes that can see
+  each other and the network this was built on has none; the nodes there each hear only
+  themselves. Guessing at those messages would be worse than waiting for a capture. Also left: the
+  helper binary holding `CAP_NET_RAW`, so the interface need not run privileged, and a service
+  browser in the connection dialog. Not available in the Flatpak, which has no raw sockets, nor on
+  Windows, which has no raw Ethernet without a driver.
 
 ### Smaller gaps (from compat-matrix.md)
 

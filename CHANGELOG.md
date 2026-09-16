@@ -5,6 +5,13 @@ milestones (0.3 = M3). The format follows [Keep a Changelog](https://keepachange
 
 ## [Unreleased]
 
+- **Added: LAT service discovery.** `vt-headless lat INTERFACE` lists the services announcing
+  themselves on a wire, with their ratings, maximum frame size and announcement interval, read by
+  veetee's own code rather than by a packet sniffer. Linux only — LAT is raw Ethernet rather than
+  IP, so it needs `CAP_NET_RAW`, has no Windows equivalent without a driver, and cannot work in
+  the Flatpak. Connecting to a service is not implemented; see
+  [docs/lat-protocol.md](docs/lat-protocol.md) for how far the protocol has been read.
+
 ## [0.8.7] - 2026-09-16
 
 A selection can be dragged out of the scrollback at last, so a copy longer than a screenful is
