@@ -56,8 +56,13 @@ left here is a limitation rather than work.
 
 ### M5: connections
 
-- **RFC 2217** (Telnet COM Port Control) to terminal servers such as DECserver, Lantronix and Moxa:
-  set speed, data bits, parity, stop bits and flow control, and send BREAK, over Telnet.
+- **RFC 2217** (Telnet COM Port Control) to terminal servers such as DECserver, Lantronix and Moxa.
+  Implemented: the serial line options work with `--telnet`, setting speed, data bits, parity, stop
+  bits and flow control, and a break goes as SET-CONTROL rather than a Telnet break. Not yet
+  proven, so it stays here: nothing subscribes to NOTIFY-LINESTATE or NOTIFY-MODEMSTATE, so a
+  dropped line goes unnoticed; the server's replies are ignored rather than checked against what
+  was asked for; and none of it has met real hardware. The tests assert the bytes match the RFC,
+  which is a weaker claim. A session with a DECserver would settle it.
 - **LAT** (Local Area Transport): a clean-room client written from packet captures of OpenVMS
   LATACP (latd is GPL, so no code or detailed reading of it), with a small helper binary holding
   `CAP_NET_RAW` so the GUI stays unprivileged. Document the protocol in `docs/lat-protocol.md`.
