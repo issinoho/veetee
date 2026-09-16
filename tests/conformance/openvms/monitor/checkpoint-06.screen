@@ -1,0 +1,28 @@
+page 24x80 cursor 24,8 visible
+modes decawm
+ 1  |                                     + - - - - + - - - - + - - - - + - - - - +
+ 2  | Interrupt State                     |
+ 3  |                                     |         |         |         |         |
+ 4  | MP Synchronization                  |
+ 5  |                                     |         |         |         |         |
+ 6  | Kernel Mode                         |
+ 7  |                                     |         |         |         |         |
+ 8  | Executive Mode                      |
+ 9  |                                     |         |         |         |         |
+10  | Supervisor Mode                     |
+11  |                                     |         |         |         |         |
+12  | User Mode                           |
+13  |                                     |         |         |         |         |
+14  | Compatibility Mode                  |
+15  |                                     |         |         |         |         |
+16  | Cancel me                       100 |▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒
+   ~88888888
+17  |                                     + - - - - + - - - - + - - - - + - - - - +
+18  |
+19  |MONITOR> quit
+20  |%MONITOR-E-ERRPARSE, error parsing command
+21  |%CLI-W-IVVERB, unrecognized command verb - check validity and spelling
+22  | \QUIT\
+23  |MONITOR> exit
+24  |Myi64::
+status indicator

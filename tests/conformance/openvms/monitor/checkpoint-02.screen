@@ -1,0 +1,28 @@
+page 24x80 cursor 21,75 visible
+modes decawm
+ 1  |Node: MYI64                 OpenVMS Monitor Utility     16-SEP-2026 11:27:44
+ 2  |Statistic: CURRENT             SYSTEM STATISTICS
+   ~..............................8888888888888888888
+ 3  |                                                     Process States
+ 4  |          ┌ CPU Busy (0)            ─┐         LEF:      10    LEFO:       0
+ 5  |          │                          │         HIB:      21    HIBO:       0
+ 6  |CPU     0 ├──────────────────────────┤ 100     COM:       0    COMO:       0
+ 7  |          │                          │         PFW:       0    CUR:        1
+ 8  |          └──────────────────────────┘         MWAIT:     0    Other:      0
+ 9  |          Cur Top:  (0)                                  Total: 32
+10  |
+11  |          ┌ Page Fault Rate (1)     ─┐         ┌ Free List Size (434262)  ┐
+12  |          │|                         │         │▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒     │ 512K
+13  |MEMORY  0 ├──────────────────────────┤ 500   0 ├──────────────────────────┤
+14  |          │                          │         │▒▒▒                       │ 51K
+15  |          └──────────────────────────┘         └ Mod List Size (6732)     ┘
+16  |          Cur Top: TP_SERVER (1)
+17  |
+18  |          ┌ Direct I/O Rate (0)     ─┐         ┌ Buffered I/O Rate (8)   ─┐
+19  |          │                          │         │                          │
+20  |I/O     0 ├──────────────────────────┤ 500   0 ├──────────────────────────┤ 500
+21  |          │                          │         │                          │
+22  |          └──────────────────────────┘         └──────────────────────────┘
+23  |          Cur Top:  (0)                        Cur Top: IRS (4)
+24  |
+status indicator

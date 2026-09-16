@@ -44,5 +44,5 @@ recording (for node names, user names, file contents) before committing it.
 | `mail` | MAIL | Directory listing, reading and paging a long message, cursor addressing |
 | `fms-forms` | FMS | Form display, double-size titles, reverse screen and LEDs, line drawing, field navigation |
 | `decforms` | DECforms | Panels overlaid without clearing, the full set of double-size lines, underline and reverse |
-| `monitor` | MONITOR | `MONITOR SYSTEM` and `MONITOR PROCESSES/TOPCPU` updating in place |
+| `monitor` | MONITOR | `MONITOR SYSTEM` and `MONITOR PROCESSES/TOPCPU` repainting in place: the heaviest cursor addressing in the suite |
 | `smg-demo` | SMG$ | `SHOW CLUSTER/CONTINUOUS`: scrolling regions moved as the display reflows, line drawing through G1 |

@@ -1,0 +1,28 @@
+page 24x80 cursor 24,1 visible
+modes decawm
+ 1  | Interrupt State                     |
+ 2  |                                     |         |         |         |         |
+ 3  | MP Synchronization                  |
+ 4  |                                     |         |         |         |         |
+ 5  | Kernel Mode                         |
+ 6  |                                     |         |         |         |         |
+ 7  | Executive Mode                      |
+ 8  |                                     |         |         |         |         |
+ 9  | Supervisor Mode                     |
+10  |                                     |         |         |         |         |
+11  | User Mode                           |
+12  |                                     |         |         |         |         |
+13  | Compatibility Mode                  |
+14  |                                     |         |         |         |         |
+15  | Cancel me                       100 |▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒
+   ~88888888
+16  |                                     + - - - - + - - - - + - - - - + - - - - +
+17  |
+18  |MONITOR> quit
+19  |%MONITOR-E-ERRPARSE, error parsing command
+20  |%CLI-W-IVVERB, unrecognized command verb - check validity and spelling
+21  | \QUIT\
+22  |MONITOR> exit
+23  |Myi64::lo
+24  |  IRS          logged out at 16-SEP-2026 11:29:01.18
+status indicator
