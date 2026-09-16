@@ -38,7 +38,7 @@ application disagree about whether anything is arriving.
 
 ## Common header
 
-Both message types observed start the same way.
+The two multicast message types start the same way.
 
 | Offset | Bytes | Meaning |
 |-------:|-------|---------|
@@ -156,7 +156,7 @@ minimum.
 Each slot is a four-byte header and its data:
 
 ```
-01 | 01 | 0e | 00 | "\r\n\r\nUsername: "
+01 | 01 | 0e | 00 | "\n\r\n\rUsername: "
 ^    ^    ^    ^
 |    |    |    🔎 credit in the high nibble, type in the low, on the evidence of the values seen
 |    |    byte count
