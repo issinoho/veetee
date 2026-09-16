@@ -29,18 +29,10 @@ esctest2, and defaults to DEC and OpenVMS behaviour everywhere (see [CLAUDE.md](
 | M7 Fonts and look | DEC-cell fonts for every model and width, VT420 and VT500 Set-Up, sound, smooth scroll, CRT picture, Display Controls | Done (0.7.1) |
 | M8 Polish and 1.0 | Saved connections, logs, history search, copy and paste translation, screen readers, throughput, Flatpak, signed Windows builds | Planned work done (0.8.1–0.8.6) |
 
-## Left before 1.0
+## OpenVMS acceptance
 
-### M5: connections
-
-- **RFC 2217** (Telnet COM Port Control) to terminal servers such as DECserver, Lantronix and Moxa:
-  set speed, data bits, parity, stop bits and flow control, and send BREAK, over Telnet.
-- **LAT** (Local Area Transport): a clean-room client written from packet captures of OpenVMS
-  LATACP (latd is GPL, so no code or detailed reading of it), with a small helper binary holding
-  `CAP_NET_RAW` so the GUI stays unprivileged. Document the protocol in `docs/lat-protocol.md`.
-  Not available in the Flatpak (raw sockets). The largest item left.
-
-### M6: OpenVMS acceptance
+Complete: the milestone shipped in 0.6.0 and the recordings cover the checklist. What is
+left here is a limitation rather than work.
 
 - **Recordings**: the checklist in `tests/conformance/openvms/README.md` is complete. Nine are in
   that directory — `SET TERMINAL/INQUIRE` over Telnet and over SSH, the EDT keypad, EVE/TPU, MAIL,
@@ -59,6 +51,17 @@ esctest2, and defaults to DEC and OpenVMS behaviour everywhere (see [CLAUDE.md](
   last gap of its kind; it may be that nothing on OpenVMS does.
 - PCTerm mode and key position reports (DECPCTERM, DECKPM, DECEKBD): not planned for 1.0; OpenVMS
   does not use them.
+
+## Left before 1.0
+
+### M5: connections
+
+- **RFC 2217** (Telnet COM Port Control) to terminal servers such as DECserver, Lantronix and Moxa:
+  set speed, data bits, parity, stop bits and flow control, and send BREAK, over Telnet.
+- **LAT** (Local Area Transport): a clean-room client written from packet captures of OpenVMS
+  LATACP (latd is GPL, so no code or detailed reading of it), with a small helper binary holding
+  `CAP_NET_RAW` so the GUI stays unprivileged. Document the protocol in `docs/lat-protocol.md`.
+  Not available in the Flatpak (raw sockets). The largest item left.
 
 ### Smaller gaps (from compat-matrix.md)
 
