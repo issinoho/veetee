@@ -88,11 +88,27 @@ pub fn lat(args: impl Iterator<Item = String>) -> io::Result<()> {
                 println!("{from}  {} asks for {}/{}", s.from, s.node, s.service);
             }
             Ok(Message::Start(c)) => {
-                let what = if c.calling { "asks" } else { "agrees" };
+                // The names keep the sense they were sent with: the node
+                // called and the node calling, whichever way the message goes.
+                let line = if c.calling {
+                    format!("{} asks {} for a circuit", c.from, c.to)
+                } else {
+                    format!("{} agrees a circuit with {}", c.to, c.from)
+                };
                 println!(
-                    "{from}  {} {what} {} for a circuit: {} bytes, LAT {}.{}, keepalive {}s",
-                    c.from, c.to, c.max_frame, c.version.0, c.version.1, c.keepalive
+                    "{from}  {line}: {} bytes, LAT {}.{}, keepalive {}s",
+                    c.max_frame, c.version.0, c.version.1, c.keepalive
                 );
+                if !c.calling && wanted.is_some() {
+                    // Until it is acknowledged the far end keeps repeating
+                    // itself, so say what we have heard. Their end is named
+                    // first, as it is in every message on the circuit.
+                    listener.send(
+                        source,
+                        &vt_lat::Run::acknowledgement(c.ours, c.theirs, 1, 0),
+                    )?;
+                    println!("      acknowledged; circuit {:#06x} is open", c.theirs);
+                }
             }
             Ok(Message::Run(r)) => {
                 if r.slots.is_empty() {
