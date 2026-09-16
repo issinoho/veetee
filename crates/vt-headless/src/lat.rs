@@ -21,14 +21,16 @@ pub fn lat(args: impl Iterator<Item = String>) -> io::Result<()> {
     use vt_transport::lat::{Listener, split};
 
     let bad = |what: String| io::Error::new(io::ErrorKind::InvalidInput, what);
-    let usage = "usage: vt-headless lat INTERFACE [SECONDS] [--connect NODE]";
+    let usage = "usage: vt-headless lat INTERFACE [SECONDS] [--connect NODE] [--type TEXT]";
     let mut interface = None;
     let mut seconds: Option<u64> = None;
     let mut wanted: Option<String> = None;
+    let mut typing: Option<String> = None;
     let mut rest = args.into_iter();
     while let Some(arg) = rest.next() {
         match arg.as_str() {
             "--connect" => wanted = Some(rest.next().ok_or_else(|| bad(usage.into()))?),
+            "--type" => typing = Some(rest.next().ok_or_else(|| bad(usage.into()))?),
             _ if interface.is_none() => interface = Some(arg),
             _ => {
                 seconds = Some(
@@ -148,6 +150,32 @@ pub fn lat(args: impl Iterator<Item = String>) -> io::Result<()> {
                     c.sequence = c.sequence.wrapping_add(1);
                     let ack = vt_lat::Run::acknowledgement(c.theirs, c.ours, c.sequence, c.heard);
                     listener.send(c.peer, &ack)?;
+                }
+                // Type once there is something to type at: the far end sends
+                // its prompt before it will read anything.
+                if let (Some(text), Some(c)) = (&typing, &mut circuit)
+                    && r.ours == c.theirs
+                    && r.slots.iter().any(|slot| !slot.data.is_empty())
+                {
+                    let mut line = text.clone().into_bytes();
+                    line.push(b'\r');
+                    c.sequence = c.sequence.wrapping_add(1);
+                    let typed = vt_lat::Run {
+                        flags: 2,
+                        theirs: c.theirs,
+                        ours: c.ours,
+                        sequence: c.sequence,
+                        acknowledged: c.heard,
+                        slots: vec![vt_lat::Slot {
+                            to: 1,
+                            from: 1,
+                            control: 0, // data, against SLOT_START for the request
+                            data: &line,
+                        }],
+                    };
+                    listener.send(c.peer, &typed.build())?;
+                    println!("      typed {text:?}");
+                    typing = None;
                 }
                 if r.slots.is_empty() {
                     // An idle circuit says only what it has heard.

@@ -17,9 +17,10 @@ usage:
       Run a session script against the emulator on a PTY. Snapshots are
       compared with DIR/NAME.screen; --bless rewrites them.
 
-  vt-headless lat INTERFACE [SECONDS] [--connect NODE]
-      Print the LAT messages heard on INTERFACE, and with --connect ask a node
-      for a circuit once it has announced itself. Linux only, and needs
+  vt-headless lat INTERFACE [SECONDS] [--connect NODE] [--type TEXT]
+      Print the LAT messages heard on INTERFACE; --connect asks a node for a
+      circuit once it has announced itself, and --type sends a line to the
+      session it opens. Linux only, and needs
       CAP_NET_RAW: LAT is raw Ethernet rather than IP.
 
   vt-headless replay FILE.vtrec [--golden DIR] [--bless]
