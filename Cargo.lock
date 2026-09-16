@@ -1416,7 +1416,7 @@ checksum = "e6e4313cd5fcd3dad5cafa179702e2b244f760991f45397d14d4ebf38247da75"
 
 [[package]]
 name = "veetee"
-version = "0.8.7"
+version = "0.8.8"
 dependencies = [
  "async-channel",
  "cpal",
@@ -1448,18 +1448,18 @@ checksum = "0b928f33d975fc6ad9f86c8f283853ad26bdd5b10b7f1542aa2fa15e2289105a"
 
 [[package]]
 name = "vt-core"
-version = "0.8.7"
+version = "0.8.8"
 dependencies = [
  "vt-parser",
 ]
 
 [[package]]
 name = "vt-fonts"
-version = "0.8.7"
+version = "0.8.8"
 
 [[package]]
 name = "vt-headless"
-version = "0.8.7"
+version = "0.8.8"
 dependencies = [
  "vt-core",
  "vt-lat",
@@ -1469,7 +1469,7 @@ dependencies = [
 
 [[package]]
 name = "vt-keyboard"
-version = "0.8.7"
+version = "0.8.8"
 dependencies = [
  "serde",
  "toml",
@@ -1478,18 +1478,18 @@ dependencies = [
 
 [[package]]
 name = "vt-lat"
-version = "0.8.7"
+version = "0.8.8"
 
 [[package]]
 name = "vt-parser"
-version = "0.8.7"
+version = "0.8.8"
 dependencies = [
  "proptest",
 ]
 
 [[package]]
 name = "vt-render"
-version = "0.8.7"
+version = "0.8.8"
 dependencies = [
  "glow",
  "vt-core",
@@ -1498,7 +1498,7 @@ dependencies = [
 
 [[package]]
 name = "vt-transport"
-version = "0.8.7"
+version = "0.8.8"
 dependencies = [
  "libc",
  "rustix",
@@ -1735,7 +1735,7 @@ checksum = "f17a85883d4e6d00e8a97c586de764dabcc06133f7f1d55dce5cdc070ad7fe59"
 
 [[package]]
 name = "xtask"
-version = "0.8.7"
+version = "0.8.8"
 
 [[package]]
 name = "zerocopy"

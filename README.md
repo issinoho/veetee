@@ -6,12 +6,12 @@ and SSH, Telnet, serial and LAT connections.
 
 **Website:** [veetee.issinoho.com](http://veetee.issinoho.com/) · **Documentation:** [wiki](https://github.com/issinoho/veetee/wiki)
 
-**Status:** early development — 0.8.7: the VT100 through VT525 (colour, VT500 character sets,
+**Status:** early development — 0.8.8: the VT100 through VT525 (colour, VT500 character sets,
 dual sessions, page memory, rectangular operations, soft fonts), an LK401 keyboard map with a
 visual editor and VT520 key programming, session recordings, fonts drawn on DEC's own
 character cells, VT420 and VT520 Set-Up, sound, smooth scrolling, a CRT picture, saved connections,
 session logs, a searchable history and screen reader support, on Linux (including Flatpak) and
-Windows. vttest VT100–VT520 menus pass headless,
+Windows, and LAT service discovery on Linux. vttest VT100–VT520 menus pass headless,
 and esctest2 runs at VT level 5 with every difference from xterm explained against DEC
 documentation.
 
@@ -42,14 +42,14 @@ documentation.
 x86_64 Linux tarball, both needing GTK 4.14+ and libadwaita 1.5+:
 
 ```sh
-sudo apt install ./veetee_0.8.7-1_amd64.deb
+sudo apt install ./veetee_0.8.8-1_amd64.deb
 ```
 
 Any Linux distribution with Flatpak can install the Flatpak bundle from a release (it uses the
 GNOME runtime from Flathub):
 
 ```sh
-flatpak install --user ./veetee-0.8.7-x86_64.flatpak
+flatpak install --user ./veetee-0.8.8-x86_64.flatpak
 flatpak run com.issinoho.Veetee --telnet vms1
 ```
 
@@ -58,7 +58,7 @@ they see your own shell, files and `~/.ssh`; settings are kept in
 `~/.var/app/com.issinoho.Veetee/config/veetee`. Build it yourself with
 `flatpak-builder --user --install --force-clean build packaging/flatpak/com.issinoho.Veetee.yml`.
 
-For Windows 10 (1809) or later, unzip `veetee-0.8.7-x86_64-windows.zip` and run
+For Windows 10 (1809) or later, unzip `veetee-0.8.8-x86_64-windows.zip` and run
 `bin\veetee.exe`; the GTK runtime is included. Release builds are signed with a Certum code-signing
 certificate after publishing (see `packaging/windows/SIGNING.md`). Local command windows use the Windows pseudo
 console, `--ssh` uses Windows' OpenSSH client and `--serial COM3` opens a COM port.

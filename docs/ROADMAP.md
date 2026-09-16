@@ -5,7 +5,7 @@ The working roadmap: what is done, what is left before 1.0, and what is parked. 
 every control function are in [compat-matrix.md](compat-matrix.md), and released changes in
 [CHANGELOG.md](../CHANGELOG.md).
 
-Latest release: **0.8.7**. Until 1.0 the minor version follows the milestone reached; patch
+Latest release: **0.8.8**. Until 1.0 the minor version follows the milestone reached; patch
 releases carry fixes and work that completes a milestone.
 
 ## Goal
@@ -27,7 +27,7 @@ esctest2, and defaults to DEC and OpenVMS behaviour everywhere (see [CLAUDE.md](
 | M5 Transports | PTY, serial, Telnet, SSH; RFC 2217; LAT | Partly done |
 | M6 Keyboard and DEC applications | Keymap and LK401 editor, DECFNK, VT520 key programming, recordings; OpenVMS acceptance recordings | Done (0.6.0) |
 | M7 Fonts and look | DEC-cell fonts for every model and width, VT420 and VT500 Set-Up, sound, smooth scroll, CRT picture, Display Controls | Done (0.7.1) |
-| M8 Polish and 1.0 | Saved connections, logs, history search, copy and paste translation, screen readers, throughput, Flatpak, signed Windows builds | Planned work done (0.8.1–0.8.7) |
+| M8 Polish and 1.0 | Saved connections, logs, history search, copy and paste translation, screen readers, throughput, Flatpak, signed Windows builds | Planned work done (0.8.1–0.8.8) |
 
 ## OpenVMS acceptance
 

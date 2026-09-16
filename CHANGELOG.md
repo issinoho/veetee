@@ -5,6 +5,11 @@ milestones (0.3 = M3). The format follows [Keep a Changelog](https://keepachange
 
 ## [Unreleased]
 
+## [0.8.8] - 2026-09-16
+
+Finds the LAT services announcing themselves on a wire, which is the first half of reaching an
+OpenVMS host over DEC's own protocol rather than over IP.
+
 - **Added: LAT service discovery.** `vt-headless lat INTERFACE` lists the services announcing
   themselves on a wire, with their ratings, maximum frame size and announcement interval, read by
   veetee's own code rather than by a packet sniffer. Linux only — LAT is raw Ethernet rather than
@@ -324,7 +329,8 @@ The first release: VT100 through VT420 emulation with local, Telnet, SSH and ser
   `cargo deny` licence checks and parser fuzzing.
 - `cargo xtask dist` builds the release tarball and Debian package.
 
-[Unreleased]: https://github.com/issinoho/veetee/compare/v0.8.7...HEAD
+[Unreleased]: https://github.com/issinoho/veetee/compare/v0.8.8...HEAD
+[0.8.8]: https://github.com/issinoho/veetee/compare/v0.8.7...v0.8.8
 [0.8.7]: https://github.com/issinoho/veetee/compare/v0.8.6...v0.8.7
 [0.8.6]: https://github.com/issinoho/veetee/compare/v0.8.5...v0.8.6
 [0.8.5]: https://github.com/issinoho/veetee/compare/v0.8.4...v0.8.5
