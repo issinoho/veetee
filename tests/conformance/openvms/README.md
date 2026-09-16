@@ -45,4 +45,4 @@ recording (for node names, user names, file contents) before committing it.
 | `fms-forms` | FMS | Form display, double-size titles, reverse screen and LEDs, line drawing, field navigation |
 | `decforms` | DECforms | Panels overlaid without clearing, the full set of double-size lines, underline and reverse |
 | `monitor` | MONITOR | `MONITOR SYSTEM` and `MONITOR PROCESSES/TOPCPU` updating in place |
-| `smg-demo` | SMG$ | Any SMG-based utility: windows, line drawing, pasteboard updates |
+| `smg-demo` | SMG$ | `SHOW CLUSTER/CONTINUOUS`: scrolling regions moved as the display reflows, line drawing through G1 |
