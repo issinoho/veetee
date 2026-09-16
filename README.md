@@ -21,7 +21,7 @@ documentation.
 |-------|---------|
 | `crates/vt-parser` | Allocation-free DEC STD 070 / ECMA-48 control function parser (7-bit, 8-bit, UTF-8, VT52) |
 | `crates/vt-core` | The terminal model: screen, modes, character sets, reports, DEC keyboard codes |
-| `crates/vt-transport` | Host connections: local PTY (ConPTY on Windows), serial lines, Telnet, SSH (via OpenSSH) |
+| `crates/vt-transport` | Host connections: local PTY (ConPTY on Windows), serial lines, Telnet (with RFC 2217), SSH (via OpenSSH), LAT discovery (Linux) |
 | `crates/vt-lat` | DEC LAT messages, parsed and built without I/O (see [docs/lat-protocol.md](docs/lat-protocol.md)) |
 | `crates/vt-fonts` | Original DEC-style bitmap fonts (SIL OFL) for each model's character cells, and their parser |
 | `crates/vt-keyboard` | PC keyboard → DEC LK401 key map |
@@ -84,10 +84,13 @@ cargo run -p veetee -- --sessions 2 --telnet vms1   # two sessions in a split wi
 `cargo run -p veetee -- --help` lists every option. More documentation, including OpenVMS
 tips, is in the [wiki](https://github.com/issinoho/veetee/wiki).
 
-Telnet negotiates BINARY (so 8-bit DEC controls pass unchanged), terminal type (`VT420`, or the
-selected model), window size and suppress-go-ahead; F5 sends a Telnet BREAK. SSH runs the system
-`ssh -tt`, so keys, agents, `ProxyJump` and `known_hosts` behave exactly as in a shell, with
-`TERM` set to the emulated model. Network and serial sessions keep their window open when the
+Telnet negotiates terminal type (`VT420`, or the selected model), window size and
+suppress-go-ahead; F5 sends a BREAK. BINARY, for 8-bit controls, is offered only with
+`--telnet-binary`, because OpenVMS answers it by putting the terminal in PASSALL. The serial line
+options work with `--telnet` as well, where they set up a terminal server's line with RFC 2217.
+SSH runs the system `ssh -tt`, so keys, agents, `ProxyJump` and `known_hosts` behave exactly as in
+a shell, with `TERM` set to the emulated model. On Linux, `vt-headless lat INTERFACE` lists the LAT
+services announcing on a wire; connecting to one is not implemented. Network and serial sessions keep their window open when the
 connection closes, so the final screen can still be read and copied.
 
 The phosphor colour (white P4, green P1, amber P3; `--phosphor green` at start) and full screen are
