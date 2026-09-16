@@ -1476,6 +1476,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "vt-lat"
+version = "0.8.7"
+
+[[package]]
 name = "vt-parser"
 version = "0.8.7"
 dependencies = [
