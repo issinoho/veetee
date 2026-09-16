@@ -11,6 +11,7 @@ use serde::{Deserialize, Serialize};
 use vt_core::{Config, Model};
 use vt_transport::serial::{FlowControl, Parity, SerialConfig};
 use vt_transport::ssh::SshConfig;
+use vt_transport::telnet::ComPort;
 
 use crate::cli::{self, Connection, Options};
 
@@ -146,6 +147,14 @@ impl Entry {
                 host: need(&self.host, "a host")?,
                 port: self.port.unwrap_or(23),
                 binary: self.telnet_binary.unwrap_or(false),
+                com_port: com_port_from(
+                    self.baud,
+                    self.data_bits,
+                    &self.parity,
+                    self.stop_bits,
+                    &self.flow,
+                )
+                .map_err(context)?,
             },
             "ssh" => Connection::Ssh(SshConfig {
                 destination: need(&self.host, "a host")?,
@@ -217,11 +226,23 @@ impl Entry {
                 e.connection = "command".into();
                 e.command = Some(c.clone());
             }
-            Connection::Telnet { host, port, binary } => {
+            Connection::Telnet {
+                host,
+                port,
+                binary,
+                com_port,
+            } => {
                 e.connection = "telnet".into();
                 e.host = Some(host.clone());
                 e.port = (*port != 23).then_some(*port);
                 e.telnet_binary = binary.then_some(true);
+                if let Some(p) = com_port {
+                    e.baud = Some(p.baud);
+                    e.data_bits = Some(p.data_bits);
+                    e.parity = Some(parity_name(p.parity).into());
+                    e.stop_bits = Some(p.stop_bits);
+                    e.flow = Some(flow_name(p.flow).into());
+                }
             }
             Connection::Ssh(s) => {
                 e.connection = "ssh".into();
@@ -233,28 +254,66 @@ impl Entry {
                 e.device = Some(s.device.to_string_lossy().into_owned());
                 e.baud = Some(s.baud);
                 e.data_bits = Some(s.data_bits);
-                e.parity = Some(
-                    match s.parity {
-                        Parity::None => "n",
-                        Parity::Even => "e",
-                        Parity::Odd => "o",
-                        Parity::Mark => "m",
-                        Parity::Space => "s",
-                    }
-                    .into(),
-                );
+                e.parity = Some(parity_name(s.parity).into());
                 e.stop_bits = Some(s.stop_bits);
-                e.flow = Some(
-                    match s.flow {
-                        FlowControl::None => "n",
-                        FlowControl::XonXoff => "x",
-                        FlowControl::RtsCts => "h",
-                    }
-                    .into(),
-                );
+                e.flow = Some(flow_name(s.flow).into());
             }
         }
         e
+    }
+}
+
+/// The line settings of a Telnet profile, present when any of them is: the
+/// same keys a serial profile uses, asked of a terminal server with RFC 2217.
+fn com_port_from(
+    baud: Option<u32>,
+    data_bits: Option<u8>,
+    parity: &Option<String>,
+    stop_bits: Option<u8>,
+    flow: &Option<String>,
+) -> Result<Option<ComPort>, String> {
+    if baud.is_none()
+        && data_bits.is_none()
+        && parity.is_none()
+        && stop_bits.is_none()
+        && flow.is_none()
+    {
+        return Ok(None);
+    }
+    let mut port = ComPort::default();
+    if let Some(b) = baud {
+        port.baud = b;
+    }
+    if let Some(b) = data_bits {
+        port.data_bits = b;
+    }
+    if let Some(p) = parity {
+        port.parity = p.parse()?;
+    }
+    if let Some(s) = stop_bits {
+        port.stop_bits = s;
+    }
+    if let Some(f) = flow {
+        port.flow = f.parse()?;
+    }
+    Ok(Some(port))
+}
+
+fn parity_name(parity: Parity) -> &'static str {
+    match parity {
+        Parity::None => "n",
+        Parity::Even => "e",
+        Parity::Odd => "o",
+        Parity::Mark => "m",
+        Parity::Space => "s",
+    }
+}
+
+fn flow_name(flow: FlowControl) -> &'static str {
+    match flow {
+        FlowControl::None => "n",
+        FlowControl::XonXoff => "x",
+        FlowControl::RtsCts => "h",
     }
 }
 

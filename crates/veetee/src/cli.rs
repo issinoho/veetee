@@ -5,9 +5,9 @@ use std::io;
 use vt_core::{Config, Model};
 use vt_transport::Transport;
 use vt_transport::pty::Pty;
-use vt_transport::serial::{Serial, SerialConfig};
+use vt_transport::serial::{FlowControl, Parity, Serial, SerialConfig};
 use vt_transport::ssh::{self, SshConfig};
-use vt_transport::telnet::{Telnet, TelnetConfig};
+use vt_transport::telnet::{ComPort, Telnet, TelnetConfig};
 
 pub const USAGE: &str = "\
 usage: veetee [--profile NAME] [--model MODEL] [--record FILE] [CONNECTION]
@@ -37,7 +37,8 @@ options:
   --keymap FILE          PC-to-DEC keymap (default: the one saved from the Keyboard
                          Map window, else the built-in LK401 map)
 
-serial line options (picocom style; defaults are DEC factory Set-Up):
+line options (picocom style; defaults are DEC factory Set-Up). With --serial they set
+the port; with --telnet they ask a terminal server for those settings (RFC 2217):
   -b, --baud RATE        bits per second (9600)
   -d, --databits N       5, 6, 7 or 8 (8)
   -p, --parity P         n none, e even, o odd, m mark, s space (n)
@@ -55,6 +56,9 @@ pub enum Connection {
         port: u16,
         /// Negotiate the Telnet BINARY option, for 8-bit controls.
         binary: bool,
+        /// Line settings to ask a terminal server for (RFC 2217), from the
+        /// serial line options given with `--telnet`.
+        com_port: Option<ComPort>,
     },
     Ssh(SshConfig),
 }
@@ -274,22 +278,30 @@ pub fn parse_args_with(
     }
 
     match &mut options.connection {
-        Connection::Serial(serial) => {
-            for (flag, v) in line {
-                let number = |v: &str| {
-                    v.parse::<u32>()
-                        .map_err(|_| format!("{flag}: not a number: {v:?}"))
-                };
-                match flag.as_str() {
-                    "-b" | "--baud" => serial.baud = number(&v)?,
-                    "-d" | "--databits" => serial.data_bits = number(&v)? as u8,
-                    "-p" | "--parity" => serial.parity = v.parse()?,
-                    "-s" | "--stopbits" => serial.stop_bits = number(&v)? as u8,
-                    _ => serial.flow = v.parse()?,
-                }
-            }
+        Connection::Serial(serial) => apply_line(
+            line,
+            &mut serial.baud,
+            &mut serial.data_bits,
+            &mut serial.parity,
+            &mut serial.stop_bits,
+            &mut serial.flow,
+        )?,
+        // The same options over Telnet ask a terminal server for the line
+        // settings with RFC 2217.
+        Connection::Telnet { com_port, .. } if !line.is_empty() => {
+            let port = com_port.get_or_insert_with(ComPort::default);
+            apply_line(
+                line,
+                &mut port.baud,
+                &mut port.data_bits,
+                &mut port.parity,
+                &mut port.stop_bits,
+                &mut port.flow,
+            )?;
         }
-        _ if !line.is_empty() => return Err("line options need --serial DEVICE".into()),
+        _ if !line.is_empty() => {
+            return Err("line options need --serial DEVICE or --telnet HOST".into());
+        }
         _ => {}
     }
     Ok(Parsed::Run(config, options))
@@ -317,6 +329,32 @@ fn split_host_port(spec: &str) -> Result<(String, Option<u16>), String> {
     }
 }
 
+/// Applies the picocom-style line options to a serial port or, over Telnet,
+/// to the settings asked of a terminal server.
+fn apply_line(
+    line: Vec<(String, String)>,
+    baud: &mut u32,
+    data_bits: &mut u8,
+    parity: &mut Parity,
+    stop_bits: &mut u8,
+    flow: &mut FlowControl,
+) -> Result<(), String> {
+    for (flag, v) in line {
+        let number = |v: &str| {
+            v.parse::<u32>()
+                .map_err(|_| format!("{flag}: not a number: {v:?}"))
+        };
+        match flag.as_str() {
+            "-b" | "--baud" => *baud = number(&v)?,
+            "-d" | "--databits" => *data_bits = number(&v)? as u8,
+            "-p" | "--parity" => *parity = v.parse()?,
+            "-s" | "--stopbits" => *stop_bits = number(&v)? as u8,
+            _ => *flow = v.parse()?,
+        }
+    }
+    Ok(())
+}
+
 fn telnet(spec: &str) -> Result<Connection, String> {
     let (host, port) = split_host_port(spec)?;
     if host.is_empty() {
@@ -326,6 +364,7 @@ fn telnet(spec: &str) -> Result<Connection, String> {
         host,
         port: port.unwrap_or(23),
         binary: false,
+        com_port: None,
     })
 }
 
@@ -411,11 +450,17 @@ pub fn open_transport(config: &Config, connection: &Connection) -> io::Result<Bo
             Box::new(Pty::spawn(&shell, &[flag, cmd.as_str()], rows, cols, term)?)
         }
         Connection::Serial(serial) => Box::new(Serial::open(serial.clone())?),
-        Connection::Telnet { host, port, binary } => Box::new(Telnet::connect(TelnetConfig {
+        Connection::Telnet {
+            host,
+            port,
+            binary,
+            com_port,
+        } => Box::new(Telnet::connect(TelnetConfig {
             port: *port,
             rows,
             cols,
             binary: *binary,
+            com_port: *com_port,
             // Telnet terminal types are conventionally upper case (RFC 1091).
             ..TelnetConfig::new(host.clone(), model_name(config.model))
         })?),
@@ -491,6 +536,30 @@ mod tests {
     }
 
     #[test]
+    fn line_options_over_telnet_ask_a_terminal_server() {
+        let o = parse(&["--telnet", "decserver", "-b", "19200", "-p", "e", "-f", "h"]).unwrap();
+        let Connection::Telnet { com_port, .. } = o.connection else {
+            panic!()
+        };
+        let port = com_port.expect("line options over Telnet mean RFC 2217");
+        assert_eq!(
+            (port.baud, port.parity, port.flow),
+            (19200, Parity::Even, FlowControl::RtsCts)
+        );
+        // The rest keep DEC's factory values.
+        assert_eq!((port.data_bits, port.stop_bits), (8, 1));
+    }
+
+    #[test]
+    fn telnet_without_line_options_does_not_ask_for_com_port_control() {
+        let Connection::Telnet { com_port, .. } = parse(&["--telnet", "vms1"]).unwrap().connection
+        else {
+            panic!()
+        };
+        assert_eq!(com_port, None);
+    }
+
+    #[test]
     fn serial_defaults_are_dec_factory_settings() {
         let o = parse(&["--serial", "/dev/ttyS0"]).unwrap();
         assert_eq!(o.connection.label(), "/dev/ttyS0 9600 8N1");
@@ -503,7 +572,8 @@ mod tests {
             Connection::Telnet {
                 host: "vms1".into(),
                 port: 23,
-                binary: false
+                binary: false,
+                com_port: None,
             }
         );
         assert_eq!(
@@ -518,7 +588,8 @@ mod tests {
             Connection::Telnet {
                 host: "vms1".into(),
                 port: 24,
-                binary: false
+                binary: false,
+                com_port: None,
             }
         );
         assert_eq!(
@@ -528,7 +599,8 @@ mod tests {
             Connection::Telnet {
                 host: "vms1".into(),
                 port: 2001,
-                binary: false
+                binary: false,
+                com_port: None,
             }
         );
         assert_eq!(
@@ -536,7 +608,8 @@ mod tests {
             Connection::Telnet {
                 host: "fe80::1".into(),
                 port: 23,
-                binary: false
+                binary: false,
+                com_port: None,
             }
         );
         assert_eq!(
@@ -544,7 +617,8 @@ mod tests {
             Connection::Telnet {
                 host: "fe80::1".into(),
                 port: 23,
-                binary: false
+                binary: false,
+                com_port: None,
             }
         );
     }
@@ -558,7 +632,8 @@ mod tests {
             Connection::Telnet {
                 host: "vms1".into(),
                 port: 23,
-                binary: true
+                binary: true,
+                com_port: None,
             }
         );
         assert!(parse(&["--telnet-binary"]).is_err());

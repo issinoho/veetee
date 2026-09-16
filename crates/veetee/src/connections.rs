@@ -321,6 +321,7 @@ fn editor(
             host: String::new(),
             port: 23,
             binary: false,
+            com_port: None,
         },
         phosphor: "white".into(),
         sessions: 1,
@@ -332,6 +333,12 @@ fn editor(
     // The dialog has no control for 8-bit Telnet, so an edited connection
     // keeps what it was saved with.
     let keep_binary = matches!(&p.connection, Connection::Telnet { binary: true, .. });
+    // The dialog has no fields for RFC 2217 line settings, so keep whatever
+    // the saved connection had rather than dropping them on an edit.
+    let keep_com_port = match &p.connection {
+        Connection::Telnet { com_port, .. } => *com_port,
+        _ => None,
+    };
 
     let name = adw::EntryRow::builder().title("Name").text(&p.name).build();
     let kind = combo("Type", &KINDS);
@@ -529,6 +536,7 @@ fn editor(
                             host: h,
                             port: if port_value == 0 { 23 } else { port_value },
                             binary: keep_binary,
+                            com_port: keep_com_port,
                         }
                     } else {
                         Connection::Ssh(SshConfig {

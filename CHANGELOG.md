@@ -5,6 +5,16 @@ milestones (0.3 = M3). The format follows [Keep a Changelog](https://keepachange
 
 ## [Unreleased]
 
+- **Added: RFC 2217 COM Port Control over Telnet**, for terminal servers such as DECserver,
+  Lantronix and Moxa. The line options that set up a serial port — `--baud`, `--databits`,
+  `--parity`, `--stopbits`, `--flow` — now also work with `--telnet`, where they ask the server
+  for those settings on the line behind it, and a saved connection keeps them in the same keys a
+  serial connection uses. F5 then sends a real line break rather than a Telnet one.
+
+  The option is offered only when line settings are given. An ordinary host never sees it: veetee
+  learned in 0.8.4 what raising an option uninvited can do, and a terminal server is the only
+  thing that can answer this one.
+
 ## [0.8.6] - 2026-09-16
 
 Keeps an idle Telnet session from being dropped while you read the screen, and gives EVE and TPU a

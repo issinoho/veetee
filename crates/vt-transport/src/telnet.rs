@@ -11,6 +11,7 @@
 //! Option negotiation follows the RFC 1143 rule that prevents loops: we only
 //! answer a request that changes an option's state, or that we initiated.
 
+use crate::serial::{FlowControl, Parity};
 use socket2::{SockRef, TcpKeepalive};
 use std::io::{self, Read, Write};
 use std::net::{TcpStream, ToSocketAddrs};
@@ -32,13 +33,33 @@ const SGA: u8 = 3;
 const TTYPE: u8 = 24;
 const NAWS: u8 = 31;
 const TSPEED: u8 = 32;
+/// RFC 2217 COM Port Control, for terminal servers such as DECserver.
+const COM_PORT: u8 = 44;
+
+// RFC 2217 client commands. The server answers with the command plus 100,
+// reporting what it actually set.
+const SET_BAUDRATE: u8 = 1;
+const SET_DATASIZE: u8 = 2;
+const SET_PARITY: u8 = 3;
+const SET_STOPSIZE: u8 = 4;
+const SET_CONTROL: u8 = 5;
+
+// SET_CONTROL values (RFC 2217 table 2).
+const FLOW_NONE: u8 = 1;
+const FLOW_XON_XOFF: u8 = 2;
+const FLOW_HARDWARE: u8 = 3;
+const BREAK_ON: u8 = 4;
+const BREAK_OFF: u8 = 5;
 
 const IS: u8 = 0;
 const SEND: u8 = 1;
 
 /// Options we will perform locally (answer DO with WILL).
-fn local_supported(option: u8) -> bool {
-    matches!(option, BINARY | SGA | TTYPE | NAWS | TSPEED)
+fn local_supported(option: u8, o: &Options) -> bool {
+    match option {
+        COM_PORT => o.com_port.is_some(),
+        _ => matches!(option, BINARY | SGA | TTYPE | NAWS | TSPEED),
+    }
 }
 
 /// Options we accept from the server (answer WILL with DO).
@@ -57,6 +78,10 @@ fn hello(options: &mut Options, binary: bool) -> Vec<u8> {
         options.us_pending[usize::from(option)] = true;
         hello.extend_from_slice(&[IAC, WILL, option]);
     }
+    if options.com_port.is_some() {
+        options.us_pending[usize::from(COM_PORT)] = true;
+        hello.extend_from_slice(&[IAC, WILL, COM_PORT]);
+    }
     for option in [BINARY, SGA] {
         if option == BINARY && !binary {
             continue;
@@ -65,6 +90,67 @@ fn hello(options: &mut Options, binary: bool) -> Vec<u8> {
         hello.extend_from_slice(&[IAC, DO, option]);
     }
     hello
+}
+
+/// The line settings, sent once the server agrees to COM Port Control.
+fn com_port_settings(o: &Options, replies: &mut Vec<u8>) {
+    let Some(port) = o.com_port else { return };
+    let mut send = |command: u8, data: &[u8]| {
+        replies.extend_from_slice(&[IAC, SB, COM_PORT, command]);
+        for &b in data {
+            // RFC 854: a 255 in subnegotiation data is doubled.
+            replies.push(b);
+            if b == IAC {
+                replies.push(IAC);
+            }
+        }
+        replies.extend_from_slice(&[IAC, SE]);
+    };
+    send(SET_BAUDRATE, &port.baud.to_be_bytes());
+    send(SET_DATASIZE, &[port.data_bits]);
+    send(
+        SET_PARITY,
+        &[match port.parity {
+            Parity::None => 1,
+            Parity::Odd => 2,
+            Parity::Even => 3,
+            Parity::Mark => 4,
+            Parity::Space => 5,
+        }],
+    );
+    // 1 and 2 stop bits share their numbers with RFC 2217; 3 would be 1.5.
+    send(SET_STOPSIZE, &[port.stop_bits]);
+    send(
+        SET_CONTROL,
+        &[match port.flow {
+            FlowControl::None => FLOW_NONE,
+            FlowControl::XonXoff => FLOW_XON_XOFF,
+            FlowControl::RtsCts => FLOW_HARDWARE,
+        }],
+    );
+}
+
+/// Serial line settings for a terminal server, sent with RFC 2217 COM Port
+/// Control. The defaults are DEC's factory Set-Up values.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ComPort {
+    pub baud: u32,
+    pub data_bits: u8,
+    pub parity: Parity,
+    pub stop_bits: u8,
+    pub flow: FlowControl,
+}
+
+impl Default for ComPort {
+    fn default() -> ComPort {
+        ComPort {
+            baud: 9600,
+            data_bits: 8,
+            parity: Parity::None,
+            stop_bits: 1,
+            flow: FlowControl::XonXoff,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -78,6 +164,10 @@ pub struct TelnetConfig {
     /// Offer BINARY, for 8-bit controls. Off by default: OpenVMS answers it
     /// by putting the terminal in PASSALL, which loses DCL line editing.
     pub binary: bool,
+    /// Serial line settings to ask a terminal server for (RFC 2217). The
+    /// option is offered only when this is set: a server that does not know
+    /// it refuses, but there is no reason to raise it with an ordinary host.
+    pub com_port: Option<ComPort>,
 }
 
 impl TelnetConfig {
@@ -89,6 +179,7 @@ impl TelnetConfig {
             rows: 24,
             cols: 80,
             binary: false,
+            com_port: None,
         }
     }
 }
@@ -102,6 +193,7 @@ struct Options {
     them_pending: [bool; 256],
     rows: u16,
     cols: u16,
+    com_port: Option<ComPort>,
 }
 
 impl Default for Options {
@@ -113,6 +205,7 @@ impl Default for Options {
             them_pending: [false; 256],
             rows: 24,
             cols: 80,
+            com_port: None,
         }
     }
 }
@@ -231,6 +324,9 @@ impl Decoder {
                 replies.extend_from_slice(b"9600,9600");
                 replies.extend_from_slice(&[IAC, SE]);
             }
+            // RFC 2217 replies (the command plus 100) report what the server
+            // set. We asked for what we want and have nothing to add.
+            [COM_PORT, ..] => {}
             _ => {}
         }
     }
@@ -240,7 +336,7 @@ fn negotiate(verb: u8, option: u8, o: &mut Options, replies: &mut Vec<u8>) {
     let i = usize::from(option);
     match verb {
         DO => {
-            if local_supported(option) {
+            if local_supported(option, o) {
                 let was_pending = std::mem::take(&mut o.us_pending[i]);
                 if !o.us[i] {
                     o.us[i] = true;
@@ -249,6 +345,9 @@ fn negotiate(verb: u8, option: u8, o: &mut Options, replies: &mut Vec<u8>) {
                     }
                     if option == NAWS {
                         window_size(o, replies);
+                    }
+                    if option == COM_PORT {
+                        com_port_settings(o, replies);
                     }
                 }
             } else {
@@ -365,6 +464,7 @@ impl Telnet {
         let mut options = Options {
             rows: config.rows,
             cols: config.cols,
+            com_port: config.com_port,
             ..Options::default()
         };
         stream.write_all(&hello(&mut options, config.binary))?;
@@ -477,7 +577,32 @@ impl Write for TelnetWriter {
 
 impl crate::TransportWriter for TelnetWriter {
     fn send_break(&mut self) -> io::Result<()> {
-        self.stream.write_all(&[IAC, BRK])
+        let com_port = {
+            let o = self.options.lock().unwrap_or_else(|e| e.into_inner());
+            o.us[usize::from(COM_PORT)]
+        };
+        if com_port {
+            // RFC 2217 sends a break as the control on and then off, so the
+            // terminal server holds the line for the gap between them.
+            self.stream.write_all(&[
+                IAC,
+                SB,
+                COM_PORT,
+                SET_CONTROL,
+                BREAK_ON,
+                IAC,
+                SE,
+                IAC,
+                SB,
+                COM_PORT,
+                SET_CONTROL,
+                BREAK_OFF,
+                IAC,
+                SE,
+            ])
+        } else {
+            self.stream.write_all(&[IAC, BRK])
+        }
     }
 }
 
@@ -598,6 +723,75 @@ mod tests {
         out.clear();
         encode(b"\r\n\r", true, &mut out);
         assert_eq!(out, b"\r\n\r");
+    }
+
+    #[test]
+    fn com_port_control_is_offered_only_when_asked_for() {
+        let has_will = |hello: &[u8]| hello.windows(3).any(|w| w == [IAC, WILL, COM_PORT]);
+        let mut plain = Options::default();
+        assert!(
+            !has_will(&hello(&mut plain, false)),
+            "not raised with an ordinary host"
+        );
+        let mut asked = Options {
+            com_port: Some(ComPort::default()),
+            ..Options::default()
+        };
+        assert!(has_will(&hello(&mut asked, false)));
+    }
+
+    #[test]
+    fn com_port_settings_go_out_when_the_server_agrees() {
+        let mut options = Options {
+            com_port: Some(ComPort {
+                baud: 19200,
+                data_bits: 7,
+                parity: Parity::Even,
+                stop_bits: 2,
+                flow: FlowControl::RtsCts,
+            }),
+            ..Options::default()
+        };
+        let mut decoder = Decoder::new("VT420".into());
+        let (_, replies) = decode(&mut decoder, &mut options, &[IAC, DO, COM_PORT]);
+        let mut expect = vec![IAC, WILL, COM_PORT];
+        for (command, data) in [
+            (SET_BAUDRATE, &[0, 0, 0x4B, 0][..]), // 19200
+            (SET_DATASIZE, &[7][..]),
+            (SET_PARITY, &[3][..]), // even
+            (SET_STOPSIZE, &[2][..]),
+            (SET_CONTROL, &[FLOW_HARDWARE][..]),
+        ] {
+            expect.extend_from_slice(&[IAC, SB, COM_PORT, command]);
+            expect.extend_from_slice(data);
+            expect.extend_from_slice(&[IAC, SE]);
+        }
+        assert_eq!(replies, expect);
+    }
+
+    #[test]
+    fn a_255_in_the_settings_is_doubled() {
+        let options = Options {
+            com_port: Some(ComPort {
+                baud: 255,
+                ..ComPort::default()
+            }),
+            ..Options::default()
+        };
+        let mut replies = Vec::new();
+        com_port_settings(&options, &mut replies);
+        assert!(
+            replies
+                .windows(6)
+                .any(|w| w == [COM_PORT, SET_BAUDRATE, 0, 0, 0, IAC]),
+            "the 255 of the baud rate is escaped: {replies:?}"
+        );
+        let (start, _) = replies
+            .windows(2)
+            .enumerate()
+            .find(|(_, w)| *w == [IAC, IAC])
+            .expect("a doubled 255");
+        assert_eq!(replies[start..start + 4], [IAC, IAC, IAC, SE]);
     }
 
     #[test]
