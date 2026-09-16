@@ -43,6 +43,6 @@ recording (for node names, user names, file contents) before committing it.
 | `eve-tpu` | EVE/TPU | Two windows, Do commands, Find/Select/Remove/Insert Here, 132 columns (`SET WIDTH 132`) |
 | `mail` | MAIL | Directory listing, reading and paging a long message, cursor addressing |
 | `fms-forms` | FMS | Form display, double-size titles, reverse screen and LEDs, line drawing, field navigation |
-| `decforms` | DECforms | Panels, status line messages, function keys, list boxes |
+| `decforms` | DECforms | Panels overlaid without clearing, the full set of double-size lines, underline and reverse |
 | `monitor` | MONITOR | `MONITOR SYSTEM` and `MONITOR PROCESSES/TOPCPU` updating in place |
 | `smg-demo` | SMG$ | Any SMG-based utility: windows, line drawing, pasteboard updates |

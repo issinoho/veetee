@@ -1,0 +1,32 @@
+page 24x80 cursor 24,1 visible
+modes
+ 1 W|        Thanks for visiting the
+ 2  |      ┌───────────────────────────────────────────────────────────┐gister│
+ 3 T|      │  Date  DECforms V4.0 2026sword t
+ 4 B| ┌────│──────  DECforms V4.0────────────
+ 5  | │ NAM│ Last   Jones                      │   AmAccount Number 005│2     │  │
+   ~...............22222222222222222222
+ 6 T| │    Sample Checking Application2.00
+ 7 B| │    Sample Checking Application
+ 8  | │    │            Memo      test                                 │         │
+   ~.............................22222222222222222222222222222222222
+ 9  | │ ADD└───────────────────────────────────────────────────────────┘         │
+10 W| │      StreCome again soon.enue
+   ~............................222222222222
+11  | │      City   Birmingham                           Business  (800)555-1111 │
+   ~...............22222222222222222222...........................2222222222222
+12  | │      State  VT    Zip  99999                ┌────────────────────────────│─┐
+   ~...............22.........22222
+13  | │ On VMS version:  V8.4-2L3                   │For instructions, press HELP│ │
+14  | │ ForTo record new account data and return to the menu, press F10 or PF1-E.│ │
+15  | │    To return to the menu without changing the data, press F8 or PF1-Q.───│─┘
+16  | └──────────────────────────────────────────────────────────────────────────┘
+17  |
+18  |                                       Balances: Checking:        $123.14
+19  |                                                 Savings:         $233.55
+20  |Press F10 or PF1-E to complete
+21  |Deposit credited to your checking account:    12.00
+22  |FORTRAN DECforms Sample Checking Account Application ending.
+23  |Myi64::lo
+24  |  IRS          logged out at 16-SEP-2026 10:41:06.89
+status indicator
