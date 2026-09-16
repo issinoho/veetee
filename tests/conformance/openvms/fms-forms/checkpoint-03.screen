@@ -1,0 +1,29 @@
+page 24x80 cursor 13,80 visible
+modes decscnm deckpam
+ 1  |
+ 2 W|  CHECK REGISTER - THE ACCOUNT HISTORY
+   ~..111111111111111111111111111111111111
+ 3  |
+ 4  |
+ 5  | Chk.                                                Deposit  Check    New
+ 6  | No.   Date     Check Payee or Deposit Memo          Amount   Amount   Balance
+ 7  |┌────┬─────────┬────────────────────────────────────┬────────┬────────┬───────┐
+ 8  |│   4│30-JUL-82│Channel 42                          │    .   │  50.00 │ 170.00│
+ 9  |│    │31-AUG-82│Paycheck                            │ 300.00 │    .   │ 470.00│
+10  |│   5│12-SEP-82│Four-Star Auto                      │    .   │  15.43 │ 454.57│
+11  |│   6│ 4-OCT-82│Mary Johnson                        │    .   │  44.50 │ 410.07│
+12  |│   7│ 1-FEB-83│Cory Advertising Agency             │    .   │  50.02 │ 360.05│
+13  |│    │04-FEB-83│Pegasus Equestrian Center           │   1.25 │    .   │ 361.30│
+14  |└────┴─────────┴────────────────────────────────────┴────────┴────────┴───────┘
+15  |                     This Session:  Starting Balance: $ 361.30
+16  |                                    Total Deposits:   $   0.00
+17  |                                    Total Checks:     $   0.00
+18  |                                    Current Balance:  $ 361.30
+19  |
+20  |             ┌─────────────────────────────────────────────────────────────────┐
+21  |             │To scroll through the check register, press UPARROW or DOWNARROW.│
+22  |             │To return to the menu, press RETURN.                             │
+23  |             └─────────────────────────────────────────────────────────────────┘
+24  |Last line of register
+   ~111111111111111111111
+status indicator

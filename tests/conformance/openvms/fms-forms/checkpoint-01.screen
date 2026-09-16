@@ -1,0 +1,27 @@
+page 24x80 cursor 24,80 visible
+modes deckpam
+ 1  |
+ 2  |
+ 3 W|         Welcome to the FMS V2
+ 4  |
+ 5 W|   Sample Application Program (SAMP)
+ 6  |
+ 7  |
+ 8  |
+ 9  |
+10  |
+11 T|     YOUR PERSONAL CHECKING ACCOUNT
+12 B|     YOUR PERSONAL CHECKING ACCOUNT
+13  |
+14  |
+15  |
+16  |
+17  |
+18  |
+19  |
+20  |                                ┌─────────────────────────────────────────────┐
+21  |                                │ For instructions, press HELP (the PF2 key). │
+22  |                                │ To continue, press RETURN.                  │
+23  |                                └─────────────────────────────────────────────┘
+24  |
+status indicator
