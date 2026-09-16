@@ -61,6 +61,11 @@
   </supports>
   <content_rating type="oars-1.1"/>
   <releases>
+    <release version="0.8.6" date="2026-09-16">
+      <description>
+        <p>Idle Telnet sessions are no longer dropped, and Scroll Lock is now the Do key.</p>
+      </description>
+    </release>
     <release version="0.8.5" date="2026-09-15">
       <description>
         <p>VT100 mode no longer makes the terminal report itself as a VT102.</p>
