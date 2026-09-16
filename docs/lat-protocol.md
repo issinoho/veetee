@@ -169,6 +169,21 @@ answering node `0x00` and `0x01`. 🔎 Which bit means what is unread.
 idle, one goes out every ten to twenty seconds, eight bytes long and padded to the Ethernet
 minimum.
 
+The acknowledgement is **the highest sequence number heard from the far end**, and a sender's own
+number counts up with every message it sends, acknowledgements included. Until a message is
+acknowledged it is sent again, so a client that never answers is told the same thing for ever.
+
+Answer only what carries slots. Acknowledging an acknowledgement draws another back, and the two
+ends will then acknowledge each other indefinitely.
+
+### A session, end to end
+
+Opening a circuit and asking for a service is enough to be given a terminal. OpenVMS answers with
+five slots naming the device it has created — `LTA5040` — then its login banner, then
+`Username:`, and holds the circuit for as long as it is acknowledged. Left alone it ends the login
+itself with *Error reading command input* and *Timeout period expired*, which is the ordinary
+behaviour of a VMS terminal nobody types at.
+
 ### Starting a session
 
 The first run message the calling node sends carries a slot whose data names the service wanted:

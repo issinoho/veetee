@@ -71,13 +71,19 @@ left here is a limitation rather than work.
   and `vt-headless lat INTERFACE` finds the services announcing on a wire, which is discovery
   working end to end against two OpenVMS nodes.
 
-  Left: a **session** — circuits, slots, credits, keepalives — and that is blocked rather than
-  merely unwritten. Nothing of it has been captured, because it needs two LAT nodes that can see
-  each other and the network this was built on has none; the nodes there each hear only
-  themselves. Guessing at those messages would be worse than waiting for a capture. Also left: the
-  helper binary holding `CAP_NET_RAW`, so the interface need not run privileged, and a service
-  browser in the connection dialog. Not available in the Flatpak, which has no raw sockets, nor on
-  Windows, which has no raw Ethernet without a driver.
+  Also done, and further than expected: `vt-headless lat --connect NODE` opens a circuit with an
+  OpenVMS host, asks for a service, and is given a terminal and the login prompt. The host creates
+  an `LTA` device, sends its banner, and holds the circuit for as long as veetee acknowledges it.
+  Everything needed for that — circuit start, run messages, slots, sequence and acknowledgement —
+  is read and written by `vt-lat`.
+
+  Left: **typing back**. Nothing sends a keystroke yet, so a session reaches the username prompt
+  and waits there until OpenVMS times it out. After that, a `Transport` implementation so a
+  terminal can use a LAT session as it uses Telnet, the helper binary holding `CAP_NET_RAW` so the
+  interface need not run privileged, and a service browser in the connection dialog. Several
+  fields of the messages are still copied rather than understood; they are marked in
+  [`lat-protocol.md`](lat-protocol.md). Not available in the Flatpak, which has no raw sockets, nor
+  on Windows, which has no raw Ethernet without a driver.
 
 ### Smaller gaps (from compat-matrix.md)
 

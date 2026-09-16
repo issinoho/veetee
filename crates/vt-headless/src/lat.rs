@@ -136,9 +136,13 @@ pub fn lat(args: impl Iterator<Item = String>) -> io::Result<()> {
                 // Say what we have heard, or it will be said again. The
                 // acknowledgement is the highest sequence number from the far
                 // end, and our own number counts up with every message sent.
+                // A message with no slots carries nothing to acknowledge, and
+                // answering one only draws another: the two ends will
+                // acknowledge each other for ever.
                 if let Some(c) = &mut circuit
                     && r.ours == c.theirs
                     && r.sequence != c.heard
+                    && !r.slots.is_empty()
                 {
                     c.heard = r.sequence;
                     c.sequence = c.sequence.wrapping_add(1);
