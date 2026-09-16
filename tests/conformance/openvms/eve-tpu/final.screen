@@ -1,0 +1,30 @@
+page 24x80 cursor 24,8 visible
+modes decawm
+ 1  |Line 11 of the veetee EDT keypad acceptance recording
+ 2  |Line 12 of the veetee EDT keypad acceptance recording
+ 3  |Line 13 of the veetee EDT keypad acceptance recording
+ 4  |Line 14 of the veetee EDT keypad acceptance recording
+ 5  |Line 15 of the veetee EDT keypad acceptance recording
+ 6  |Line 16 of the veetee EDT keypad acceptance recording
+ 7  |Line 17 of the veetee EDT keypad acceptance recording
+ 8  |Line 18 of the veetee EDT keypad acceptance recording
+ 9  | Buffer: VEETEE.TXT                                  | Write | Insert | Forward
+   ~88888888888888888888888888888888888888888888888888888888888888888888888888888888
+10  |Line 1 of the veetee EDT keypad acc the veetee EDT keypad acceptance recording
+11  |Line 10 of the veetee EDT keypad acceptance recording
+12  |Line 11 of the veetee EDT keypad acceptance recording
+13  |Line 12 of the veetee EDT keypad acceptance recording
+14  |Line 13 of the veetee EDT keypad acceptance recording
+15  |Line 14 of the veetee EDT keypad acceptance recording
+16  |Line 15 of the veetee EDT keypad acceptance recording
+17  |Line 16 of the veetee EDT keypad acceptance recording
+18  |Line 17 of the veetee EDT keypad acceptance recording
+19  |Line 18 of the veetee EDT keypad acceptance recording
+20  | Buffer: VEETEE.TXT                                  | Write | Insert | Forward
+   ~88888888888888888888888888888888888888888888888888888888888888888888888888888888
+21  |Buffer modifications will not be saved, continue quitting [Yes]?
+   ~88888888888888888888888888888888888888888888888888888888888888888
+22  |
+23  |
+24  |Myi64::
+status indicator

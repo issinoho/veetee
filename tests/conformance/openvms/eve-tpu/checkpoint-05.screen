@@ -1,0 +1,29 @@
+page 24x80 cursor 23,14 visible
+modes deckpam
+ 1  |Line 1 of the veetee EDT keypad acc the veetee EDT keypad acceptance recording
+ 2  |Line 10 of the veetee EDT keypad acceptance recording
+ 3  |Line 11 of the veetee EDT keypad acceptance recording
+ 4  |Line 12 of the veetee EDT keypad acceptance recording
+ 5  |Line 13 of the veetee EDT keypad acceptance recording
+ 6  |Line 14 of the veetee EDT keypad acceptance recording
+ 7  |Line 15 of the veetee EDT keypad acceptance recording
+ 8  |Line 16 of the veetee EDT keypad acceptance recording
+ 9  |Line 17 of the veetee EDT keypad acceptance recording
+10  |Line 18 of the veetee EDT keypad acceptance recording
+11  | Buffer: VEETEE.TXT                                  | Write | Insert | Forward
+   ~88888888888888888888888888888888888888888888888888888888888888888888888888888888
+12  |Line 1 of the veetee EDT keypad acc the veetee EDT keypad acceptance recording
+13  |Line 10 of the veetee EDT keypad acceptance recording
+14  |Line 11 of the veetee EDT keypad acceptance recording
+15  |Line 12 of the veetee EDT keypad acceptance recording
+16  |Line 13 of the veetee EDT keypad acceptance recording
+17  |Line 14 of the veetee EDT keypad acceptance recording
+18  |Line 15 of the veetee EDT keypad acceptance recording
+19  |Line 16 of the veetee EDT keypad acceptance recording
+20  |Line 17 of the veetee EDT keypad acceptance recording
+21  |Line 18 of the veetee EDT keypad acceptance recording
+22  | Buffer: VEETEE.TXT                                  | Write | Insert | Forward
+   ~88888888888888888888888888888888888888888888888888888888888888888888888888888888
+23  |Command: quit
+24  |Remove completed.
+status indicator
