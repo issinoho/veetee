@@ -167,6 +167,10 @@ the receiving session
 **Data is padded to an even length**, and the whole message is then padded to the Ethernet
 minimum with zeros.
 
+🔎 The byte that pads an odd-length slot is **not** zeroed: OpenVMS sent `0x25` in one
+observed, which looks like whatever was in its buffer rather than anything meant. A reader should
+ignore it, and a writer can send zero.
+
 This reading parses every one of the 137 run messages in a session capture — login, a directory
 listing, idle keepalives and logout — with nothing left over, which is the strongest evidence in
 this document.

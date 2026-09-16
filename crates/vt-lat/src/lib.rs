@@ -324,6 +324,44 @@ fn parse_stop(payload: &[u8]) -> Result<Stop, Error> {
     })
 }
 
+impl Run<'_> {
+    /// Builds the message to send on an open circuit.
+    ///
+    /// Every byte of a run message is accounted for, so this is the exact
+    /// inverse of parsing one: the fixtures round-trip byte for byte.
+    pub fn build(&self) -> Vec<u8> {
+        let mut out = vec![RUN | (self.flags & RUN_FLAGS), self.slots.len() as u8];
+        out.extend_from_slice(&self.theirs.to_le_bytes());
+        out.extend_from_slice(&self.ours.to_le_bytes());
+        out.push(self.sequence);
+        out.push(self.acknowledged);
+        for slot in &self.slots {
+            let len = slot.data.len().min(255);
+            out.extend_from_slice(&[slot.to, slot.from, len as u8, slot.control]);
+            out.extend_from_slice(&slot.data[..len]);
+            if len & 1 == 1 {
+                out.push(0); // data is padded to an even length
+            }
+        }
+        out.resize(out.len().max(MIN_PAYLOAD), 0);
+        out
+    }
+
+    /// The message that acknowledges what has been heard and carries nothing,
+    /// which is also what an idle circuit sends as a keepalive.
+    pub fn acknowledgement(theirs: u16, ours: u16, sequence: u8, acknowledged: u8) -> Vec<u8> {
+        Run {
+            flags: 0,
+            theirs,
+            ours,
+            sequence,
+            acknowledged,
+            slots: Vec::new(),
+        }
+        .build()
+    }
+}
+
 impl Solicit<'_> {
     /// Builds the message to send to [`GROUP`].
     ///
@@ -472,6 +510,35 @@ mod tests {
                 theirs: 0xc001,
                 ours: 0,
             }))
+        );
+    }
+
+    #[test]
+    fn a_run_message_rebuilds_as_it_arrived() {
+        // With no odd-length slot there is nothing to pad, so this is exact.
+        let Ok(Message::Run(idle)) = parse(KEEPALIVE) else {
+            panic!("not a run")
+        };
+        assert_eq!(idle.build(), KEEPALIVE);
+
+        // The prompt has an odd slot, and OpenVMS does not zero the byte it
+        // pads with -- it sent 0x25, which looks like whatever was in its
+        // buffer. So the test is that building is the inverse of parsing,
+        // rather than that the bytes match a value nobody specified.
+        let Ok(Message::Run(prompt)) = parse(PROMPT) else {
+            panic!("not a run")
+        };
+        let built = prompt.build();
+        assert_ne!(built, PROMPT, "only the pad byte should differ");
+        assert_eq!(parse(&built), parse(PROMPT));
+    }
+
+    #[test]
+    fn an_acknowledgement_is_what_an_idle_circuit_sends() {
+        assert_eq!(
+            Run::acknowledgement(0x7001, 0xe001, 4, 3),
+            KEEPALIVE,
+            "the keepalive captured from OpenVMS"
         );
     }
 

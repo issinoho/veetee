@@ -73,9 +73,53 @@ pub fn lat(mut args: impl Iterator<Item = String>) -> io::Result<()> {
             Ok(Message::Solicit(s)) => {
                 println!("{from}  {} asks for {}/{}", s.from, s.node, s.service);
             }
+            Ok(Message::Start(c)) => {
+                let what = if c.calling { "asks" } else { "agrees" };
+                println!(
+                    "{from}  {} {what} {} for a circuit: {} bytes, LAT {}.{}, keepalive {}s",
+                    c.from, c.to, c.max_frame, c.version.0, c.version.1, c.keepalive
+                );
+            }
+            Ok(Message::Run(r)) => {
+                if r.slots.is_empty() {
+                    // An idle circuit says only what it has heard.
+                    println!("{from}  circuit {:#06x}: heard {}", r.ours, r.acknowledged);
+                    continue;
+                }
+                println!(
+                    "{from}  circuit {:#06x}: {} sent, {} heard, {} slot{}",
+                    r.ours,
+                    r.sequence,
+                    r.acknowledged,
+                    r.slots.len(),
+                    if r.slots.len() == 1 { "" } else { "s" }
+                );
+                for slot in &r.slots {
+                    let text: String = slot
+                        .data
+                        .iter()
+                        .map(|&c| {
+                            if (32..127).contains(&c) {
+                                c as char
+                            } else {
+                                '.'
+                            }
+                        })
+                        .collect();
+                    println!(
+                        "      session {} to {}  {:3} bytes  {text}",
+                        slot.from,
+                        slot.to,
+                        slot.data.len()
+                    );
+                }
+            }
+            Ok(Message::Stop(c)) => {
+                println!("{from}  circuit {:#06x} closed", c.theirs);
+            }
             Ok(Message::Other { kind, body }) => {
-                // Worth seeing: every type beyond these two is unread, and one
-                // arriving is how we would learn of it.
+                // Worth seeing: several message types have never been seen at
+                // all, and one arriving is how we would learn it exists.
                 println!("{from}  message type {kind:#04x}, {} bytes", body.len());
             }
             Err(e) => println!("{from}  unreadable: {e:?}"),
