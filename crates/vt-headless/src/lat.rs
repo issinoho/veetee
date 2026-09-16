@@ -100,14 +100,26 @@ pub fn lat(args: impl Iterator<Item = String>) -> io::Result<()> {
                     c.max_frame, c.version.0, c.version.1, c.keepalive
                 );
                 if !c.calling && wanted.is_some() {
-                    // Until it is acknowledged the far end keeps repeating
-                    // itself, so say what we have heard. Their end is named
-                    // first, as it is in every message on the circuit.
-                    listener.send(
-                        source,
-                        &vt_lat::Run::acknowledgement(c.ours, c.theirs, 1, 0),
-                    )?;
-                    println!("      acknowledged; circuit {:#06x} is open", c.theirs);
+                    // The first message on a new circuit both acknowledges the
+                    // agreement and asks for a service, which is what OpenVMS
+                    // sends at this point. Their end is named first, as it is
+                    // in every message on the circuit.
+                    let data = vt_lat::session_start(c.to);
+                    let open = vt_lat::Run {
+                        flags: 2,
+                        theirs: c.ours,
+                        ours: c.theirs,
+                        sequence: 1,
+                        acknowledged: 0,
+                        slots: vec![vt_lat::Slot {
+                            to: 0,
+                            from: 1,
+                            control: vt_lat::SLOT_START,
+                            data: &data,
+                        }],
+                    };
+                    listener.send(source, &open.build())?;
+                    println!("      circuit open; asking for {}", c.to);
                 }
             }
             Ok(Message::Run(r)) => {

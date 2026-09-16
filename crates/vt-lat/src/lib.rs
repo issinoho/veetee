@@ -361,6 +361,30 @@ impl Start<'_> {
     }
 }
 
+/// The control byte of the slot that asks for a service, against `0x00` for
+/// the slots that carry session data. 🔎 Credit in the high nibble and a
+/// kind in the low, on the evidence of the values seen.
+pub const SLOT_START: u8 = 0x9f;
+
+/// Builds the data of the slot that asks for a service.
+///
+/// 🔎 Copied from the one slot of its kind ever captured, with the service
+/// name replaced. The bytes around the name are unread: they end in what look
+/// like coded values, of which `07 02 18 00` is twenty-four lines and
+/// `08 02 50 00` is eighty columns, so the terminal describes itself here.
+pub fn session_start(service: &str) -> Vec<u8> {
+    let mut out = vec![0x01, 0x01, 0xfe];
+    text(&mut out, service);
+    out.push(0); // 🔎 an empty name, a port perhaps
+    out.extend_from_slice(&[
+        0x01, 0x02, 0x04, 0x00, // 🔎
+        0x07, 0x02, 0x18, 0x00, // twenty-four lines
+        0x08, 0x02, 0x50, 0x00, // eighty columns
+        0x00, // the end of them
+    ]);
+    out
+}
+
 impl Run<'_> {
     /// Builds the message to send on an open circuit.
     ///
