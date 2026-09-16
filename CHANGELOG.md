@@ -5,6 +5,11 @@ milestones (0.3 = M3). The format follows [Keep a Changelog](https://keepachange
 
 ## [Unreleased]
 
+## [0.8.6] - 2026-09-16
+
+Keeps an idle Telnet session from being dropped while you read the screen, and gives EVE and TPU a
+Do key of their own.
+
 - **Added: Scroll Lock is the Do key.** A PC keyboard has no Do key, so DEC applications that lean
   on it — EVE and TPU ask for a command on it constantly — needed Shift+F6, a two-handed
   reach. Scroll Lock has no DEC meaning and veetee bound nothing to it, so it now sends Do.
