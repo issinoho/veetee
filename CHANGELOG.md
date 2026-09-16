@@ -5,6 +5,11 @@ milestones (0.3 = M3). The format follows [Keep a Changelog](https://keepachange
 
 ## [Unreleased]
 
+## [0.8.7] - 2026-09-16
+
+A selection can be dragged out of the scrollback at last, so a copy longer than a screenful is
+possible, and Telnet can set up the line behind a terminal server.
+
 - **Fixed: a selection can be dragged out of the scrollback.** Dragging past the top or bottom of
   the page selected only as far as the rows on screen, so copying anything longer than a screenful
   was impossible. The screen now moves through the history while the drag is held past an edge, a
@@ -312,7 +317,8 @@ The first release: VT100 through VT420 emulation with local, Telnet, SSH and ser
   `cargo deny` licence checks and parser fuzzing.
 - `cargo xtask dist` builds the release tarball and Debian package.
 
-[Unreleased]: https://github.com/issinoho/veetee/compare/v0.8.6...HEAD
+[Unreleased]: https://github.com/issinoho/veetee/compare/v0.8.7...HEAD
+[0.8.7]: https://github.com/issinoho/veetee/compare/v0.8.6...v0.8.7
 [0.8.6]: https://github.com/issinoho/veetee/compare/v0.8.5...v0.8.6
 [0.8.5]: https://github.com/issinoho/veetee/compare/v0.8.4...v0.8.5
 [0.8.4]: https://github.com/issinoho/veetee/compare/v0.8.3...v0.8.4

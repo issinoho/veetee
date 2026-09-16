@@ -61,6 +61,11 @@
   </supports>
   <content_rating type="oars-1.1"/>
   <releases>
+    <release version="0.8.7" date="2026-09-16">
+      <description>
+        <p>Selections can be dragged out of the scrollback, and Telnet can set up a terminal server's line.</p>
+      </description>
+    </release>
     <release version="0.8.6" date="2026-09-16">
       <description>
         <p>Idle Telnet sessions are no longer dropped, and Scroll Lock is now the Do key.</p>
