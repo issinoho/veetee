@@ -10,6 +10,10 @@ authors.workspace = true
 [target.'cfg(unix)'.dependencies]
 rustix = { version = "1", features = ["pty", "termios", "process", "fs", "event", "stdio"] }
 
+# LAT needs AF_PACKET, which is Linux only.
+[target.'cfg(target_os = "linux")'.dependencies]
+libc = "0.2"
+
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.61", features = [
     "Win32_Devices_Communication",
@@ -26,4 +30,5 @@ windows-sys = { version = "0.61", features = [
 workspace = true
 
 [dependencies]
+vt-lat.workspace = true
 socket2 = "0.6.5"

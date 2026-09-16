@@ -11,6 +11,7 @@ publish = false
 [dependencies]
 vt-parser.workspace = true
 vt-core.workspace = true
+vt-lat.workspace = true
 vt-transport.workspace = true
 
 [lints]

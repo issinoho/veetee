@@ -12,6 +12,7 @@ authors = ["Iain Smith <iain@issinoho.com>"]
 [workspace.dependencies]
 vt-parser = { path = "crates/vt-parser", version = "0.8.7" }
 vt-core = { path = "crates/vt-core", version = "0.8.7" }
+vt-lat = { path = "crates/vt-lat", version = "0.8.7" }
 vt-fonts = { path = "crates/vt-fonts", version = "0.8.7" }
 vt-keyboard = { path = "crates/vt-keyboard", version = "0.8.7" }
 vt-render = { path = "crates/vt-render", version = "0.8.7" }

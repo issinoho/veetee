@@ -1462,6 +1462,7 @@ name = "vt-headless"
 version = "0.8.7"
 dependencies = [
  "vt-core",
+ "vt-lat",
  "vt-parser",
  "vt-transport",
 ]
@@ -1499,8 +1500,10 @@ dependencies = [
 name = "vt-transport"
 version = "0.8.7"
 dependencies = [
+ "libc",
  "rustix",
  "socket2",
+ "vt-lat",
  "windows-sys",
 ]
 

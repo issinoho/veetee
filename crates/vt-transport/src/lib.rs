@@ -3,6 +3,9 @@
 use std::io::{self, Write};
 use std::time::Duration;
 
+/// LAT discovery. Linux only: LAT is raw Ethernet, not IP.
+#[cfg(target_os = "linux")]
+pub mod lat;
 pub mod pty;
 pub mod serial;
 pub mod ssh;
