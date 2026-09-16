@@ -5,8 +5,10 @@
 //! testable with `cargo test` against captured frames. The datalink belongs to
 //! `vt-transport`, which has the raw socket and the multicast group to join.
 //!
-//! Only the two message types seen on the wire are understood. Anything else
-//! is kept whole as [`Message::Other`] rather than guessed at.
+//! Service announcements, solicits, circuit start and stop, and the run
+//! messages that carry a session are understood. Anything else is kept whole
+//! as [`Message::Other`] rather than guessed at: several message types have
+//! never been seen, and parts of the ones here are still unread and marked.
 
 /// LAT rides directly on Ethernet under this type. There is no IP, so nothing
 /// routes: both ends share a segment.
@@ -24,17 +26,81 @@ const MIN_PAYLOAD: usize = 46;
 
 const ANNOUNCEMENT: u8 = 0x28;
 const SOLICIT: u8 = 0x38;
+/// A circuit being asked for, and the answer to one.
+const START: u8 = 0x06;
+const START_REPLY: u8 = 0x04;
+const STOP: u8 = 0x0a;
+/// Everything in a circuit rides in these. The low bits are flags: the calling
+/// node used `0x02` throughout and the answering node `0x00` and `0x01`.
+/// 🔎 Which bit means what is unread.
+const RUN: u8 = 0x00;
+const RUN_FLAGS: u8 = 0x03;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Message<'a> {
     Announcement(Announcement<'a>),
     Solicit(Solicit<'a>),
+    /// A circuit being asked for, or the answer to one.
+    Start(Start<'a>),
+    /// Session data and acknowledgements.
+    Run(Run<'a>),
+    /// A circuit being taken down. 🔎 Read no further than its shape.
+    Stop(Stop),
     /// A type we have never seen. Kept whole: guessing at it would be worse
     /// than admitting we cannot read it.
     Other {
         kind: u8,
         body: &'a [u8],
     },
+}
+
+/// Asking for a circuit, or answering. Each end names the circuit with an
+/// identifier of its own choosing; the caller has none for the far end yet and
+/// sends zero, which the reply fills in.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Start<'a> {
+    /// True for the node asking, false for the node answering.
+    pub calling: bool,
+    pub theirs: u16,
+    pub ours: u16,
+    pub max_frame: u16,
+    /// Protocol version, 5.3 on the OpenVMS nodes seen.
+    pub version: (u8, u8),
+    /// Seconds an idle circuit waits before a keepalive.
+    pub keepalive: u8,
+    pub to: &'a str,
+    pub from: &'a str,
+}
+
+/// A message on an open circuit. With no slots it is an acknowledgement, and
+/// that is also the keepalive.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Run<'a> {
+    /// 🔎 The low bits of the message type.
+    pub flags: u8,
+    pub theirs: u16,
+    pub ours: u16,
+    pub sequence: u8,
+    pub acknowledged: u8,
+    pub slots: Vec<Slot<'a>>,
+}
+
+/// One session's worth of a run message. Data is padded to an even length on
+/// the wire; the padding is not part of it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Slot<'a> {
+    pub to: u8,
+    pub from: u8,
+    /// 🔎 Credit in the high nibble and a type in the low, on the evidence
+    /// of the values seen.
+    pub control: u8,
+    pub data: &'a [u8],
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Stop {
+    pub theirs: u16,
+    pub ours: u16,
 }
 
 /// A node saying what it offers, sent to the group every multicast timer.
@@ -107,6 +173,13 @@ impl<'a> Reader<'a> {
         Ok(u16::from(self.byte()?) | u16::from(self.byte()?) << 8)
     }
 
+    fn bytes(&mut self, len: usize) -> Result<&'a [u8], Error> {
+        let end = self.at.checked_add(len).ok_or(Error::Truncated)?;
+        let raw = self.data.get(self.at..end).ok_or(Error::Truncated)?;
+        self.at = end;
+        Ok(raw)
+    }
+
     /// A LAT string: one length byte, then that many characters.
     fn text(&mut self) -> Result<&'a str, Error> {
         let len = usize::from(self.byte()?);
@@ -124,6 +197,9 @@ pub fn parse(payload: &[u8]) -> Result<Message<'_>, Error> {
     match kind {
         ANNOUNCEMENT => parse_announcement(payload).map(Message::Announcement),
         SOLICIT => parse_solicit(payload).map(Message::Solicit),
+        START | START_REPLY => parse_start(payload).map(Message::Start),
+        STOP => parse_stop(payload).map(Message::Stop),
+        k if k & !RUN_FLAGS == RUN => parse_run(payload).map(Message::Run),
         _ => Ok(Message::Other {
             kind,
             body: payload,
@@ -175,6 +251,76 @@ fn parse_solicit(payload: &[u8]) -> Result<Solicit<'_>, Error> {
         service,
         request_id,
         max_frame,
+    })
+}
+
+fn parse_start(payload: &[u8]) -> Result<Start<'_>, Error> {
+    let mut r = Reader::new(payload);
+    let kind = r.byte()?;
+    r.skip(1)?;
+    let theirs = r.word()?;
+    let ours = r.word()?;
+    r.skip(2)?; // 🔎 a sequence and an acknowledgement, zero or 0xff here
+    let max_frame = r.word()?;
+    let version = (r.byte()?, r.byte()?);
+    r.skip(3)?; // 🔎 unread
+    let keepalive = r.byte()?;
+    r.skip(4)?; // 🔎 unread
+    let to = r.text()?;
+    let from = r.text()?;
+    Ok(Start {
+        calling: kind == START,
+        theirs,
+        ours,
+        max_frame,
+        version,
+        keepalive,
+        to,
+        from,
+    })
+}
+
+fn parse_run(payload: &[u8]) -> Result<Run<'_>, Error> {
+    let mut r = Reader::new(payload);
+    let flags = r.byte()? & RUN_FLAGS;
+    let count = usize::from(r.byte()?);
+    let theirs = r.word()?;
+    let ours = r.word()?;
+    let sequence = r.byte()?;
+    let acknowledged = r.byte()?;
+    let mut slots = Vec::with_capacity(count.min(16));
+    for _ in 0..count {
+        let to = r.byte()?;
+        let from = r.byte()?;
+        let len = usize::from(r.byte()?);
+        let control = r.byte()?;
+        let data = r.bytes(len)?;
+        // Data is padded to an even length; the pad is not part of it.
+        r.skip(len & 1)?;
+        slots.push(Slot {
+            to,
+            from,
+            control,
+            data,
+        });
+    }
+    // Whatever follows is padding to the Ethernet minimum.
+    Ok(Run {
+        flags,
+        theirs,
+        ours,
+        sequence,
+        acknowledged,
+        slots,
+    })
+}
+
+fn parse_stop(payload: &[u8]) -> Result<Stop, Error> {
+    let mut r = Reader::new(payload);
+    r.skip(2)?;
+    Ok(Stop {
+        theirs: r.word()?,
+        ours: r.word()?,
     })
 }
 
@@ -235,6 +381,100 @@ mod tests {
         0x00,
     ];
 
+    /// The circuit start X86VMS sent to MYI64. These four come from a real
+    /// session, chosen because none of them carries anything typed: a login
+    /// is in the clear on the wire (see docs/lat-protocol.md).
+    const START_FRAME: &[u8] = &[
+        0x06, 0x00, 0x00, 0x00, 0x01, 0x70, 0x00, 0xff, 0xdc, 0x05, 0x05, 0x03, 0x10, 0x09, 0x08,
+        0x14, 0x00, 0x00, 0x03, 0x03, 0x05, b'M', b'Y', b'I', b'6', b'4', 0x06, b'X', b'8', b'6',
+        b'V', b'M', b'S', 0x00, 0x01, 0x02, 0x64, 0x00, 0x02, 0x10, 0x00, 0x73, 0x9b, 0x3f, 0xa8,
+        0x29, 0xbc, 0x00, 0xaa, 0x00, 0x04, 0x00, 0x01, 0x04, 0x00, 0x00, 0x00,
+    ];
+
+    /// MYI64 answering, naming its own end of the circuit.
+    const START_REPLY_FRAME: &[u8] = &[
+        0x04, 0x00, 0x01, 0x70, 0x01, 0xe0, 0x00, 0x00, 0xdc, 0x05, 0x05, 0x03, 0x10, 0x09, 0x08,
+        0x14, 0x00, 0x00, 0x03, 0x03, 0x05, b'M', b'Y', b'I', b'6', b'4', 0x06, b'X', b'8', b'6',
+        b'V', b'M', b'S', 0x00, 0x01, 0x02, 0x0a, 0x00, 0x02, 0x10, 0x80, 0xf2, 0xb4, 0x78, 0x6a,
+        0x29, 0xbc, 0x00, 0x00, 0x17, 0xa4, 0xab, 0x62, 0x50, 0x00, 0x00, 0x00,
+    ];
+
+    /// Two slots, the second carrying MYI64's username prompt.
+    const PROMPT: &[u8] = &[
+        0x00, 0x02, 0x01, 0x70, 0x01, 0xe0, 0x03, 0x02, 0x01, 0x01, 0x23, 0xa1, 0x46, 0x13, 0x11,
+        0x13, 0x11, 0x01, 0x01, 0x48, 0x02, 0x04, 0x80, 0x25, 0x00, 0x00, 0x03, 0x04, 0x80, 0x25,
+        0x00, 0x00, 0x04, 0x01, 0x01, 0x05, 0x01, 0x00, 0x07, 0x02, 0x18, 0x00, 0x08, 0x02, 0x50,
+        0x00, 0x00, 0x25, 0x01, 0x01, 0x0e, 0x00, 0x0a, 0x0d, 0x0a, 0x0d, b'U', b's', b'e', b'r',
+        b'n', b'a', b'm', b'e', b':', b' ',
+    ];
+
+    /// An idle circuit: no slots, padded to the Ethernet minimum.
+    const KEEPALIVE: &[u8] = &[
+        0x00, 0x00, 0x01, 0x70, 0x01, 0xe0, 0x04, 0x03, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x00,
+    ];
+
+    #[test]
+    fn reads_a_circuit_being_asked_for_and_answered() {
+        let Ok(Message::Start(call)) = parse(START_FRAME) else {
+            panic!("not a start")
+        };
+        assert!(call.calling);
+        assert_eq!((call.to, call.from), ("MYI64", "X86VMS"));
+        assert_eq!(call.max_frame, 1500);
+        assert_eq!(call.version, (5, 3));
+        assert_eq!(call.keepalive, 20);
+        // The caller cannot name the far end yet.
+        assert_eq!(call.theirs, 0);
+        assert_eq!(call.ours, 0x7001);
+
+        let Ok(Message::Start(answer)) = parse(START_REPLY_FRAME) else {
+            panic!("not a start")
+        };
+        assert!(!answer.calling);
+        // The answer fills in both ends.
+        assert_eq!((answer.theirs, answer.ours), (call.ours, 0xe001));
+    }
+
+    #[test]
+    fn reads_the_slots_of_a_run_message() {
+        let Ok(Message::Run(run)) = parse(PROMPT) else {
+            panic!("not a run")
+        };
+        assert_eq!((run.sequence, run.acknowledged), (3, 2));
+        assert_eq!((run.theirs, run.ours), (0x7001, 0xe001));
+        assert_eq!(run.slots.len(), 2);
+        // An odd-length slot is padded, and the pad is not part of its data.
+        assert_eq!(run.slots[0].data.len(), 0x23);
+        assert_eq!(run.slots[1].data, b"\n\r\n\rUsername: ");
+        assert_eq!((run.slots[1].to, run.slots[1].from), (1, 1));
+    }
+
+    #[test]
+    fn a_run_with_no_slots_is_an_acknowledgement() {
+        let Ok(Message::Run(run)) = parse(KEEPALIVE) else {
+            panic!("not a run")
+        };
+        assert!(run.slots.is_empty(), "the padding is not a slot");
+        assert_eq!((run.sequence, run.acknowledged), (4, 3));
+    }
+
+    #[test]
+    fn reads_a_circuit_being_taken_down() {
+        let stop = &[
+            0x0a, 0x00, 0x01, 0xc0, 0x00, 0x00, 0x27, 0x29, 0x01, 0x00, 0x01,
+        ][..];
+        assert_eq!(
+            parse(stop),
+            Ok(Message::Stop(Stop {
+                theirs: 0xc001,
+                ours: 0,
+            }))
+        );
+    }
+
     #[test]
     fn reads_a_real_announcement() {
         let Ok(Message::Announcement(a)) = parse(MYI64) else {
@@ -279,8 +519,9 @@ mod tests {
 
     #[test]
     fn an_unknown_type_is_kept_whole() {
-        let body = &[0x01, 0x02, 0x03][..];
-        assert_eq!(parse(body), Ok(Message::Other { kind: 1, body }));
+        // 0x01 is a run message now, so pick a type we really have not seen.
+        let body = &[0x99, 0x02, 0x03][..];
+        assert_eq!(parse(body), Ok(Message::Other { kind: 0x99, body }));
     }
 
     #[test]
