@@ -93,9 +93,27 @@ retransmitting every two seconds; OpenVMS's *retransmit limit* is 8 messages.
 | offset 8–9 | 🔎 a request identifier, presumably echoed by the response |
 | offset 10–11 | 🔎 `02 00` in every frame seen |
 
-A solicit is answered with **`0x3c`**, unicast, carrying the answering node's address along with
-the same version and maximum frame size an announcement has. Both nodes send them while a
-connection is being made — twelve of each in the session captured.
+### Response information (`0x3c`)
+
+A solicit is answered with `0x3c`, unicast. It is an announcement with the answering node's
+address in front of it:
+
+```
+3c 00 | 05 05 05 03 | dc 05 | 90 52 | 00 00 | 0e 00 |
+00 17 a4 ab 62 50          the answering node's address
+3c 00 00 01 01             `3c` = 60 again, the multicast timer
+05 "MYI64"                 node name
+40 " Welcome to VMS ..."   node identification
+01 4e 01 01 03 | 52        🔎 then the rating, as an announcement has
+01 01 | 05 "MYI64" | 40 " Welcome to ..."      the service
+01 10 80 f2 b4 78 6a 29 bc 00 | 00 17 a4 ab 62 50 | 00 00 00   🔎 as an announcement's tail
+```
+
+Offsets 8–9 look like the identifier the solicit carried, echoed back.
+
+A node that has been asked for a circuit is solicited by the far end for its own details: after
+veetee opened a circuit to OpenVMS, OpenVMS solicited **veetee**, with an empty service name, and
+repeated it. 🔎 What it does with the answer is unknown, and veetee has not sent one.
 
 🔎 A solicit built to this shape by hand, differing from a real one only in the asking
 node's name, has never been answered. Something in it is still unread.
@@ -150,6 +168,17 @@ answering node `0x00` and `0x01`. 🔎 Which bit means what is unread.
 **A message with no slots is an acknowledgement**, and doubles as the keepalive: with the circuit
 idle, one goes out every ten to twenty seconds, eight bytes long and padded to the Ethernet
 minimum.
+
+### Starting a session
+
+The first run message the calling node sends carries a slot whose data names the service wanted:
+
+```
+01 01 fe | 05 "MYI64" | 00 01 02 04 00 05 10 "UIC_000200000101" 06 01 01 00
+```
+
+🔎 with a control byte of `0x9f`, against `0x00` for the slots that carry session data. Only
+one such slot has been seen, so the layout around the name is unread.
 
 ### Slots
 
