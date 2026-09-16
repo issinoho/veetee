@@ -42,12 +42,14 @@ esctest2, and defaults to DEC and OpenVMS behaviour everywhere (see [CLAUDE.md](
 
 ### M6: OpenVMS acceptance
 
-- **Recordings** made by the user with `veetee --record FILE.vtrec` on their OpenVMS system and
-  replayed in CI by `cargo xtask openvms` (they are kept outside the repository until reviewed, and
-  exclude typed keys unless `--record-keys`). Seven are in `tests/conformance/openvms`:
-  `SET TERMINAL/INQUIRE` over Telnet and over SSH, the EDT keypad, EVE/TPU, MAIL, the FMS sample
-  application and the DECforms sample. `smg-demo` and `monitor` are left; neither reaches anything
-  the other seven do not, so they are polish rather than a gap.
+- **Recordings**: the checklist in `tests/conformance/openvms/README.md` is complete. Nine are in
+  that directory — `SET TERMINAL/INQUIRE` over Telnet and over SSH, the EDT keypad, EVE/TPU, MAIL,
+  the FMS sample application, the DECforms sample, `SHOW CLUSTER/CONTINUOUS` and MONITOR — made by
+  the user with `veetee --record FILE.vtrec` on their OpenVMS system and replayed in CI by
+  `cargo xtask openvms` (they are kept outside the repository until reviewed, and exclude typed
+  keys unless `--record-keys`). The last two added no control function the others did not already
+  reach: coverage was near its useful extent after FMS and DECforms, and further recordings are
+  worth making only for an application that exercises something new.
 - **Protected fields have no acceptance coverage.** DECSCA, DECSED, DECSEL and DECSERA are
   implemented and pass vttest 11.1.2.4, but no recording exercises them, and none can: both DEC
   forms products keep field protection to themselves. Neither the FMS sample application nor the
