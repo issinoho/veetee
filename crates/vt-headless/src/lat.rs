@@ -52,6 +52,9 @@ pub fn lat(args: impl Iterator<Item = String>) -> io::Result<()> {
     }
 
     let mut frame = vec![0u8; 2048];
+    // What we know of the circuit once one is open, so its messages can be
+    // acknowledged: without that the far end repeats itself for ever.
+    let mut circuit: Option<Circuit> = None;
     if let Some(node) = &wanted {
         ask_for_a_circuit(&mut listener, &mut frame, node)?;
     }
@@ -119,10 +122,29 @@ pub fn lat(args: impl Iterator<Item = String>) -> io::Result<()> {
                         }],
                     };
                     listener.send(source, &open.build())?;
+                    circuit = Some(Circuit {
+                        peer: source,
+                        theirs: c.ours,
+                        ours: c.theirs,
+                        sequence: 1,
+                        heard: 0,
+                    });
                     println!("      circuit open; asking for {}", c.to);
                 }
             }
             Ok(Message::Run(r)) => {
+                // Say what we have heard, or it will be said again. The
+                // acknowledgement is the highest sequence number from the far
+                // end, and our own number counts up with every message sent.
+                if let Some(c) = &mut circuit
+                    && r.ours == c.theirs
+                    && r.sequence != c.heard
+                {
+                    c.heard = r.sequence;
+                    c.sequence = c.sequence.wrapping_add(1);
+                    let ack = vt_lat::Run::acknowledgement(c.theirs, c.ours, c.sequence, c.heard);
+                    listener.send(c.peer, &ack)?;
+                }
                 if r.slots.is_empty() {
                     // An idle circuit says only what it has heard.
                     println!("{from}  circuit {:#06x}: heard {}", r.ours, r.acknowledged);
@@ -167,6 +189,16 @@ pub fn lat(args: impl Iterator<Item = String>) -> io::Result<()> {
             Err(e) => println!("{from}  unreadable: {e:?}"),
         }
     }
+}
+
+/// An open circuit, and enough of its state to keep it open.
+#[cfg(target_os = "linux")]
+struct Circuit {
+    peer: [u8; 6],
+    theirs: u16,
+    ours: u16,
+    sequence: u8,
+    heard: u8,
 }
 
 /// Waits to hear a node announce itself, then asks it for a circuit.
