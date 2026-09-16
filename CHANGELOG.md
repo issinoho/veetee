@@ -5,6 +5,12 @@ milestones (0.3 = M3). The format follows [Keep a Changelog](https://keepachange
 
 ## [Unreleased]
 
+- **Added: Scroll Lock is the Do key.** A PC keyboard has no Do key, so DEC applications that lean
+  on it — EVE and TPU ask for a command on it constantly — needed Shift+F6, a two-handed
+  reach. Scroll Lock has no DEC meaning and veetee bound nothing to it, so it now sends Do.
+  Shift+F6 still does as well, and Hold Screen stays on F1 and Pause. `Scroll_Lock` is also a
+  name the keymap accepts now, so it can be bound to anything else in the Keyboard Map window.
+
 - **Fixed (Telnet): idle connections are held open with TCP keepalives.** A terminal sits idle for
   as long as the user is reading, and OpenVMS sends nothing meanwhile, so a firewall or NAT between
   the two is free to forget the connection; the next keystroke then failed with "an established

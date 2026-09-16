@@ -171,6 +171,7 @@ const KEY_NAMES: &[(&str, u32)] = &[
     ("ISO_Left_Tab", keysym::ISO_LEFT_TAB),
     ("Return", keysym::RETURN),
     ("Pause", keysym::PAUSE),
+    ("Scroll_Lock", keysym::SCROLL_LOCK),
     ("Escape", keysym::ESCAPE),
     ("Home", keysym::HOME),
     ("Left", keysym::LEFT),

@@ -72,6 +72,12 @@ dec = "help"
 [[bind]]
 pc = "F16"
 dec = "do"
+# The LK401 Do key has no PC equivalent; Scroll Lock has no DEC meaning and
+# sits unused, so it gives EVE and other DEC applications a Do key of their
+# own. Hold Screen is already on F1 and Pause.
+[[bind]]
+pc = "Scroll_Lock"
+dec = "do"
 [[bind]]
 pc = "F17"
 dec = "f17"

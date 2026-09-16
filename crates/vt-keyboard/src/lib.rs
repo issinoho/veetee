@@ -71,6 +71,7 @@ pub mod keysym {
     pub const TAB: u32 = 0xff09;
     pub const RETURN: u32 = 0xff0d;
     pub const PAUSE: u32 = 0xff13;
+    pub const SCROLL_LOCK: u32 = 0xff14;
     pub const ESCAPE: u32 = 0xff1b;
     pub const HOME: u32 = 0xff50;
     pub const LEFT: u32 = 0xff51;
@@ -257,6 +258,13 @@ mod tests {
                 .map(|&k| Some(Action::Key(k)))
                 .collect::<Vec<_>>()
         );
+    }
+
+    #[test]
+    fn scroll_lock_is_the_do_key() {
+        // A PC keyboard has no Do key and Scroll Lock has no DEC meaning,
+        // so it stands in for one. Shift+F6 still works.
+        assert_eq!(key(SCROLL_LOCK, NONE), Some(Action::Key(Key::Function(16))));
     }
 
     #[test]
