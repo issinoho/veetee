@@ -324,6 +324,43 @@ fn parse_stop(payload: &[u8]) -> Result<Stop, Error> {
     })
 }
 
+/// 🔎 Fourteen bytes of a start message that have never been read. These
+/// are what one OpenVMS node sent; five of them differ between the two nodes
+/// seen, so they are not simply constant, and sending them may or may not be
+/// what a host wants.
+pub const START_UNREAD: [u8; 14] = [
+    0x01, 0x02, 0x64, 0x00, 0x02, 0x10, 0x00, 0x73, 0x9b, 0x3f, 0xa8, 0x29, 0xbc, 0x00,
+];
+
+impl Start<'_> {
+    /// Builds the message that asks for a circuit, or agrees to one.
+    ///
+    /// `address` is this node's own Ethernet address, which the message
+    /// carries near its end.
+    ///
+    /// 🔎 Several fields here are copied from what OpenVMS sends rather
+    /// than understood, [`START_UNREAD`] among them.
+    pub fn build(&self, address: [u8; 6]) -> Vec<u8> {
+        let mut out = vec![if self.calling { START } else { START_REPLY }, 0x00];
+        out.extend_from_slice(&self.theirs.to_le_bytes());
+        out.extend_from_slice(&self.ours.to_le_bytes());
+        out.extend_from_slice(&[0x00, 0xff]); // 🔎 a sequence and an acknowledgement
+        out.extend_from_slice(&self.max_frame.to_le_bytes());
+        out.extend_from_slice(&[self.version.0, self.version.1]);
+        out.extend_from_slice(&[0x10, 0x09, 0x08]); // 🔎 unread
+        out.push(self.keepalive);
+        out.extend_from_slice(&[0x00, 0x00, 0x03, 0x03]); // 🔎 unread
+        text(&mut out, self.to);
+        text(&mut out, self.from);
+        out.push(0); // 🔎 an empty string
+        out.extend_from_slice(&START_UNREAD);
+        out.extend_from_slice(&address);
+        out.extend_from_slice(&[0, 0, 0]);
+        out.resize(out.len().max(MIN_PAYLOAD), 0);
+        out
+    }
+}
+
 impl Run<'_> {
     /// Builds the message to send on an open circuit.
     ///
@@ -510,6 +547,18 @@ mod tests {
                 theirs: 0xc001,
                 ours: 0,
             }))
+        );
+    }
+
+    #[test]
+    fn a_start_rebuilds_as_openvms_sent_it() {
+        let Ok(Message::Start(call)) = parse(START_FRAME) else {
+            panic!("not a start")
+        };
+        assert_eq!(
+            call.build([0xaa, 0x00, 0x04, 0x00, 0x01, 0x04]),
+            START_FRAME,
+            "the unread fields are copied, so this is exact"
         );
     }
 

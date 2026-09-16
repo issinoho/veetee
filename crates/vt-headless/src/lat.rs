@@ -14,20 +14,31 @@ pub fn lat(_args: impl Iterator<Item = String>) -> io::Result<()> {
 }
 
 #[cfg(target_os = "linux")]
-pub fn lat(mut args: impl Iterator<Item = String>) -> io::Result<()> {
+pub fn lat(args: impl Iterator<Item = String>) -> io::Result<()> {
     use std::time::Duration;
 
     use vt_lat::Message;
     use vt_transport::lat::{Listener, split};
 
     let bad = |what: String| io::Error::new(io::ErrorKind::InvalidInput, what);
-    let interface = args
-        .next()
-        .ok_or_else(|| bad("usage: vt-headless lat INTERFACE [SECONDS]".into()))?;
-    let seconds: Option<u64> = match args.next() {
-        Some(s) => Some(s.parse().map_err(|_| bad(format!("not a number: {s:?}")))?),
-        None => None,
-    };
+    let usage = "usage: vt-headless lat INTERFACE [SECONDS] [--connect NODE]";
+    let mut interface = None;
+    let mut seconds: Option<u64> = None;
+    let mut wanted: Option<String> = None;
+    let mut rest = args.into_iter();
+    while let Some(arg) = rest.next() {
+        match arg.as_str() {
+            "--connect" => wanted = Some(rest.next().ok_or_else(|| bad(usage.into()))?),
+            _ if interface.is_none() => interface = Some(arg),
+            _ => {
+                seconds = Some(
+                    arg.parse()
+                        .map_err(|_| bad(format!("not a number: {arg:?}")))?,
+                )
+            }
+        }
+    }
+    let interface = interface.ok_or_else(|| bad(usage.into()))?;
 
     let mut listener = Listener::open(&interface).map_err(|e| {
         io::Error::new(
@@ -40,8 +51,11 @@ pub fn lat(mut args: impl Iterator<Item = String>) -> io::Result<()> {
         None => eprintln!("listening on {interface}; announcements come about once a minute"),
     }
 
-    let until = seconds.map(|n| std::time::Instant::now() + Duration::from_secs(n));
     let mut frame = vec![0u8; 2048];
+    if let Some(node) = &wanted {
+        ask_for_a_circuit(&mut listener, &mut frame, node)?;
+    }
+    let until = seconds.map(|n| std::time::Instant::now() + Duration::from_secs(n));
     loop {
         if until.is_some_and(|end| std::time::Instant::now() >= end) {
             return Ok(());
@@ -125,6 +139,56 @@ pub fn lat(mut args: impl Iterator<Item = String>) -> io::Result<()> {
             Err(e) => println!("{from}  unreadable: {e:?}"),
         }
     }
+}
+
+/// Waits to hear a node announce itself, then asks it for a circuit.
+///
+/// Announcements are the only way we have of learning a node's address: a
+/// solicit built by hand has never been answered, so this waits for one to
+/// arrive of its own accord, which takes up to a multicast timer.
+#[cfg(target_os = "linux")]
+fn ask_for_a_circuit(
+    listener: &mut vt_transport::lat::Listener,
+    frame: &mut [u8],
+    node: &str,
+) -> io::Result<()> {
+    use std::time::Duration;
+
+    use vt_lat::{Message, Start};
+    use vt_transport::lat::split;
+
+    eprintln!("waiting for {node} to announce itself, which can take a minute");
+    let deadline = std::time::Instant::now() + Duration::from_secs(90);
+    let address = loop {
+        if std::time::Instant::now() >= deadline {
+            return Err(io::Error::new(
+                io::ErrorKind::TimedOut,
+                format!("{node} did not announce itself"),
+            ));
+        }
+        let n = listener.recv_timeout(frame, Duration::from_millis(500))?;
+        let Some((source, payload)) = split(&frame[..n]) else {
+            continue;
+        };
+        if let Ok(Message::Announcement(a)) = vt_lat::parse(payload)
+            && a.node.eq_ignore_ascii_case(node)
+        {
+            break source;
+        }
+    };
+
+    let start = Start {
+        calling: true,
+        theirs: 0, // we cannot name their end until they tell us
+        ours: 0x1001,
+        max_frame: 1500,
+        version: (5, 3),
+        keepalive: 20,
+        to: node,
+        from: "VEETEE",
+    };
+    println!("{}  asking {node} for a circuit", mac(address));
+    listener.send(address, &start.build(listener.address()))
 }
 
 #[cfg(target_os = "linux")]

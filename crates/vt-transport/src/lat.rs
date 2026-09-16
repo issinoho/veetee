@@ -11,7 +11,7 @@
 #![allow(unsafe_code)]
 
 use std::ffi::CString;
-use std::io::{self, Read};
+use std::io::{self, Read, Write};
 use std::time::Duration;
 
 use socket2::{Domain, Protocol, Socket, Type};
@@ -21,18 +21,17 @@ use vt_lat::{ETHERTYPE, GROUP};
 /// The Ethernet header a `SOCK_RAW` packet socket keeps on the front.
 pub const HEADER: usize = 14;
 
-/// Listens for LAT messages on one interface.
+/// Listens for LAT messages on one interface, and sends on it.
 #[derive(Debug)]
 pub struct Listener {
     socket: Socket,
+    /// This interface's own address, which every frame we send comes from.
+    address: [u8; 6],
 }
 
 impl Listener {
-    /// Opens a packet socket for LAT and joins the group on `interface`.
-    ///
-    /// The socket is left unbound, so it hears LAT on every interface; the
-    /// group is joined only on this one. Sending will want a bound socket, and
-    /// can have one when there is something to send.
+    /// Opens a packet socket for LAT on `interface`, bound to it and joined to
+    /// the group, so it can both hear and send.
     pub fn open(interface: &str) -> io::Result<Listener> {
         // AF_PACKET, and the protocol in network order, as the kernel wants it.
         let socket = Socket::new(
@@ -40,8 +39,28 @@ impl Listener {
             Type::from(libc::SOCK_RAW),
             Some(Protocol::from(i32::from(ETHERTYPE.to_be()))),
         )?;
-        join_group(&socket, interface)?;
-        Ok(Listener { socket })
+        let index = interface_index(interface)?;
+        bind_to(&socket, index)?;
+        join_group(&socket, index, interface)?;
+        Ok(Listener {
+            socket,
+            address: hardware_address(interface)?,
+        })
+    }
+
+    /// This interface's own address.
+    pub fn address(&self) -> [u8; 6] {
+        self.address
+    }
+
+    /// Sends a LAT message, wrapping it in an Ethernet header.
+    pub fn send(&mut self, to: [u8; 6], message: &[u8]) -> io::Result<()> {
+        let mut frame = Vec::with_capacity(HEADER + message.len());
+        frame.extend_from_slice(&to);
+        frame.extend_from_slice(&self.address);
+        frame.extend_from_slice(&ETHERTYPE.to_be_bytes());
+        frame.extend_from_slice(message);
+        self.socket.write_all(&frame)
     }
 
     /// Reads one frame, giving up after `timeout`. A timeout reads no bytes
@@ -74,8 +93,7 @@ pub fn split(frame: &[u8]) -> Option<([u8; 6], &[u8])> {
     (kind == ETHERTYPE).then(|| (source, &frame[HEADER..]))
 }
 
-/// Asks the card to keep LAT's multicast frames rather than filter them out.
-fn join_group(socket: &Socket, interface: &str) -> io::Result<()> {
+fn interface_index(interface: &str) -> io::Result<u32> {
     let name = CString::new(interface)
         .map_err(|_| io::Error::new(io::ErrorKind::InvalidInput, "interface name"))?;
     // SAFETY: `name` is a valid C string for the length of the call.
@@ -86,6 +104,51 @@ fn join_group(socket: &Socket, interface: &str) -> io::Result<()> {
             format!("{interface}: no such interface"),
         ));
     }
+    Ok(index)
+}
+
+/// The interface's own address, read from sysfs rather than with an ioctl:
+/// this is Linux only anyway, and the file needs no unsafe code at all.
+fn hardware_address(interface: &str) -> io::Result<[u8; 6]> {
+    let path = format!("/sys/class/net/{interface}/address");
+    let text = std::fs::read_to_string(&path)?;
+    let mut address = [0u8; 6];
+    let mut parts = text.trim().split(':');
+    for byte in &mut address {
+        let part = parts
+            .next()
+            .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, format!("{path}: short")))?;
+        *byte = u8::from_str_radix(part, 16)
+            .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, format!("{path}: {part:?}")))?;
+    }
+    Ok(address)
+}
+
+/// Ties the socket to one interface, which is what lets it send.
+fn bind_to(socket: &Socket, index: u32) -> io::Result<()> {
+    // SAFETY: a zeroed sockaddr_ll is a valid one.
+    let mut addr: libc::sockaddr_ll = unsafe { std::mem::zeroed() };
+    addr.sll_family = libc::AF_PACKET as u16;
+    addr.sll_protocol = ETHERTYPE.to_be();
+    addr.sll_ifindex = index as i32;
+    // SAFETY: the socket is open for the length of the call, and `addr` is a
+    // whole sockaddr_ll whose length is passed with it.
+    let rc = unsafe {
+        libc::bind(
+            std::os::fd::AsRawFd::as_raw_fd(socket),
+            std::ptr::from_ref(&addr).cast(),
+            size_of::<libc::sockaddr_ll>() as libc::socklen_t,
+        )
+    };
+    if rc != 0 {
+        return Err(io::Error::last_os_error());
+    }
+    Ok(())
+}
+
+/// Asks the card to keep LAT's multicast frames rather than filter them out.
+fn join_group(socket: &Socket, index: u32, interface: &str) -> io::Result<()> {
+    // SAFETY: a zeroed packet_mreq is a valid one.
     let mut mreq: libc::packet_mreq = unsafe { std::mem::zeroed() };
     mreq.mr_ifindex = index as i32;
     mreq.mr_type = libc::PACKET_MR_MULTICAST as u16;
