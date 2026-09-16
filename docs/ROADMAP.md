@@ -5,7 +5,7 @@ The working roadmap: what is done, what is left before 1.0, and what is parked. 
 every control function are in [compat-matrix.md](compat-matrix.md), and released changes in
 [CHANGELOG.md](../CHANGELOG.md).
 
-Latest release: **0.8.5**. Until 1.0 the minor version follows the milestone reached; patch
+Latest release: **0.8.6**. Until 1.0 the minor version follows the milestone reached; patch
 releases carry fixes and work that completes a milestone.
 
 ## Goal
@@ -27,7 +27,7 @@ esctest2, and defaults to DEC and OpenVMS behaviour everywhere (see [CLAUDE.md](
 | M5 Transports | PTY, serial, Telnet, SSH; RFC 2217; LAT | Partly done |
 | M6 Keyboard and DEC applications | Keymap and LK401 editor, DECFNK, VT520 key programming, recordings; OpenVMS acceptance recordings | Mostly done (0.6.0) |
 | M7 Fonts and look | DEC-cell fonts for every model and width, VT420 and VT500 Set-Up, sound, smooth scroll, CRT picture, Display Controls | Done (0.7.1) |
-| M8 Polish and 1.0 | Saved connections, logs, history search, copy and paste translation, screen readers, throughput, Flatpak, signed Windows builds | Planned work done (0.8.1–0.8.5) |
+| M8 Polish and 1.0 | Saved connections, logs, history search, copy and paste translation, screen readers, throughput, Flatpak, signed Windows builds | Planned work done (0.8.1–0.8.6) |
 
 ## Left before 1.0
 
@@ -42,11 +42,19 @@ esctest2, and defaults to DEC and OpenVMS behaviour everywhere (see [CLAUDE.md](
 
 ### M6: OpenVMS acceptance
 
-- **Recordings** of FMS demo forms, DECforms samples, the EDT keypad, EVE/TPU, MAIL, SMG$
-  applications, DCL line editing and `SET TERMINAL/INQUIRE`, made by the user with
-  `veetee --record FILE.vtrec` on their OpenVMS system (recordings are kept outside the repository
-  until reviewed, and exclude typed keys unless `--record-keys`), then replayed in CI by
-  `cargo xtask openvms`.
+- **Recordings** made by the user with `veetee --record FILE.vtrec` on their OpenVMS system and
+  replayed in CI by `cargo xtask openvms` (they are kept outside the repository until reviewed, and
+  exclude typed keys unless `--record-keys`). Seven are in `tests/conformance/openvms`:
+  `SET TERMINAL/INQUIRE` over Telnet and over SSH, the EDT keypad, EVE/TPU, MAIL, the FMS sample
+  application and the DECforms sample. `smg-demo` and `monitor` are left; neither reaches anything
+  the other seven do not, so they are polish rather than a gap.
+- **Protected fields have no acceptance coverage.** DECSCA, DECSED, DECSEL and DECSERA are
+  implemented and pass vttest 11.1.2.4, but no recording exercises them, and none can: both DEC
+  forms products keep field protection to themselves. Neither the FMS sample application nor the
+  DECforms sample sends a single one of those sequences — they track which fields are writable
+  and redraw. So the terminal's protected-field functions are tested only against vttest and
+  esctest, never against a real OpenVMS application. Finding one that drives them would close the
+  last gap of its kind; it may be that nothing on OpenVMS does.
 - PCTerm mode and key position reports (DECPCTERM, DECKPM, DECEKBD): not planned for 1.0; OpenVMS
   does not use them.
 
