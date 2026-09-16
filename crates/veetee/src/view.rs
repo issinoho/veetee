@@ -61,6 +61,11 @@ struct State {
     selection: Option<Selection>,
     /// Page position where the current mouse drag began.
     drag_anchor: Option<Point>,
+    /// Where the pointer is now, so a drag held still past an edge of the
+    /// page goes on selecting as the screen moves through the history.
+    drag_head: Option<(f64, f64)>,
+    /// Runs while a drag is held past an edge.
+    drag_scroll: Option<glib::SourceId>,
     /// Set-Up, while it is open.
     setup: Option<SetupView>,
     /// The picture is still changing by itself (afterglow, visible bell).
@@ -182,6 +187,8 @@ impl TerminalView {
             }),
             selection: None,
             drag_anchor: None,
+            drag_head: None,
+            drag_scroll: None,
             setup: None,
             animating: false,
             ticking: false,
@@ -617,7 +624,10 @@ impl TerminalView {
         drag.set_button(gdk::BUTTON_PRIMARY);
         let view = self.clone();
         drag.connect_drag_begin(move |_, x, y| {
-            view.state.borrow_mut().drag_anchor = view.point_at(x, y);
+            let anchor = view.point_at(x, y);
+            let mut st = view.state.borrow_mut();
+            st.drag_anchor = anchor;
+            st.drag_head = Some((x, y));
         });
         let view = self.clone();
         drag.connect_drag_update(move |gesture, dx, dy| {
@@ -628,14 +638,20 @@ impl TerminalView {
             if dx.abs() < 3.0 && dy.abs() < 3.0 {
                 return;
             }
-            let anchor = view.state.borrow().drag_anchor;
-            if let (Some(anchor), Some(head)) = (anchor, view.point_at(x + dx, y + dy)) {
-                view.set_selection(Some(Selection::new(anchor, head)));
-            }
+            view.state.borrow_mut().drag_head = Some((x + dx, y + dy));
+            view.extend_drag();
+            view.drag_scroll();
         });
         let view = self.clone();
         drag.connect_drag_end(move |_, _, _| {
-            let dragged = view.state.borrow_mut().drag_anchor.take().is_some();
+            let dragged = {
+                let mut st = view.state.borrow_mut();
+                st.drag_head = None;
+                if let Some(source) = st.drag_scroll.take() {
+                    source.remove();
+                }
+                st.drag_anchor.take().is_some()
+            };
             if dragged && view.state.borrow().selection.is_some() {
                 view.copy_to_primary();
             }
@@ -644,6 +660,74 @@ impl TerminalView {
     }
 
     /// The page cell under a widget position, clamped to the page.
+    /// Selects from the anchor to wherever the pointer is now.
+    fn extend_drag(&self) {
+        let (anchor, head) = {
+            let st = self.state.borrow();
+            (st.drag_anchor, st.drag_head)
+        };
+        if let (Some(anchor), Some((x, y))) = (anchor, head) {
+            if let Some(head) = self.point_at(x, y) {
+                self.set_selection(Some(Selection::new(anchor, head)));
+            }
+        }
+    }
+
+    /// Lines of history to move for a drag held outside the page: none while
+    /// the pointer is on it, then a line for each cell height beyond an edge,
+    /// so the further out it is held the faster the screen goes.
+    fn drag_step(&self) -> isize {
+        let st = self.state.borrow();
+        let Some((_, y)) = st.drag_head else {
+            return 0;
+        };
+        let term = st.session.terminal();
+        let scale = f64::from(self.area.scale_factor());
+        let (w, h) = (
+            (f64::from(self.area.width()) * scale).max(1.0) as u32,
+            (f64::from(self.area.height()) * scale).max(1.0) as u32,
+        );
+        let layout = vt_render::page_layout(w, h, &term);
+        let py = (y * scale) as f32;
+        let above = layout.y - py;
+        let below = py - (layout.y + layout.height - 1.0);
+        let cell = layout.cell_height.max(1.0);
+        if above > 0.0 {
+            (above / cell).ceil().max(1.0) as isize
+        } else if below > 0.0 {
+            -((below / cell).ceil().max(1.0) as isize)
+        } else {
+            0
+        }
+    }
+
+    /// Keeps the history moving while a drag is held past an edge. Dragging
+    /// alone cannot do it: holding the pointer still sends no more events.
+    fn drag_scroll(&self) {
+        if self.drag_step() == 0 {
+            if let Some(source) = self.state.borrow_mut().drag_scroll.take() {
+                source.remove();
+            }
+            return;
+        }
+        if self.state.borrow().drag_scroll.is_some() {
+            return;
+        }
+        let view = self.clone();
+        let source = glib::timeout_add_local(Duration::from_millis(60), move || {
+            let step = view.drag_step();
+            let dragging = view.state.borrow().drag_anchor.is_some();
+            if step == 0 || !dragging {
+                view.state.borrow_mut().drag_scroll = None;
+                return glib::ControlFlow::Break;
+            }
+            view.move_review(step);
+            view.extend_drag();
+            glib::ControlFlow::Continue
+        });
+        self.state.borrow_mut().drag_scroll = Some(source);
+    }
+
     fn point_at(&self, x: f64, y: f64) -> Option<Point> {
         let st = self.state.borrow();
         let term = st.session.terminal();

@@ -93,6 +93,12 @@ left here is a limitation rather than work.
 - **Windows signing**: each release's zip is signed after publishing with
   `pwsh -File packaging\windows\sign-release.ps1 -Version X.Y.Z` on Windows with Certum SimplySign
   Desktop signed in (see `packaging/windows/SIGNING.md`).
+- **Windows installer**, or something short of one. A release ships a zip holding the GTK runtime,
+  so there is no Start menu entry, no uninstall and no upgrade path. Two routes: a **winget**
+  manifest wrapping the existing zip as a portable package, which is the Windows counterpart of the
+  Flathub item and needs no new artifact; or an **Inno Setup or WiX installer**, which adds a
+  second thing to build and code-sign every release. Worth deciding whether the Start menu and an
+  uninstall entry are worth that, or whether winget alone answers it.
 
 ## After 1.0
 

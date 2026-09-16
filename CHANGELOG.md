@@ -5,6 +5,12 @@ milestones (0.3 = M3). The format follows [Keep a Changelog](https://keepachange
 
 ## [Unreleased]
 
+- **Fixed: a selection can be dragged out of the scrollback.** Dragging past the top or bottom of
+  the page selected only as far as the rows on screen, so copying anything longer than a screenful
+  was impossible. The screen now moves through the history while the drag is held past an edge, a
+  line for each cell height beyond it, and keeps moving while the pointer is held still — a drag
+  that stops moving sends no more events, so it takes a timer rather than the gesture alone.
+
 - **Added: RFC 2217 COM Port Control over Telnet**, for terminal servers such as DECserver,
   Lantronix and Moxa. The line options that set up a serial port — `--baud`, `--databits`,
   `--parity`, `--stopbits`, `--flow` — now also work with `--telnet`, where they ask the server
