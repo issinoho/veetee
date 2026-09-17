@@ -257,9 +257,24 @@ const HELPER: &str = "veetee-lat-helper";
 /// anything; veetee opens no raw socket ever, and always goes the long way
 /// round. Both end up with the same socket.
 pub fn open(interface: &str) -> io::Result<Listener> {
+    // The Flatpak has no raw sockets at all, and no helper either: its
+    // seccomp filter refuses the address family outright, which is a poor
+    // thing to hand a reader as "os error 97".
+    if crate::pty::in_flatpak() {
+        return Err(io::Error::new(
+            io::ErrorKind::Unsupported,
+            "LAT needs a raw Ethernet socket, which the Flatpak sandbox does not allow.              Install the package or the tarball instead.",
+        ));
+    }
     match Listener::open(interface) {
-        Err(e) if e.kind() == io::ErrorKind::PermissionDenied => from_helper(interface, &e),
-        other => other,
+        // An interface that is not there is not something privilege fixes,
+        // and the helper would only say so at greater length. Anything else
+        // is worth a process to find out: refusing an address family, which
+        // a sandbox does, reads nothing like being refused permission, and
+        // matching on permission alone left the helper unasked.
+        Err(missing) if missing.kind() == io::ErrorKind::NotFound => Err(missing),
+        Err(refused) => from_helper(interface, &refused),
+        opened => opened,
     }
 }
 
