@@ -396,6 +396,8 @@ fn editor(
         ))
         .build();
     let wires = Rc::new(wires);
+    // Only the browse button reads this one, and that is Linux only.
+    #[cfg(target_os = "linux")]
     let chosen_wire = {
         let wires = wires.clone();
         move |combo: &adw::ComboRow| wires.get(combo.selected() as usize).cloned().flatten()
