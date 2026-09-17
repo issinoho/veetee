@@ -80,12 +80,18 @@ left here is a limitation rather than work.
   Traffic goes both ways: typing a username gets the echo and then `Password:`, so the protocol
   work is done in substance.
 
-  Left is plumbing rather than protocol: a `Transport` implementation so a terminal can use a LAT
-  session as it uses Telnet, the helper binary holding `CAP_NET_RAW` so the interface need not run
-  privileged, and a service browser in the connection dialog. Several
-  fields of the messages are still copied rather than understood; they are marked in
-  [`lat-protocol.md`](lat-protocol.md). Not available in the Flatpak, which has no raw sockets, nor
-  on Windows, which has no raw Ethernet without a driver.
+  The `Transport` is written: `vt_transport::lat::Lat` opens the circuit, asks for the service and
+  carries the session both ways, keeping it alive while it is idle and taking it down on the way
+  out, so a terminal can use a LAT session as it uses Telnet. The protocol itself is a state
+  machine in `vt-lat` with no sockets in it, tested against the captured frames of a real login
+  rather than needing a wire. **It has not met a host yet** — every test is against captures — so
+  running it against MYI64 on Linux is the next thing, and until that happens this stays here.
+
+  Left after that: the helper binary holding `CAP_NET_RAW` so the interface need not run
+  privileged, and a service browser in the connection dialog, which is also what would let the GUI
+  offer LAT at all. Several fields of the messages are still copied rather than understood; they
+  are marked in [`lat-protocol.md`](lat-protocol.md). Not available in the Flatpak, which has no
+  raw sockets, nor on Windows, which has no raw Ethernet without a driver.
 
 ### Smaller gaps (from compat-matrix.md)
 

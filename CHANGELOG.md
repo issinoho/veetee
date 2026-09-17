@@ -5,6 +5,52 @@ milestones (0.3 = M3). The format follows [Keep a Changelog](https://keepachange
 
 ## [Unreleased]
 
+- **Added: a LAT session to an OpenVMS host.** `vt-headless lat INTERFACE --connect NODE` waits for
+  the node to announce itself, which is the only way veetee has of learning its Ethernet address,
+  then opens a circuit and asks it for a service. OpenVMS answers with a terminal: it creates an
+  `LTA` device, sends its login banner and `Username:`, and holds the circuit for as long as veetee
+  acknowledges it. `--type TEXT` sends a line once the far end has prompted, and the echo comes back
+  followed by `Password:` — traffic both ways, which is the protocol work done in substance.
+
+  A circuit keeps the little state it needs — the peer, both identifiers, the sequence sent and the
+  highest one heard — and answers every run message that carries slots. A message with no slots is
+  itself an acknowledgement and carries nothing to acknowledge, so answering one draws another back
+  and the two ends then acknowledge each other about once a second for ever; those are left alone.
+
+  Clean-room, from packet captures of OpenVMS LATACP rather than from `latd`, which is GPL, and all
+  of the reading is written down in [docs/lat-protocol.md](docs/lat-protocol.md). Several fields are
+  still copied rather than understood — fourteen bytes of a circuit start, and most of the tail of
+  the slot that asks for a service — and are marked as guesses there. The UIC the captured client
+  sent is left out: it is the identity of the account that was calling, which veetee has not got and
+  should not invent.
+
+  Linux only, as discovery is — LAT is raw Ethernet rather than IP, so it cannot work in the
+  Flatpak, which has no raw sockets, nor on Windows, which has no raw Ethernet without a driver.
+
+- **Added: LAT as a connection, so a terminal can use one.** `vt_transport::lat::Lat` implements
+  the same `Transport` a Telnet or serial line does: it opens the circuit, asks for the service,
+  hands the host's slots to the terminal as a stream of bytes and carries what is typed back,
+  keeps an idle circuit alive while the user reads, and takes it down on the way out so that
+  OpenVMS releases the `LTA` device rather than waiting out its own timer. The slot that asks for
+  a service now carries the terminal's real page size rather than the twenty-four by eighty of the
+  capture, and each session names its own end of its circuit differently, so two from one window
+  cannot be taken for each other. `vt-headless lat INTERFACE --connect NODE` goes through all of
+  this rather than driving the protocol itself; without `--connect` it still prints every frame on
+  the wire, which is the way to watch a session slot by slot.
+
+  The protocol moved to `vt-lat` as a state machine with no sockets in it — frames in, frames out —
+  so it is tested against the captured frames of a real login on any platform rather than only on
+  a wire: that a service is asked for once the circuit is agreed, that the prompt is read and
+  acknowledged while the control slot beside it is not mistaken for terminal data, that an
+  acknowledgement is never acknowledged, that another node's circuit on the same wire is ignored,
+  and that typing before the far end has prompted is held back rather than lost, a slot sent early
+  being ignored by the host.
+
+  Not proven against a host yet: every test is against captured frames, and none of this has met
+  MYI64. What is left of the item after that is the helper holding `CAP_NET_RAW`, so the interface
+  need not run privileged, and a service browser in the connection dialog — which is also what
+  would let the GUI offer LAT at all.
+
 ## [0.8.8] - 2026-09-16
 
 Finds the LAT services announcing themselves on a wire, which is the first half of reaching an
