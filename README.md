@@ -42,6 +42,18 @@ documentation.
 
 ## Installing
 
+On **Ubuntu 26.04** the PPA is the easiest route, and keeps veetee updated with the rest of the
+system:
+
+```sh
+sudo add-apt-repository ppa:issinoho/veetee
+sudo apt install veetee
+```
+
+Only 26.04 (resolute) is offered. Earlier releases cannot build veetee: the gtk-rs crates require
+Rust 1.92 and 24.04's archive tops out at 1.91. See
+[`packaging/ubuntu`](packaging/ubuntu) for the packaging and the reasoning.
+
 [Releases](https://github.com/issinoho/veetee/releases) provide a Debian/Ubuntu package, an RPM
 and an x86_64 Linux tarball, all needing GTK 4.14+ and libadwaita 1.5+:
 

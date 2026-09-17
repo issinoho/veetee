@@ -476,7 +476,13 @@ footer p { margin: 0 0 8px; }
       <h2>On the air in a minute.</h2>
       <div class="two">
         <div>
-          <h3>Debian, Ubuntu, Fedora, RHEL and openSUSE</h3>
+          <h3>Ubuntu 26.04, from the PPA</h3>
+          <p>The PPA keeps veetee updated with the rest of the system. Only 26.04 is offered: the gtk-rs crates need Rust 1.92, and 24.04&rsquo;s archive stops at 1.91.</p>
+          <div class="term"><span class="c"># add the archive and install</span>
+$ sudo add-apt-repository ppa:issinoho/veetee
+$ sudo apt install veetee</div>
+
+          <h3 style="margin-top:32px">Debian, Ubuntu, Fedora, RHEL and openSUSE</h3>
           <p>Download the package from the <a href="https://github.com/issinoho/veetee/releases/latest">latest release</a> and install it. GTK 4.14 and libadwaita 1.5 or later are required. The RPM asks for its libraries by soname, so the one package suits every RPM distribution.</p>
           <div class="term"><span class="c"># veetee 1.0.0, from the latest release</span>
 $ sudo apt install ./veetee_1.0.0-1_amd64.deb
