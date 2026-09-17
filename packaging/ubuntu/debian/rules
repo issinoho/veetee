@@ -1,0 +1,68 @@
+#!/usr/bin/make -f
+
+export DH_VERBOSE = 1
+
+# Launchpad builds with no network, so the crates are vendored into the orig
+# tarball and .cargo/config.toml redirects crates.io at them.
+export CARGO_HOME = $(CURDIR)/debian/cargo
+export CARGO_NET_OFFLINE = true
+
+# veetee is edition 2024 and needs Rust 1.85 or newer. Resolute's own rustc is
+# new enough; noble ships 1.75 and gets rustc-1.85 from noble-updates, which
+# installs beside the default one rather than over it. Pick the first candidate
+# that is actually new enough rather than assuming either layout.
+RUSTC_CANDIDATES := /usr/lib/rust-1.85/bin /usr/lib/rust-1.86/bin /usr/bin
+RUST_BIN := $(firstword $(foreach d,$(RUSTC_CANDIDATES),\
+    $(shell test -x $(d)/rustc && $(d)/rustc --version 2>/dev/null | \
+        awk '{split($$2,v,"."); if (v[1]>1 || (v[1]==1 && v[2]>=85)) print "$(d)"}')))
+# Leave PATH alone when nothing matched: an empty RUST_BIN would prepend an
+# empty entry, which POSIX reads as the current directory.
+ifneq ($(RUST_BIN),)
+export PATH := $(RUST_BIN):$(PATH)
+endif
+
+%:
+	dh $@
+
+# dh_clean's find deletes every *.orig in the tree, which would take out the
+# Cargo.toml.orig that each vendored crate's .cargo-checksum.json accounts for,
+# and cargo then refuses the vendored source. Keep it out of vendor/ entirely.
+override_dh_clean:
+	dh_clean -Xvendor/
+
+override_dh_auto_configure:
+	@echo "Using rustc from: $(or $(RUST_BIN),PATH as inherited)"
+	@rustc --version
+	@cargo --version
+
+override_dh_auto_build:
+	cargo build --release --locked --offline \
+	    -p veetee -p vt-headless -p vt-lat-helper
+
+# The conformance suites fetch vttest and esctest2, which a network-less
+# builder cannot do; the unit tests are the part that runs here.
+override_dh_auto_test:
+	cargo test --release --locked --offline \
+	    -p vt-parser -p vt-core -p vt-fonts -p vt-keyboard -p vt-transport
+
+override_dh_auto_install:
+	install -Dm755 target/release/veetee \
+	    debian/veetee/usr/bin/veetee
+	install -Dm755 target/release/vt-headless \
+	    debian/veetee/usr/bin/vt-headless
+	install -Dm755 target/release/veetee-lat-helper \
+	    debian/veetee/usr/libexec/veetee-lat-helper
+	install -Dm644 data/com.issinoho.Veetee.desktop \
+	    debian/veetee/usr/share/applications/com.issinoho.Veetee.desktop
+	install -Dm644 data/com.issinoho.Veetee.metainfo.xml \
+	    debian/veetee/usr/share/metainfo/com.issinoho.Veetee.metainfo.xml
+	install -Dm644 data/icons/com.issinoho.Veetee.svg \
+	    debian/veetee/usr/share/icons/hicolor/scalable/apps/com.issinoho.Veetee.svg
+	install -Dm644 crates/vt-fonts/fonts/OFL.txt \
+	    debian/veetee/usr/share/doc/veetee/fonts-OFL.txt
+
+override_dh_auto_clean:
+	rm -rf debian/cargo target
+
+# Vendored crates carry their own upstream sources; dwz and the usual
+# stripping apply to the binaries as normal.

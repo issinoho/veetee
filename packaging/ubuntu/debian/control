@@ -1,0 +1,33 @@
+Source: veetee
+Section: x11
+Priority: optional
+Maintainer: Iain Smith <iain@issinoho.com>
+Build-Depends: debhelper-compat (= 13),
+               pkgconf,
+               libgtk-4-dev (>= 4.14),
+               libadwaita-1-dev (>= 1.5),
+               libasound2-dev,
+               rustc (>= 1.85) | rustc-1.85,
+               cargo (>= 1.85) | cargo-1.85
+Standards-Version: 4.7.0
+Homepage: https://veetee.issinoho.com/
+Vcs-Browser: https://github.com/issinoho/veetee
+Vcs-Git: https://github.com/issinoho/veetee.git
+Rules-Requires-Root: no
+
+Package: veetee
+Architecture: amd64
+Depends: ${shlibs:Depends}, ${misc:Depends}
+Recommends: openssh-client
+Description: DEC VT terminal emulator for OpenVMS and other DEC hosts
+ veetee emulates DEC video terminals, from the VT52 and VT100 to the VT420 and
+ the colour VT525, as faithfully as the manuals allow: DEC factory Set-Up
+ defaults, fonts drawn on DEC's own character cells, and the control functions
+ that forms and editing applications rely on.
+ .
+ It connects over Telnet, SSH, serial lines and local shells, with an LK401
+ keyboard layout, the terminal's own Set-Up, saved connections, session logs,
+ a searchable history and screen reader support.
+ .
+ vttest passes across the VT100-VT520 menus headless, and esctest2 runs at VT
+ level 5 with every difference from xterm explained against a DEC manual.

@@ -8,6 +8,14 @@ Before 1.0 the minor version followed the project milestones (0.3 = M3). The for
 
 ## [Unreleased]
 
+- **Added: an Ubuntu PPA**, `ppa:issinoho/veetee`, for the two current LTS releases: noble (24.04)
+  and resolute (26.04). Launchpad builds from a source package in a chroot with no network, so
+  `packaging/ubuntu` vendors every crate in `Cargo.lock` into the orig tarball and points
+  `.cargo/config.toml` at it. veetee is edition 2024 and needs Rust 1.85 or newer, which noble's
+  default 1.75 does not satisfy: the build depends on `rustc (>= 1.85) | rustc-1.85`, taking the
+  versioned package from noble-updates, and `debian/rules` probes for a toolchain that really is
+  new enough rather than assuming where it lives. `build-source.sh` builds from the release tag.
+
 ## [1.0.0] - 2026-09-17
 
 **veetee 1.0.** Every milestone from the plan is closed: the VT52 and VT100 through the VT420 and

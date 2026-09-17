@@ -36,6 +36,7 @@ documentation.
 | `packaging/flatpak` | Flatpak manifest and vendored crate sources |
 | `packaging/windows` | Windows zip bundling (MSYS2 GTK runtime) and release signing |
 | `packaging/winget` | winget manifests treating the Windows zip as a portable package |
+| `packaging/ubuntu` | Debian source packaging for the Ubuntu PPA, with vendored crates |
 | `packaging/flathub` | The Flathub manifest, kept as the record of a submission decided against |
 | `fuzz/` | cargo-fuzz targets (nightly) |
 

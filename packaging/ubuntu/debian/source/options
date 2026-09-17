@@ -1,0 +1,4 @@
+# vendor/ and .cargo/ come wholly from the orig tarball, so they are not part
+# of the Debian diff. Without this, dpkg-source reads its own default ignore
+# of *.orig as a deletion of every crate's Cargo.toml.orig and warns 167 times.
+extend-diff-ignore = "^(vendor|\.cargo)/"
