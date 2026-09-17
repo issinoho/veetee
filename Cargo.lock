@@ -1482,6 +1482,14 @@ name = "vt-lat"
 version = "0.8.8"
 
 [[package]]
+name = "vt-lat-helper"
+version = "0.8.8"
+dependencies = [
+ "rustix",
+ "vt-transport",
+]
+
+[[package]]
 name = "vt-parser"
 version = "0.8.8"
 dependencies = [

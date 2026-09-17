@@ -51,9 +51,24 @@ milestones (0.3 = M3). The format follows [Keep a Changelog](https://keepachange
   read the last of the protocol — that a slot's type is the high nibble and its credit the low,
   that credit is flow control and a node granted none stops mid-word, and that a session ends with
   a slot of a type of its own — each of which veetee had wrong and none of which the captures
-  alone would have settled. What is left is the helper holding `CAP_NET_RAW`, so the interface
-  need not run privileged, and a service browser in the connection dialog — which is also what
-  would let the GUI offer LAT at all.
+  alone would have settled.
+
+- **Added: a helper, so that nothing drawing a terminal holds `CAP_NET_RAW`.**
+  `veetee-lat-helper` opens the LAT socket and hands it straight back through a Unix socket pair,
+  then exits; the circuit, the session and every frame after that are veetee's own work,
+  unprivileged. `vt-headless lat` asks for it when it cannot open a socket itself, so neither
+  listening nor connecting needs `sudo` any more.
+
+  It is more than good manners. GTK refuses to start at all with file capabilities, the kernel
+  setting `AT_SECURE` for a process they raise, so LAT in a window could not have worked any other
+  way.
+
+  The capability is not granted by the package — a niche protocol is no reason to ship one nobody
+  asked for — so `sudo setcap cap_net_raw+ep /usr/libexec/veetee-lat-helper` turns it on, and
+  veetee says precisely that, naming the path it looked in, when it is missing. What the grant
+  allows is worth knowing: anyone who can run the helper can open a socket for LAT frames on one
+  interface and send them. That is far narrower than `CAP_NET_RAW` itself, the socket carrying one
+  protocol, but it is not nothing.
 
 ## [0.8.8] - 2026-09-16
 

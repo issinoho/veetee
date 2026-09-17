@@ -13,6 +13,7 @@ rustix = { version = "1", features = ["pty", "termios", "process", "fs", "event"
 # LAT needs AF_PACKET, which is Linux only.
 [target.'cfg(target_os = "linux")'.dependencies]
 libc = "0.2"
+rustix = { version = "1", features = ["net"] }
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.61", features = [

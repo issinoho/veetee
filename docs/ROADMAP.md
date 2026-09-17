@@ -93,13 +93,22 @@ left here is a limitation rather than work.
   slot of type 13 from slot 0, which veetee now acts on rather than acknowledging a dead login.
   The `Transport` itself needed no change through any of it.
 
-  Left: the helper binary holding `CAP_NET_RAW` so the interface need not run privileged, and a
-  service browser in the connection dialog — which is also what would let the GUI offer LAT at
-  all, and is the only way the page size in the service request can be proved, since VMS takes the
-  size from a cursor-position probe that only a real terminal answers. Several fields of the
-  messages are still copied rather than understood; they are marked in
-  [`lat-protocol.md`](lat-protocol.md). Not available in the Flatpak, which has no raw sockets,
-  nor on Windows, which has no raw Ethernet without a driver.
+  The **helper** is written: `veetee-lat-helper` opens the socket and hands it back through a Unix
+  socket pair, so nothing that draws a terminal ever holds `CAP_NET_RAW`. That is not only good
+  manners — GTK refuses to start at all when it has file capabilities, the kernel setting
+  `AT_SECURE`, so LAT in the window was impossible without it. The capability is **not** granted by
+  the package: `sudo setcap cap_net_raw+ep /usr/libexec/veetee-lat-helper` turns it on, and veetee
+  says exactly that when it is missing. Still to prove on a wire that a socket crosses and carries
+  a session; the passing itself is tested, and the spawning and its errors are.
+
+  Left: **LAT as a connection** — a `--lat` option, a saved-connection kind and a dialog entry, so
+  a terminal can open one rather than `vt-headless` — and then the **service browser**, listing
+  what is announcing itself so a node can be picked rather than typed. The browser is also the
+  only way the page size in the service request can be proved, since VMS takes the size from a
+  cursor-position probe that only a real terminal answers. Several fields of the messages are
+  still copied rather than understood; they are marked in [`lat-protocol.md`](lat-protocol.md).
+  Not available in the Flatpak, which has no raw sockets, nor on Windows, which has no raw
+  Ethernet without a driver.
 
 ### Smaller gaps (from compat-matrix.md)
 

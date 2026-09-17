@@ -1,0 +1,22 @@
+[package]
+name = "vt-lat-helper"
+description = "Opens a LAT socket for veetee, so that the terminal itself needs no privilege"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+publish = false
+
+[[bin]]
+name = "veetee-lat-helper"
+path = "src/main.rs"
+
+# LAT is raw Ethernet, which exists here only on Linux. Elsewhere the binary
+# builds and says so.
+[target.'cfg(target_os = "linux")'.dependencies]
+rustix = { version = "1", features = ["net", "stdio"] }
+vt-transport.workspace = true
+
+[lints]
+workspace = true

@@ -5,9 +5,12 @@
 //! [`Lat`] drives a session over it, with the protocol itself in `vt-lat`,
 //! which has no sockets and is tested against captured frames.
 //!
-//! Linux only, because LAT is not IP. It needs `AF_PACKET` and so `CAP_NET_RAW`;
-//! a helper holding that capability, so the interface stays unprivileged, is
-//! still to come (`docs/ROADMAP.md`).
+//! Linux only, because LAT is not IP. It needs `AF_PACKET` and so `CAP_NET_RAW`.
+//! [`open`] gets a socket without this process holding that: it opens one
+//! directly if it can, and otherwise asks `veetee-lat-helper`, which holds the
+//! capability and hands the socket back. A terminal has no business holding it
+//! — and GTK will not start at all when it does, the kernel setting
+//! `AT_SECURE` for a process raised by file capabilities.
 //!
 //! A page size goes in the slot that asks for a service, so a session is the
 //! size the terminal was when it opened; there is no read way to tell the far
@@ -21,6 +24,7 @@
 
 use std::ffi::CString;
 use std::io::{self, Read, Write};
+use std::os::fd::{AsFd, BorrowedFd, OwnedFd};
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::{Duration, Instant};
 
@@ -75,6 +79,18 @@ impl Listener {
         self.address
     }
 
+    /// Takes on a socket somebody else opened — the helper, which holds the
+    /// capability this process does not.
+    ///
+    /// The interface is named again because the address is read from sysfs,
+    /// which needs no privilege and so is no reason to ask the helper.
+    pub fn adopt(socket: OwnedFd, interface: &str) -> io::Result<Listener> {
+        Ok(Listener {
+            socket: Socket::from(socket),
+            address: hardware_address(interface)?,
+        })
+    }
+
     /// Another handle on the same socket, so one thread can send while
     /// another waits for a frame.
     pub fn try_clone(&self) -> io::Result<Listener> {
@@ -115,6 +131,134 @@ impl Listener {
             Err(e) => Err(e),
         }
     }
+}
+
+impl AsFd for Listener {
+    fn as_fd(&self) -> BorrowedFd<'_> {
+        self.socket.as_fd()
+    }
+}
+
+/// The helper that holds `CAP_NET_RAW`, as it is installed and as it sits
+/// beside a binary that has not been installed at all.
+const HELPER: &str = "veetee-lat-helper";
+
+/// Opens a LAT socket on `interface`, through the helper if this process has
+/// no privilege of its own.
+///
+/// `vt-headless` run under `sudo` opens one directly and never spawns
+/// anything; veetee opens no raw socket ever, and always goes the long way
+/// round. Both end up with the same socket.
+pub fn open(interface: &str) -> io::Result<Listener> {
+    match Listener::open(interface) {
+        Err(e) if e.kind() == io::ErrorKind::PermissionDenied => from_helper(interface, &e),
+        other => other,
+    }
+}
+
+/// Asks the helper for a socket and takes it over its standard input.
+fn from_helper(interface: &str, refused: &io::Error) -> io::Result<Listener> {
+    use std::io::Read;
+    use std::os::unix::net::UnixStream;
+    use std::process::{Command, Stdio};
+
+    let (ours, theirs) = UnixStream::pair()?;
+    let helper = helper_path();
+    let mut child = Command::new(&helper)
+        .arg(interface)
+        // The socket goes back this way, so there is no descriptor to name
+        // and nothing to keep open across the exec but the one.
+        .stdin(Stdio::from(OwnedFd::from(theirs)))
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(|e| {
+            io::Error::new(
+                e.kind(),
+                format!("{refused}\nand {}: {e}", helper.display()),
+            )
+        })?;
+
+    match take_socket(&ours)? {
+        Some(socket) => {
+            // It has done its work and has nothing else to say.
+            let _ = child.wait();
+            Listener::adopt(socket, interface)
+        }
+        None => {
+            // Whatever went wrong, the helper said so on its way out, and
+            // what it says is more use than anything that could be said here.
+            let mut why = String::new();
+            if let Some(mut stderr) = child.stderr.take() {
+                let _ = stderr.read_to_string(&mut why);
+            }
+            let _ = child.wait();
+            let why = why.trim();
+            Err(io::Error::new(
+                io::ErrorKind::PermissionDenied,
+                if why.is_empty() {
+                    format!("{} gave back no socket", helper.display())
+                } else {
+                    format!(
+                        "{why}\nGrant it with: sudo setcap cap_net_raw+ep {}",
+                        helper.display()
+                    )
+                },
+            ))
+        }
+    }
+}
+
+/// Takes the descriptor sent across a socket, if one came.
+///
+/// It travels as ancillary data beside a byte of nothing: a message with no
+/// body at all is not a message, and would be the end of the socket instead.
+fn take_socket(from: &std::os::unix::net::UnixStream) -> io::Result<Option<OwnedFd>> {
+    use std::io::IoSliceMut;
+
+    use rustix::net::{RecvAncillaryBuffer, RecvAncillaryMessage, RecvFlags, recvmsg};
+
+    let mut space = [std::mem::MaybeUninit::uninit(); rustix::cmsg_space!(ScmRights(1))];
+    let mut ancillary = RecvAncillaryBuffer::new(&mut space);
+    let mut byte = [0u8; 1];
+    recvmsg(
+        from,
+        &mut [IoSliceMut::new(&mut byte)],
+        &mut ancillary,
+        RecvFlags::empty(),
+    )?;
+    Ok(ancillary.drain().find_map(|message| match message {
+        RecvAncillaryMessage::ScmRights(fds) => fds.into_iter().next(),
+        _ => None,
+    }))
+}
+
+/// Where to look for the helper: beside the running program, where a build
+/// tree and a tarball both put it, then where the package puts it, then
+/// whatever the path turns up.
+fn helper_path() -> std::path::PathBuf {
+    use std::path::PathBuf;
+
+    // Set by hand, which is how a build tree elsewhere is used.
+    if let Some(named) = std::env::var_os("VEETEE_LAT_HELPER") {
+        return PathBuf::from(named);
+    }
+    if let Ok(exe) = std::env::current_exe()
+        && let Some(dir) = exe.parent()
+    {
+        let beside = dir.join(HELPER);
+        if beside.exists() {
+            return beside;
+        }
+        // Installed, veetee in /usr/bin and the helper out of the way in
+        // /usr/libexec, where a thing nobody runs by hand belongs.
+        if let Some(prefix) = dir.parent() {
+            let libexec = prefix.join("libexec").join(HELPER);
+            if libexec.exists() {
+                return libexec;
+            }
+        }
+    }
+    PathBuf::from(HELPER)
 }
 
 /// The address a frame came from, and the LAT message in it.
@@ -292,7 +436,7 @@ impl Lat {
             .service
             .clone()
             .unwrap_or_else(|| config.node.clone());
-        let mut listener = Listener::open(&config.interface)?;
+        let mut listener = open(&config.interface)?;
         let mut frame = vec![0u8; 2048];
         let peer = match config.address {
             Some(address) => address,
@@ -579,6 +723,78 @@ mod tests {
         frame.push(0x45);
         assert_eq!(split(&frame), None);
         assert_eq!(split(&[0u8; 8]), None, "too short to have a header");
+    }
+
+    /// Sends a descriptor the way the helper does, so the receiving side can
+    /// be tested without the capability the helper needs.
+    fn hand_over(down: &std::os::unix::net::UnixStream, what: BorrowedFd<'_>) {
+        use std::io::IoSlice;
+
+        use rustix::net::{SendAncillaryBuffer, SendAncillaryMessage, SendFlags, sendmsg};
+
+        let fds = [what];
+        let mut space = [std::mem::MaybeUninit::uninit(); rustix::cmsg_space!(ScmRights(1))];
+        let mut ancillary = SendAncillaryBuffer::new(&mut space);
+        assert!(ancillary.push(SendAncillaryMessage::ScmRights(&fds)));
+        sendmsg(
+            down,
+            &[IoSlice::new(b"L")],
+            &mut ancillary,
+            SendFlags::empty(),
+        )
+        .expect("sending a descriptor");
+    }
+
+    #[test]
+    fn a_socket_crosses_a_unix_socket_and_still_works() {
+        use std::io::{Read, Write};
+        use std::os::unix::net::UnixStream;
+
+        let (ours, theirs) = UnixStream::pair().expect("a socket pair");
+        // Any descriptor will do to prove the passing: a pipe can be written
+        // at one end and read at the other, which a socket cannot be on its
+        // own, so what comes back can be shown to be the very same thing.
+        let (read, mut write) = std::io::pipe().expect("a pipe");
+        hand_over(&theirs, read.as_fd());
+        drop(read);
+
+        let got = take_socket(&ours)
+            .expect("receiving")
+            .expect("a descriptor came with it");
+        write.write_all(b"MYI64").expect("writing to the pipe");
+        drop(write);
+
+        let mut said = String::new();
+        std::fs::File::from(got)
+            .read_to_string(&mut said)
+            .expect("reading what came through");
+        assert_eq!(said, "MYI64", "the descriptor is the one that was sent");
+    }
+
+    #[test]
+    fn a_byte_with_nothing_attached_is_not_a_socket() {
+        use std::io::Write;
+        use std::os::unix::net::UnixStream;
+
+        let (ours, mut theirs) = UnixStream::pair().expect("a socket pair");
+        theirs.write_all(b"L").expect("a byte on its own");
+        assert!(
+            take_socket(&ours).expect("receiving").is_none(),
+            "a helper that sent nothing is not a helper that sent a socket"
+        );
+    }
+
+    #[test]
+    fn the_helper_is_looked_for_beside_this_program() {
+        // Whatever is found, it is the helper being looked for, and an
+        // override is honoured: that is all this can say without installing.
+        unsafe { std::env::set_var("VEETEE_LAT_HELPER", "/nowhere/lat-helper") };
+        assert_eq!(helper_path(), std::path::Path::new("/nowhere/lat-helper"));
+        unsafe { std::env::remove_var("VEETEE_LAT_HELPER") };
+        assert!(
+            helper_path().to_string_lossy().contains(HELPER),
+            "and it is the helper that is looked for"
+        );
     }
 
     #[test]

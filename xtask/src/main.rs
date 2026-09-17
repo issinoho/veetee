@@ -346,6 +346,8 @@ fn dist(args: &[String]) -> Result<()> {
             "veetee",
             "-p",
             "vt-headless",
+            "-p",
+            "vt-lat-helper",
         ])
         .envs(release_env)
         .current_dir(root()))?;
@@ -362,6 +364,12 @@ fn dist(args: &[String]) -> Result<()> {
     };
     copy("target/release/veetee", "bin/veetee")?;
     copy("target/release/vt-headless", "bin/vt-headless")?;
+    // Out of the way, since nobody runs it by hand, and veetee looks for it
+    // beside itself before it looks in libexec.
+    copy(
+        "target/release/veetee-lat-helper",
+        "libexec/veetee-lat-helper",
+    )?;
     copy(
         "data/com.issinoho.Veetee.desktop",
         "share/applications/com.issinoho.Veetee.desktop",

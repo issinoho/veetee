@@ -195,9 +195,11 @@ fn listen(interface: &str, seconds: Option<u64>) -> io::Result<()> {
     use std::time::Duration;
 
     use vt_lat::Message;
-    use vt_transport::lat::{Listener, split};
+    use vt_transport::lat::split;
 
-    let mut listener = Listener::open(interface)?;
+    // Through the helper when this process has no privilege of its own,
+    // which is how it runs without sudo.
+    let mut listener = vt_transport::lat::open(interface)?;
     match seconds {
         Some(n) => eprintln!("listening on {interface} for {n} seconds"),
         None => eprintln!("listening on {interface}; announcements come about once a minute"),
