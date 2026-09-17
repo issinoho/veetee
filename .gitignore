@@ -6,3 +6,6 @@
 
 # Session recordings made in the working tree (may contain private host output)
 /*.vtrec
+
+# What a failing conformance snapshot is written beside, for comparing by eye
+*.screen.new
