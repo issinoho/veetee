@@ -18,11 +18,15 @@ connections (default: your login shell):
   --telnet HOST[:PORT]   Telnet, e.g. --telnet vms1 or telnet://vms1:2323
   --ssh [USER@]HOST      SSH via OpenSSH (uses ~/.ssh/config), e.g. ssh://system@vms1
   --serial DEVICE        serial line, e.g. --serial /dev/ttyUSB0 or --serial COM3
+  --lat NODE             LAT, DEC's own protocol, on the local segment (Linux only)
   --command COMMAND      run COMMAND through the system shell (sh -c, or cmd /C)
 
 options:
   --model MODEL          vt100 vt102 vt220 vt320 vt420 (default) vt510 vt520 vt525
   --port PORT            TCP port for --telnet or --ssh
+  --interface NAME       the interface --lat speaks on; needed only where more
+                         than one Ethernet interface is up
+  --service NAME         the LAT service to ask for (default: the node's own name)
   --telnet-binary        negotiate 8-bit Telnet (BINARY). OpenVMS answers it by
                          setting the terminal PASSALL, where DELETE stops erasing
   --record FILE          record the session to FILE (.vtrec) for replay and tests;
@@ -61,6 +65,17 @@ pub enum Connection {
         com_port: Option<ComPort>,
     },
     Ssh(SshConfig),
+    /// A LAT service on a node, over raw Ethernet. Linux only.
+    Lat {
+        /// The interface to speak on. LAT does not route, so it has to be the
+        /// one sharing a segment with the node; when it is not given, and
+        /// there is only one it could be, that one is used.
+        interface: Option<String>,
+        /// The node, as it announces itself.
+        node: String,
+        /// The service wanted, the node's own name when it is not given.
+        service: Option<String>,
+    },
 }
 
 impl Connection {
@@ -69,7 +84,10 @@ impl Connection {
     pub fn keep_open_on_close(&self) -> bool {
         matches!(
             self,
-            Connection::Serial(_) | Connection::Telnet { .. } | Connection::Ssh(_)
+            Connection::Serial(_)
+                | Connection::Telnet { .. }
+                | Connection::Ssh(_)
+                | Connection::Lat { .. }
         )
     }
 
@@ -84,6 +102,10 @@ impl Connection {
             Connection::Ssh(s) => match s.port {
                 Some(port) => format!("ssh {}:{port}", s.destination),
                 None => format!("ssh {}", s.destination),
+            },
+            Connection::Lat { node, service, .. } => match service {
+                Some(service) if service != node => format!("lat {node}/{service}"),
+                _ => format!("lat {node}"),
             },
         }
     }
@@ -142,6 +164,10 @@ pub fn parse_args_with(
     }
     let mut line: Vec<(String, String)> = Vec::new();
     let mut port: Option<u16> = None;
+    // LAT is named a piece at a time, as a serial line is, and the pieces can
+    // come in any order.
+    let mut interface: Option<String> = None;
+    let mut service: Option<String> = None;
     let mut chosen = 0;
     let mut record_keys = false;
     let mut telnet_binary = false;
@@ -221,6 +247,19 @@ pub fn parse_args_with(
             "--command" => Some(Connection::Command(value()?)),
             "--serial" => Some(Connection::Serial(SerialConfig::new(value()?))),
             "--telnet" => Some(telnet(&value()?)?),
+            "--lat" => Some(Connection::Lat {
+                interface: None,
+                node: value()?,
+                service: None,
+            }),
+            "--interface" => {
+                interface = Some(value()?);
+                None
+            }
+            "--service" => {
+                service = Some(value()?);
+                None
+            }
             "--ssh" => Some(ssh(&value()?)?),
             "-b" | "--baud" | "-d" | "--databits" | "-p" | "--parity" | "-s" | "--stopbits"
             | "-f" | "--flow" => {
@@ -259,7 +298,25 @@ pub fn parse_args_with(
         }
     }
     if chosen > 1 {
-        return Err("choose one connection: --telnet, --ssh, --serial or --command".into());
+        return Err("choose one connection: --telnet, --ssh, --serial, --lat or --command".into());
+    }
+
+    if interface.is_some() || service.is_some() {
+        match &mut options.connection {
+            Connection::Lat {
+                interface: i,
+                service: s,
+                ..
+            } => {
+                if interface.is_some() {
+                    *i = interface;
+                }
+                if service.is_some() {
+                    *s = service;
+                }
+            }
+            _ => return Err("--interface and --service apply to --lat".into()),
+        }
     }
 
     if let Some(p) = port {
@@ -465,7 +522,57 @@ pub fn open_transport(config: &Config, connection: &Connection) -> io::Result<Bo
             ..TelnetConfig::new(host.clone(), model_name(config.model))
         })?),
         Connection::Ssh(s) => Box::new(ssh::connect(s, rows, cols, term)?),
+        #[cfg(target_os = "linux")]
+        Connection::Lat {
+            interface,
+            node,
+            service,
+        } => Box::new(vt_transport::lat::Lat::connect(
+            vt_transport::lat::LatConfig {
+                interface: lat_interface(interface.as_deref())?,
+                node: node.clone(),
+                service: service.clone(),
+                address: None,
+                from: None,
+                rows,
+                cols,
+            },
+        )?),
+        #[cfg(not(target_os = "linux"))]
+        Connection::Lat { .. } => {
+            return Err(io::Error::new(
+                io::ErrorKind::Unsupported,
+                "LAT needs raw Ethernet, which veetee only has on Linux",
+            ));
+        }
     })
+}
+
+/// The interface to speak LAT on: the one named, or the only one it could be.
+///
+/// LAT does not route, so this is not a matter of picking a default: a node is
+/// reachable on the segment it is on and nowhere else. Choosing for the user
+/// is only safe when there is nothing to choose between.
+#[cfg(target_os = "linux")]
+fn lat_interface(named: Option<&str>) -> io::Result<String> {
+    if let Some(named) = named {
+        return Ok(named.to_string());
+    }
+    let mut found = vt_transport::lat::interfaces();
+    match found.len() {
+        1 => Ok(found.remove(0)),
+        0 => Err(io::Error::new(
+            io::ErrorKind::NotFound,
+            "no Ethernet interface is up for LAT to speak on",
+        )),
+        _ => Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            format!(
+                "say which interface LAT should use: --interface {}",
+                found.join(" | --interface ")
+            ),
+        )),
+    }
 }
 
 #[cfg(test)]
@@ -533,6 +640,48 @@ mod tests {
             (s.baud, s.data_bits, s.parity, s.stop_bits, s.flow),
             (19200, 7, Parity::Even, 2, FlowControl::None)
         );
+    }
+
+    #[test]
+    fn lat_names_a_node_and_may_name_the_rest() {
+        let o = parse(&["--lat", "MYI64"]).unwrap();
+        assert_eq!(
+            o.connection,
+            Connection::Lat {
+                interface: None,
+                node: "MYI64".into(),
+                service: None,
+            },
+            "the interface is worked out at the time, and the service is the node"
+        );
+        assert_eq!(o.connection.label(), "lat MYI64");
+
+        let o = parse(&[
+            "--lat",
+            "MYI64",
+            "--interface",
+            "eth0",
+            "--service",
+            "TERMINALS",
+        ])
+        .unwrap();
+        assert_eq!(
+            o.connection,
+            Connection::Lat {
+                interface: Some("eth0".into()),
+                node: "MYI64".into(),
+                service: Some("TERMINALS".into()),
+            }
+        );
+        assert_eq!(o.connection.label(), "lat MYI64/TERMINALS");
+    }
+
+    #[test]
+    fn the_lat_options_belong_to_lat() {
+        let e = parse(&["--telnet", "vms1", "--interface", "eth0"]).unwrap_err();
+        assert!(e.contains("--interface"), "{e}");
+        let e = parse(&["--service", "TERMINALS"]).unwrap_err();
+        assert!(e.contains("--service"), "{e}");
     }
 
     #[test]

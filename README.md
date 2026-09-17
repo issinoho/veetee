@@ -75,6 +75,7 @@ cargo run -p veetee                              # local shell, VT420
 cargo run -p veetee -- --telnet vms1             # Telnet (or telnet://vms1:2323)
 cargo run -p veetee -- --ssh system@vms1         # SSH via your OpenSSH client and ~/.ssh/config
 cargo run -p veetee -- --serial /dev/ttyUSB0     # serial line (see below)
+cargo run -p veetee -- --lat MYI64               # LAT, DEC's own protocol (Linux; see below)
 cargo run -p veetee -- --model vt525 --telnet vms1   # colour VT525 (vt100 … vt525)
 cargo run -p veetee -- --command 'vttest'        # any program, via /bin/sh -c
 cargo run -p veetee -- --record session.vtrec --telnet vms1  # record for replay and tests
@@ -109,7 +110,7 @@ sessions. They are kept in `~/.config/veetee/profiles.toml`, which can also be e
 ```toml
 [[profile]]
 name = "vms1"
-connection = "telnet"       # shell, command, telnet, ssh or serial
+connection = "telnet"       # shell, command, telnet, ssh, serial or lat
 host = "vms1"
 model = "vt420"
 phosphor = "green"
@@ -165,6 +166,36 @@ Defaults are the DEC factory Set-Up values: 9600 baud, 8 data bits, no parity, 1
 XON/XOFF flow control. `-f h` selects RTS/CTS. F5 sends a line break; F1 (Hold Screen) stops
 reading so the line is flow-controlled. The port is opened for exclusive use; add yourself to the
 `dialout` group (`sudo usermod -aG dialout $USER`, then log in again) rather than running as root.
+
+### LAT
+
+DEC's own terminal protocol, which rides directly on Ethernet rather than on IP. Linux only:
+there is no raw Ethernet in the Flatpak, and none on Windows without a driver.
+
+```sh
+cargo run -p veetee -- --lat MYI64                    # the node, as it announces itself
+cargo run -p veetee -- --lat MYI64 --interface eth0   # where more than one is up
+cargo run -p veetee -- --lat MYI64 --service TERMINALS    # a service other than the node
+```
+
+Nothing routes, so the node has to be on the same segment; there is no port and no host name.
+The interface is worked out when only one Ethernet interface is up, and named otherwise.
+
+Raw Ethernet needs `CAP_NET_RAW`, which nothing that draws a terminal should hold — and GTK will
+not start with it at all. A small helper opens the socket and hands it back instead, and the
+capability is not granted when veetee is installed:
+
+```sh
+sudo setcap cap_net_raw+ep /usr/libexec/veetee-lat-helper
+```
+
+veetee says as much, naming the path it looked in, when it has not been done. Be aware what it
+allows: anyone who can run the helper can open a socket for LAT frames on one interface and send
+them — much narrower than `CAP_NET_RAW` itself, but not nothing.
+
+`vt-headless lat INTERFACE` lists the services announcing themselves on a wire, and
+`--connect NODE` opens a session without the window, which is how the protocol was read.
+[docs/lat-protocol.md](docs/lat-protocol.md) records what the captures show.
 
 ### Keyboard
 

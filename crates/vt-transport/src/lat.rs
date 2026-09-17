@@ -139,6 +139,36 @@ impl AsFd for Listener {
     }
 }
 
+/// Ethernet, as `/sys/class/net/*/type` reports it. LAT rides on Ethernet
+/// and nothing else, so anything of another kind is no use to it.
+const ARPHRD_ETHER: &str = "1";
+
+/// The interfaces that could carry LAT: real Ethernet, and up.
+///
+/// There is no routing in LAT, so the one sharing a segment with the node is
+/// the only one that will do. Where there is exactly one, it needs no saying.
+pub fn interfaces() -> Vec<String> {
+    let Ok(entries) = std::fs::read_dir("/sys/class/net") else {
+        return Vec::new();
+    };
+    let mut found: Vec<String> = entries
+        .filter_map(Result::ok)
+        .filter(|entry| {
+            let at = |what: &str| {
+                std::fs::read_to_string(entry.path().join(what))
+                    .map(|s| s.trim().to_string())
+                    .unwrap_or_default()
+            };
+            // Loopback is another type, so it goes without saying, and a line
+            // that is down carries nothing.
+            at("type") == ARPHRD_ETHER && at("operstate") == "up"
+        })
+        .map(|entry| entry.file_name().to_string_lossy().into_owned())
+        .collect();
+    found.sort();
+    found
+}
+
 /// The helper that holds `CAP_NET_RAW`, as it is installed and as it sits
 /// beside a binary that has not been installed at all.
 const HELPER: &str = "veetee-lat-helper";

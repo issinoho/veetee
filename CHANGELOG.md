@@ -53,6 +53,16 @@ milestones (0.3 = M3). The format follows [Keep a Changelog](https://keepachange
   a slot of a type of its own — each of which veetee had wrong and none of which the captures
   alone would have settled.
 
+- **Added: LAT in the window.** `veetee --lat MYI64` opens a LAT session as `--telnet` opens a
+  Telnet one, and it is a saved connection like any other — `connection = "lat"` in
+  `profiles.toml`, and an entry in the connection dialog beside Telnet and SSH, where a LAT
+  connection names a node rather than a host and has no port, LAT not being IP at all.
+
+  `--interface` is needed only where more than one Ethernet interface is up: there is no routing
+  in LAT, so the interface is not a preference but the one segment the node is on, and where
+  there is only one it can be worked out. `--service` asks for a service other than the node's own
+  name, which is the usual one.
+
 - **Added: a helper, so that nothing drawing a terminal holds `CAP_NET_RAW`.**
   `veetee-lat-helper` opens the LAT socket and hands it straight back through a Unix socket pair,
   then exits; the circuit, the session and every frame after that are veetee's own work,

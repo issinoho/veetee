@@ -106,6 +106,7 @@ impl Workspace {
                 .device
                 .file_name()
                 .map_or_else(String::new, |n| n.to_string_lossy().into_owned()),
+            cli::Connection::Lat { node, .. } => node.clone(),
             cli::Connection::Shell => "Local shell".into(),
             cli::Connection::Command(c) => c.split_whitespace().next().unwrap_or("").into(),
         };

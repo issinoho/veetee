@@ -23,7 +23,14 @@ const MODELS: [Model; 8] = [
     Model::Vt520,
     Model::Vt525,
 ];
-const KINDS: [&str; 5] = ["Telnet", "SSH", "Serial line", "Local shell", "Command"];
+const KINDS: [&str; 6] = [
+    "Telnet",
+    "SSH",
+    "Serial line",
+    "LAT",
+    "Local shell",
+    "Command",
+];
 const PHOSPHORS: [(&str, &str); 3] = [
     ("white", "White (P4)"),
     ("green", "Green (P1)"),
@@ -348,6 +355,8 @@ fn editor(
     port.set_subtitle("0 uses the standard port");
     let command = adw::EntryRow::builder().title("Command").build();
     let device = adw::EntryRow::builder().title("Device").build();
+    let interface = adw::EntryRow::builder().title("Interface").build();
+    let service = adw::EntryRow::builder().title("Service").build();
     let speed = combo(
         "Speed",
         &SPEEDS
@@ -400,9 +409,19 @@ fn editor(
             kind.set_selected(2);
             serial = s.clone();
         }
-        Connection::Shell => kind.set_selected(3),
+        Connection::Lat {
+            interface: i,
+            node,
+            service: sv,
+        } => {
+            kind.set_selected(3);
+            host.set_text(node);
+            interface.set_text(i.as_deref().unwrap_or(""));
+            service.set_text(sv.as_deref().unwrap_or(""));
+        }
+        Connection::Shell => kind.set_selected(4),
         Connection::Command(c) => {
-            kind.set_selected(4);
+            kind.set_selected(5);
             command.set_text(c);
         }
     }
@@ -423,6 +442,8 @@ fn editor(
         port.upcast_ref(),
         command.upcast_ref(),
         device.upcast_ref(),
+        interface.upcast_ref(),
+        service.upcast_ref(),
     ] {
         connection_group.add(row);
     }
@@ -457,17 +478,22 @@ fn editor(
             device.clone(),
             line_group.clone(),
         );
+        let (interface, service) = (interface.clone(), service.clone());
         move |kind: u32| {
-            host.set_visible(kind <= 1);
-            host.set_title(if kind == 1 {
-                "Destination ([user@]host)"
-            } else {
-                "Host"
+            // LAT names a node rather than a host, and there is no port: it
+            // is not IP at all.
+            host.set_visible(kind <= 1 || kind == 3);
+            host.set_title(match kind {
+                1 => "Destination ([user@]host)",
+                3 => "Node",
+                _ => "Host",
             });
             port.set_visible(kind <= 1);
             device.set_visible(kind == 2);
             line_group.set_visible(kind == 2);
-            command.set_visible(kind == 4);
+            interface.set_visible(kind == 3);
+            service.set_visible(kind == 3);
+            command.set_visible(kind == 5);
         }
     };
     show_fields(kind.selected());
@@ -558,7 +584,22 @@ fn editor(
                     s.flow = FLOWS[flow.selected() as usize % FLOWS.len()].0;
                     Connection::Serial(s)
                 }
-                3 => Connection::Shell,
+                3 => {
+                    let node = host.text().trim().to_string();
+                    if node.is_empty() {
+                        return problem(host.upcast_ref(), "Enter the node to connect to");
+                    }
+                    let named = |row: &adw::EntryRow| {
+                        let text = row.text().trim().to_string();
+                        (!text.is_empty()).then_some(text)
+                    };
+                    Connection::Lat {
+                        interface: named(&interface),
+                        node,
+                        service: named(&service),
+                    }
+                }
+                4 => Connection::Shell,
                 _ => {
                     let c = command.text().trim().to_string();
                     if c.is_empty() {

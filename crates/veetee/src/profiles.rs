@@ -85,7 +85,7 @@ struct File {
 #[serde(rename_all = "kebab-case", deny_unknown_fields)]
 struct Entry {
     name: String,
-    /// shell, command, telnet, ssh or serial.
+    /// shell, command, telnet, ssh, serial or lat.
     connection: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     command: Option<String>,
@@ -97,6 +97,12 @@ struct Entry {
     telnet_binary: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
     device: Option<String>,
+    /// LAT: the interface to speak on, when one was chosen, and the service
+    /// when it is not the node's own name.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    interface: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    service: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     baud: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -160,6 +166,11 @@ impl Entry {
                 destination: need(&self.host, "a host")?,
                 port: self.port,
             }),
+            "lat" => Connection::Lat {
+                interface: self.interface.clone().filter(|i| !i.trim().is_empty()),
+                node: need(&self.host, "a node")?,
+                service: self.service.clone().filter(|s| !s.trim().is_empty()),
+            },
             "serial" => {
                 let mut serial = SerialConfig::new(need(&self.device, "a device")?);
                 if let Some(baud) = self.baud {
@@ -181,7 +192,7 @@ impl Entry {
             }
             other => {
                 return Err(context(format!(
-                    "unknown connection {other:?} (shell, command, telnet, ssh or serial)"
+                    "unknown connection {other:?} (shell, command, telnet, ssh, serial or lat)"
                 )));
             }
         };
@@ -248,6 +259,18 @@ impl Entry {
                 e.connection = "ssh".into();
                 e.host = Some(s.destination.clone());
                 e.port = s.port;
+            }
+            Connection::Lat {
+                interface,
+                node,
+                service,
+            } => {
+                e.connection = "lat".into();
+                // The node is the host of a LAT connection, and the service
+                // is only worth keeping when it is not the node's own name.
+                e.host = Some(node.clone());
+                e.interface = interface.clone();
+                e.service = service.clone().filter(|s| s != node);
             }
             Connection::Serial(s) => {
                 e.connection = "serial".into();
@@ -412,17 +435,33 @@ host = "system@alpha"
 port = 2222
 log = "~/logs/alpha-%Y%m%d.log"
 log-timestamps = true
+
+[[profile]]
+name = "myi64"
+connection = "lat"
+host = "MYI64"
+interface = "enp0s31f6"
+service = "TERMINALS"
 "#;
 
     #[test]
     fn reads_every_kind_of_connection() {
         let p = parse(SAMPLE).unwrap();
-        assert_eq!(p.len(), 3);
+        assert_eq!(p.len(), 4);
         assert_eq!(p[0].summary(), "VT520 · telnet vms1");
         assert_eq!(p[0].phosphor, "green");
         assert_eq!(p[1].summary(), "VT420 · /dev/ttyUSB0 19200 7E1");
         assert_eq!(p[1].sessions, 2);
         assert_eq!(p[2].summary(), "VT420 · ssh system@alpha:2222");
+        assert_eq!(p[3].summary(), "VT420 · lat MYI64/TERMINALS");
+        assert_eq!(
+            p[3].connection,
+            Connection::Lat {
+                interface: Some("enp0s31f6".into()),
+                node: "MYI64".into(),
+                service: Some("TERMINALS".into()),
+            }
+        );
         let (mut config, mut options) = (Config::default(), Options::default());
         p[2].apply(&mut config, &mut options);
         let log = options.log.unwrap();

@@ -101,14 +101,16 @@ left here is a limitation rather than work.
   says exactly that when it is missing. Still to prove on a wire that a socket crosses and carries
   a session; the passing itself is tested, and the spawning and its errors are.
 
-  Left: **LAT as a connection** — a `--lat` option, a saved-connection kind and a dialog entry, so
-  a terminal can open one rather than `vt-headless` — and then the **service browser**, listing
-  what is announcing itself so a node can be picked rather than typed. The browser is also the
-  only way the page size in the service request can be proved, since VMS takes the size from a
-  cursor-position probe that only a real terminal answers. Several fields of the messages are
-  still copied rather than understood; they are marked in [`lat-protocol.md`](lat-protocol.md).
-  Not available in the Flatpak, which has no raw sockets, nor on Windows, which has no raw
-  Ethernet without a driver.
+  **LAT is a connection like any other**: `--lat NODE`, with `--interface` only where more than
+  one Ethernet interface is up and `--service` only where the service is not the node's own name;
+  a saved-connection kind in `profiles.toml`; and an entry in the connection dialog beside Telnet
+  and SSH.
+
+  Left: the **service browser**, listing what is announcing itself so a node can be picked rather
+  than typed — `vt-headless lat INTERFACE` already reads the announcements, so this is the dialog
+  rather than the protocol. Several fields of the messages are still copied rather than
+  understood; they are marked in [`lat-protocol.md`](lat-protocol.md). Not available in the
+  Flatpak, which has no raw sockets, nor on Windows, which has no raw Ethernet without a driver.
 
 ### Smaller gaps (from compat-matrix.md)
 
