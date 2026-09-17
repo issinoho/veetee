@@ -42,6 +42,54 @@ What can be said:
 
 Test 1 below settles it for whatever you have, and "it refuses the option" is a complete answer.
 
+## With ser2net and a USB serial adapter
+
+This wants no terminal server and no far-end machine, and it answers the central question more
+directly than hardware does: **`stty` shows what the line was actually set to.** A DECserver can
+only be watched from a distance; a local serial port can be asked.
+
+Install `ser2net` and give it the adapter. Version 4, which is what current distributions ship
+(`ser2net -v` says), reads `/etc/ser2net.yaml`:
+
+```yaml
+connection: &usb
+  accepter: telnet(rfc2217),tcp,2001
+  connector: serialdev,/dev/ttyUSB0,9600n81,local
+```
+
+`telnet(rfc2217)` is the part that matters: without it ser2net serves plain Telnet and refuses the
+option, which is worth trying too — it is test 2 from the other side. Version 3 uses
+`/etc/ser2net.conf` and one line per port, where the option is enabled by adding `remctl`:
+
+```
+2001:telnet:600:/dev/ttyUSB0:9600 8DATABITS NONE 1STOPBIT remctl
+```
+
+Then ask for something distinctive and look at the port:
+
+```sh
+stty -F /dev/ttyUSB0 -a | head -2          # before: 9600, cs8, -parenb
+veetee --telnet localhost:2001 -b 19200 -d 7 -p e -s 2 -f h
+stty -F /dev/ttyUSB0 -a | head -2          # during the session
+```
+
+The second `stty` should report `speed 19200 baud`, `cs7`, `parenb -parodd`, `cstopb` and
+`crtscts`. Anything veetee asked for that is not there is a fault worth reporting, and anything
+ser2net set differently is test 8 answered on the spot.
+
+Work through the settings one at a time — `-b 1200`, `-b 115200`, `-p o`, `-d 8 -s 1`, `-f x`,
+`-f n` — reconnecting each time, since veetee sets the line once when the connection opens.
+
+A capture is easy here too, the whole conversation being on the loopback interface:
+
+```sh
+sudo tcpdump -i lo -w rfc2217.pcap tcp port 2001
+```
+
+A loopback plug on the adapter (pins 2 and 3 joined) makes the session echo what is typed, which
+shows data flowing as well as settings landing. It cannot show a speed mismatch, both ends of the
+loop being the same line — for that, two adapters and a null modem, or a real far end.
+
 ## How veetee speaks it
 
 The option is offered **only when line settings are given**. An ordinary Telnet connection never
