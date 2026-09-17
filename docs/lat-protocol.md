@@ -18,6 +18,44 @@ is GPL and veetee is MIT OR Apache-2.0, so the implementation is clean-room (see
 so a third machine sees announcements and solicits and none of a session. Capture on one of the
 two nodes, or on the interface of the virtual machine running one of them.
 
+## Getting two nodes to talk at all
+
+Both of these cost an afternoon here, and neither announces itself: the symptom of each is
+silence, which reads like a protocol that does not work.
+
+**OpenVMS refuses connections it has not been told to allow.** A node that offers a service still
+answers nothing if its connection setting says so. LATCP shows and sets it:
+
+```
+$ MCR LATCP SHOW NODE          ! among the rest: Connections: ...
+$ MCR LATCP SET NODE/CONNECTIONS=BOTH
+```
+
+`BOTH` is incoming and outgoing; `INCOMING` is enough for a node that only offers services, and
+`OUTGOING` for one that only calls out. Put it in `LAT$SYSTARTUP.COM` to survive a reboot.
+
+**A virtual machine may never be given the multicast.** LAT announcements go to
+`09-00-2B-00-00-0F`, and a guest on QEMU/KVM behind **macvtap** does not receive them by default:
+the guest asks for the group, but libvirt does not pass that request to the host interface unless
+it is told to trust the guest's filters. The guest hears nothing, announces into the void, and
+looks like a node with LAT switched off.
+
+On the host, to fix it now:
+
+```sh
+ip link set macvtap0 allmulticast on
+```
+
+and in the domain XML, so it survives a redefine:
+
+```xml
+<interface type='direct' trustGuestRxFilters='yes'>
+```
+
+The same applies to veetee itself in a guest: no announcements arrive, so the service browser
+stays empty and `--lat NODE` waits for a node that never announces. It is the host's filtering,
+not the wire.
+
 ## The datalink
 
 LAT rides directly on Ethernet. There is no IP, so nothing routes and both ends must share a
