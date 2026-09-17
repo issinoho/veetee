@@ -277,9 +277,9 @@ impl Session {
     /// A message on the circuit. Everything after the start arrives in these.
     fn run(&mut self, run: &Run<'_>, data: &mut Vec<u8>) -> Event {
         // Each end names the other's identifier first and its own second, so
-        // a message of ours has them the other way round. This tells another
-        // node's circuit — and a frame of our own, which a packet socket hears
-        // going out — from the traffic this session wants.
+        // a message of ours has them the other way round. That is what tells
+        // another node's circuit on the same wire from the traffic this
+        // session wants.
         if !self.is_open() || run.ours != self.theirs || run.theirs != self.ours {
             return Event::Ignored;
         }
@@ -299,8 +299,16 @@ impl Session {
             if slot.to != self.local_slot {
                 continue;
             }
-            // Whatever it addresses to us comes from a slot of its own.
-            self.remote_slot = slot.from;
+            // Whatever it addresses to us comes from a slot of its own —
+            // except when it comes from slot zero, which is the circuit
+            // talking rather than the session, as the slot that asks for a
+            // service is addressed to zero before either end has named one.
+            // MYI64 sends one from zero as it ends a login, and taking that
+            // for the far end's slot would address everything typed after it
+            // to nothing.
+            if slot.from != 0 {
+                self.remote_slot = slot.from;
+            }
             if slot.control & SLOT_TYPE == 0 {
                 data.extend_from_slice(slot.data);
             }
@@ -569,6 +577,42 @@ mod tests {
             "after the start and the prompt were answered"
         );
         assert_eq!(typed.acknowledged, 3);
+    }
+
+    #[test]
+    fn the_circuit_slot_is_not_taken_for_the_far_end() {
+        let (mut session, mut data) = agreed();
+        session.receive(PROMPT, &mut data);
+        session.take_outgoing();
+
+        // MYI64 sends a slot from zero as it ends a login: the circuit
+        // talking rather than the session, and no slot to answer.
+        let circuit = Run {
+            flags: 0,
+            theirs: 0x7001,
+            ours: 0xe001,
+            sequence: 9,
+            acknowledged: 7,
+            slots: vec![Slot {
+                to: 1,
+                from: 0,
+                control: 1,
+                data: &[],
+            }],
+        }
+        .build();
+        session.receive(&circuit, &mut data);
+        session.take_outgoing();
+
+        session.write(b"x");
+        let out = session.take_outgoing();
+        let Ok(Message::Run(typed)) = crate::parse(&out[0]) else {
+            panic!("not a run")
+        };
+        assert_eq!(
+            typed.slots[0].to, 1,
+            "typing still goes to the slot the far end speaks from"
+        );
     }
 
     #[test]

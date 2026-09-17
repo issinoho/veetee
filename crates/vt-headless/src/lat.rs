@@ -223,10 +223,14 @@ fn listen(interface: &str, seconds: Option<u64>) -> io::Result<()> {
                             }
                         })
                         .collect();
+                    // The control byte is the one field of a slot still being
+                    // read, and what veetee shows the terminal turns on it, so
+                    // it is worth having in front of the data it goes with.
                     println!(
-                        "      session {} to {}  {:3} bytes  {text}",
+                        "      session {} to {}  control {:#04x}  {:3} bytes  {text}",
                         slot.from,
                         slot.to,
+                        slot.control,
                         slot.data.len()
                     );
                 }
