@@ -27,7 +27,7 @@ file in the directory it is given, and a README is not YAML.
 ## Updating them for a release
 
 ```sh
-cargo xtask winget 0.8.12
+cargo xtask winget 1.0.0
 ```
 
 It fetches `SHA256SUMS` from that release and rewrites the version, the checksum, the paths inside
@@ -110,5 +110,5 @@ together.
   needs and what the README claims.
 - `PortableCommandAlias` puts `veetee` and `vt-headless` on the path. Removing the package removes
   the aliases and the unpacked directory.
-- The relative paths inside the zip carry the version (`veetee-0.8.12-x86_64-windows\bin\...`), so
+- The relative paths inside the zip carry the version (`veetee-1.0.0-x86_64-windows\bin\...`), so
   they change with every release. That is what the xtask exists to get right.

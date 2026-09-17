@@ -1,12 +1,14 @@
 # veetee roadmap
 
-The working roadmap: what is done, what is left before 1.0, and what is parked. The wiki's
+The working roadmap: what is done, what 1.0 ships with, and what is parked. The wiki's
 [Roadmap](https://github.com/issinoho/veetee/wiki/Roadmap) page is the public summary; details of
 every control function are in [compat-matrix.md](compat-matrix.md), and released changes in
 [CHANGELOG.md](../CHANGELOG.md).
 
-Latest release: **0.8.12**. Until 1.0 the minor version follows the milestone reached; patch
-releases carry fixes and work that completes a milestone.
+Latest release: **1.0.0** (17 September 2026). From 1.0 the version follows Semantic Versioning:
+a breaking change to the crates' public API or to saved settings takes the major, new terminal
+behaviour takes the minor, fixes take the patch. Before 1.0 the minor version followed the
+milestone reached.
 
 ## Goal
 
@@ -133,17 +135,19 @@ left here is other people's hardware rather than work.
   marked in [`lat-protocol.md`](lat-protocol.md). Not available in the Flatpak, which has no raw
   sockets, nor on Windows, which has no raw Ethernet without a driver.
 
-## Left before 1.0
+## 1.0, and what it ships with
 
-**Every milestone is done.** M5 was the last, closing with LAT in 0.8.9 and RFC 2217 proved
-against `ser2net` in 0.8.10. Nothing below is engineering. The distribution decisions are settled
-too — winget alone on Windows, no Flathub — so **the only one left open is when to call 1.0**;
-the rest of this section is limitations 1.0 would ship with rather than fix.
+**1.0.0 was released on 17 September 2026.** Every milestone from the plan is closed — M5 was the
+last, with LAT in 0.8.9 and RFC 2217 proved against `ser2net` in 0.8.10 — and the distribution
+decisions are settled: winget alone on Windows, no Flathub. What follows is what 1.0 ships with
+rather than fixes; none of it was judged a reason to hold the release.
 
 ### Decisions
 
-- **1.0 itself**: when to call it. The version is the user's call, and there is no longer anything
-  outstanding that has to land first.
+- **1.0 itself: called on 17 September 2026**, with the tree green (`fmt`, `clippy`, the workspace
+  tests, vttest all PASS and esctest matching `expected-failures.txt` exactly) and no open issues.
+  The winget pull request was still in review and was deliberately not waited for; the manifests
+  are pointed at each release afterwards with `cargo xtask winget VERSION`.
 - **Windows: winget alone** (17 September 2026). No Inno Setup or WiX installer. A release ships
   a zip holding the GTK runtime, and winget takes that zip as a portable package:
   [winget-pkgs#436670](https://github.com/microsoft/winget-pkgs/pull/436670) offers 0.8.12, is
@@ -176,7 +180,7 @@ the rest of this section is limitations 1.0 would ship with rather than fix.
   and ships with every release. The README in `packaging/flathub` keeps the full reasoning and the
   procedure, should this ever be reopened.
 
-### Limitations 1.0 would ship with (from compat-matrix.md)
+### Limitations 1.0 ships with (from compat-matrix.md)
 
 - **Stored-only Set-Up settings**: serial line settings in Set-Up are not applied to `--serial`
   connections; zero style, energy saver, host wake-up, overscan, transmit rate limits, modem
@@ -196,7 +200,7 @@ the rest of this section is limitations 1.0 would ship with rather than fix.
   on OpenVMS appears to drive DECSCA, DECSED, DECSEL or DECSERA, so they are tested against vttest
   and esctest and never against an application.
 
-### Every release, not before 1.0
+### Every release
 
 - **Windows signing**: each release's zip is signed after publishing with
   `pwsh -File packaging\windows\sign-release.ps1 -Version X.Y.Z` on Windows with Certum SimplySign

@@ -1,9 +1,22 @@
 # Changelog
 
-All notable changes to veetee are listed here. Until 1.0 the minor version follows the project
-milestones (0.3 = M3). The format follows [Keep a Changelog](https://keepachangelog.com/).
+All notable changes to veetee are listed here. From 1.0 the version follows
+[Semantic Versioning](https://semver.org/): a breaking change to the crates' public API or to
+saved settings takes the major, new terminal behaviour takes the minor, fixes take the patch.
+Before 1.0 the minor version followed the project milestones (0.3 = M3). The format follows
+[Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
+
+## [1.0.0] - 2026-09-17
+
+**veetee 1.0.** Every milestone from the plan is closed: the VT52 and VT100 through the VT420 and
+the colour VT525, DEC factory Set-Up defaults, fonts drawn on DEC's own character cells, an LK401
+keyboard, SSH, Telnet, serial lines, local shells and LAT. vttest passes across the VT100–VT520
+menus headless, and esctest2 runs at VT level 5 with every difference from xterm explained against
+a DEC manual reference. What 1.0 does not do is written down in
+[`docs/ROADMAP.md`](docs/ROADMAP.md) and [`docs/compat-matrix.md`](docs/compat-matrix.md):
+printing, a third and fourth session, and the Set-Up settings that are stored but not yet applied.
 
 - **Added: winget manifests**, and veetee is now submitted to winget.
   `packaging/winget` treats the Windows zip as a portable package — winget unpacks it and puts
@@ -493,7 +506,8 @@ The first release: VT100 through VT420 emulation with local, Telnet, SSH and ser
   `cargo deny` licence checks and parser fuzzing.
 - `cargo xtask dist` builds the release tarball and Debian package.
 
-[Unreleased]: https://github.com/issinoho/veetee/compare/v0.8.12...HEAD
+[Unreleased]: https://github.com/issinoho/veetee/compare/v1.0.0...HEAD
+[1.0.0]: https://github.com/issinoho/veetee/compare/v0.8.12...v1.0.0
 [0.8.12]: https://github.com/issinoho/veetee/compare/v0.8.11...v0.8.12
 [0.8.11]: https://github.com/issinoho/veetee/compare/v0.8.10...v0.8.11
 [0.8.10]: https://github.com/issinoho/veetee/compare/v0.8.9...v0.8.10

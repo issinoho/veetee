@@ -67,6 +67,11 @@
   </supports>
   <content_rating type="oars-1.1"/>
   <releases>
+    <release version="1.0.0" date="2026-09-17">
+      <description>
+        <p>veetee 1.0: the VT52 through the colour VT525, on Linux and Windows.</p>
+      </description>
+    </release>
     <release version="0.8.12" date="2026-09-17">
       <description>
         <p>Releases carry an RPM as well as a Debian package, a tarball and a Flatpak.</p>
