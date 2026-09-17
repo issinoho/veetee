@@ -220,10 +220,26 @@ fn from_helper(interface: &str, refused: &io::Error) -> io::Result<Listener> {
         .stderr(Stdio::piped())
         .spawn()
         .map_err(|e| {
-            io::Error::new(
-                e.kind(),
-                format!("{refused}\nand {}: {e}", helper.display()),
-            )
+            // Not being allowed to open a socket is the ordinary case here
+            // and no use saying: what matters is the helper that would have.
+            // Never suggest raising veetee itself — GTK would then refuse to
+            // start at all, which is a worse afternoon than this one.
+            if e.kind() == io::ErrorKind::NotFound {
+                io::Error::new(
+                    e.kind(),
+                    format!(
+                        "LAT needs veetee-lat-helper to open a socket, and there is none at \
+                         {0}.\nIn a build tree, build it:  cargo build -p vt-lat-helper\nThen \
+                         grant it the capability:  sudo setcap cap_net_raw+ep {0}",
+                        helper.display()
+                    ),
+                )
+            } else {
+                io::Error::new(
+                    e.kind(),
+                    format!("{refused}\nand {}: {e}", helper.display()),
+                )
+            }
         })?;
 
     match take_socket(&ours)? {
@@ -305,6 +321,9 @@ fn helper_path() -> std::path::PathBuf {
                 return libexec;
             }
         }
+        // Nowhere to be found, so name where it was looked for first: an
+        // error about a bare name is no help to anyone who has to act on it.
+        return beside;
     }
     PathBuf::from(HELPER)
 }

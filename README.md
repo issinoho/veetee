@@ -189,6 +189,13 @@ capability is not granted when veetee is installed:
 sudo setcap cap_net_raw+ep /usr/libexec/veetee-lat-helper
 ```
 
+From a build tree the helper is a crate of its own, and `cargo run -p veetee` does not build it:
+
+```sh
+cargo build -p vt-lat-helper
+sudo setcap cap_net_raw+ep target/debug/veetee-lat-helper   # again after each rebuild
+```
+
 veetee says as much, naming the path it looked in, when it has not been done. Be aware what it
 allows: anyone who can run the helper can open a socket for LAT frames on one interface and send
 them — much narrower than `CAP_NET_RAW` itself, but not nothing.
