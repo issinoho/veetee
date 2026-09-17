@@ -4,7 +4,7 @@ A DEC VT terminal emulator for the Linux (and Windows) desktop, aiming at SmarTe
 compatibility: VT52 through VT525, DECforms and FMS applications, DEC-faithful fonts,
 and SSH, Telnet, serial and LAT connections.
 
-**Website:** [veetee.issinoho.com](http://veetee.issinoho.com/) · **Documentation:** [wiki](https://github.com/issinoho/veetee/wiki)
+**Website:** [veetee.issinoho.com](https://veetee.issinoho.com/) · **Documentation:** [wiki](https://github.com/issinoho/veetee/wiki)
 
 **Status:** 1.0 — the VT100 through VT525 (colour, VT500 character sets,
 dual sessions, page memory, rectangular operations, soft fonts), an LK401 keyboard map with a
@@ -35,6 +35,8 @@ documentation.
 | `data/` | Desktop entry, AppStream metadata and application icon |
 | `packaging/flatpak` | Flatpak manifest and vendored crate sources |
 | `packaging/windows` | Windows zip bundling (MSYS2 GTK runtime) and release signing |
+| `packaging/winget` | winget manifests treating the Windows zip as a portable package |
+| `packaging/flathub` | The Flathub manifest, kept as the record of a submission decided against |
 | `fuzz/` | cargo-fuzz targets (nightly) |
 
 ## Installing
