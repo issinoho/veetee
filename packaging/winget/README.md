@@ -32,26 +32,55 @@ the zip (which carry the version) and the release date. Check the result:
 winget validate --manifest packaging\winget\manifests
 ```
 
-To try it before submitting anything — this installs veetee on the machine you run it on:
+To try it before submitting anything — this installs veetee on the machine you run it on.
+Installing from a local manifest is an admin setting, so enable it once from an *elevated*
+shell:
+
+```powershell
+winget settings --enable LocalManifestFiles
+```
+
+Then, unelevated:
 
 ```powershell
 winget install --manifest packaging\winget\manifests
-veetee                     # the alias should be on the path, in a new shell
-winget uninstall issinoho.veetee
+veetee                     # the alias is on the path in a new shell, not this one
 ```
 
-`--manifest` needs developer mode, or `winget settings` with `"localManifestFiles": true`.
+To remove it again, use the identifier `winget list veetee` reports rather than the package
+identifier: an install from a local manifest has no source to match against, so
+`winget uninstall issinoho.veetee` answers "No installed package found".
+
+```powershell
+winget uninstall --id 'ARP\User\X64\issinoho.veetee__DefaultSource'
+```
+
+Where winget cannot create symlinks — Developer Mode off, as on an ordinary desktop — it puts the
+package's `bin` directory on the user's `PATH` instead of making aliases in `WinGet\Links`. Both
+work, but only the second is what the validation VM exercises.
 
 ## Submitting
 
-1. Fork [microsoft/winget-pkgs](https://github.com/microsoft/winget-pkgs).
-2. Copy the three files to `manifests/i/issinoho/veetee/VERSION/` in the fork, keeping their
-   names.
-3. Open a pull request against `master`. A bot validates the manifests, installs the package on a
-   virtual machine and comments with what it found; a human reviews after that.
+Use Microsoft's own tool rather than forking by hand: `winget-pkgs` is a multi-gigabyte repository
+to clone for three small files, and `wingetcreate` forks, branches, commits and opens the pull
+request through the API instead.
 
-The first submission takes longer than later ones, the publisher identity being new. After that
-each release is the same three files with a new version and checksum.
+```powershell
+winget install Microsoft.WingetCreate
+wingetcreate submit --token (gh auth token) packaging\winget\manifests
+```
+
+It lands in `manifests/i/issinoho/veetee/VERSION/`. A bot then validates the manifests and
+installs the package on a clean virtual machine; a moderator reviews after that. The first
+submission takes longer than later ones, the publisher identity being new — after that each
+release is the same three files with a new version and checksum.
+
+`wingetcreate` warns that `--token` can end up in a log, and it is right: the expansion keeps it
+out of shell history but not out of the process command line. `wingetcreate token --store` runs
+GitHub's device flow once and caches its own token, after which `submit` needs no token at all.
+
+0.8.12 was submitted this way as
+[winget-pkgs#436670](https://github.com/microsoft/winget-pkgs/pull/436670).
 
 ## Notes on the manifests
 

@@ -5,36 +5,69 @@
 Flathub requires: the source is a `git` source pinned to a tag and the commit that tag names,
 rather than the working directory. Keep the two in step — the one that builds in CI is the other.
 
-## Before submitting
+## Do this part on Linux
 
-1. **Update the tag and commit** in the manifest to the release being submitted:
+There is no flatpak in WSL, and installing one there is not worth the doubt: bubblewrap under
+WSL2 is not a configuration anybody tests. Use a Linux desktop.
 
-   ```sh
-   git rev-list -n 1 v0.8.12
-   ```
+You do not need a checkout. The manifest builds from the tag, so two downloaded files in an empty
+directory are the whole input — which is also the point of the exercise, since a Flathub build
+never sees your working tree.
 
-2. **Regenerate `cargo-sources.json`** if the dependencies have changed since the last time, with
-   flatpak-builder-tools' `flatpak-cargo-generator.py`, and copy it in beside the manifest. Flathub
-   builds offline, so every crate has to be listed.
+```sh
+sudo apt install flatpak flatpak-builder        # or: sudo dnf install flatpak flatpak-builder
+flatpak remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
 
-3. **Check it builds from the tag alone**, not from the working tree:
+mkdir -p ~/veetee-flathub && cd ~/veetee-flathub
+base=https://raw.githubusercontent.com/issinoho/veetee/main
+curl -LO $base/packaging/flathub/com.issinoho.Veetee.yml
+curl -LO $base/packaging/flatpak/cargo-sources.json
+curl -LO $base/data/com.issinoho.Veetee.metainfo.xml
+```
 
-   ```sh
-   flatpak-builder --user --install --force-clean build packaging/flathub/com.issinoho.Veetee.yml
-   ```
+### 1. Build it from the tag
 
-4. **Run Flathub's linter.** It is a Flatpak of about a gigabyte, so install it deliberately:
+`--install-deps-from` pulls the GNOME 50 runtime, its SDK and the Rust extension, which is the
+several-gigabyte part and only happens once.
 
-   ```sh
-   flatpak install flathub org.flatpak.Builder
-   flatpak run --command=flatpak-builder-lint org.flatpak.Builder manifest \
-       packaging/flathub/com.issinoho.Veetee.yml
-   flatpak run --command=flatpak-builder-lint org.flatpak.Builder appstream \
-       data/com.issinoho.Veetee.metainfo.xml
-   ```
+```sh
+flatpak-builder --user --install --force-clean \
+    --install-deps-from=flathub build com.issinoho.Veetee.yml
+flatpak run com.issinoho.Veetee
+```
 
-   `appstreamcli validate data/com.issinoho.Veetee.metainfo.xml` covers most of the second one
-   without the download, and passes today.
+This proves the one thing CI does not: that it builds from the tag alone, offline, against
+`cargo-sources.json`.
+
+### 2. Run Flathub's linter
+
+Reviewers go by this. It is a Flatpak of about a gigabyte, so install it deliberately.
+
+```sh
+flatpak install flathub org.flatpak.Builder
+flatpak run --command=flatpak-builder-lint org.flatpak.Builder manifest com.issinoho.Veetee.yml
+flatpak run --command=flatpak-builder-lint org.flatpak.Builder appstream com.issinoho.Veetee.metainfo.xml
+```
+
+`appstreamcli validate data/com.issinoho.Veetee.metainfo.xml` covers most of the second without
+the download, and passes today — with one note about the uppercase in the component ID, which is
+not worth breaking every installed copy to silence.
+
+### 3. Before each later release
+
+- **Update the tag and commit** in the manifest: `git rev-list -n 1 vX.Y.Z`.
+- **Regenerate `cargo-sources.json`** with flatpak-builder-tools' `flatpak-cargo-generator.py`,
+  but only if the dependencies actually changed. Flathub builds offline, so every crate must be
+  listed. To tell whether it is needed, look for new external crates in the lock file since the
+  file was last written:
+
+  ```sh
+  git diff LAST_GENERATED_COMMIT HEAD -- Cargo.lock | grep -E '^\+(source|checksum) '
+  ```
+
+  Nothing printed means nothing to do: workspace version bumps and new path dependencies never
+  reach it. That was the case for 0.8.12, whose only lock changes were the bump and the new local
+  crates `vt-lat` and `vt-lat-helper`.
 
 ## Submitting
 
@@ -45,8 +78,22 @@ rather than the working directory. Keep the two in step — the one that builds 
 5. Once accepted, the app gets a repository of its own (`flathub/com.issinoho.Veetee`) and later
    releases are pull requests there, changing the tag and commit.
 
-To show as a verified publisher afterwards, Flathub asks for a token to be published at
-`https://issinoho.com/.well-known/org.flathub.VerifiedApps.txt`.
+### The app ID, and the domain behind it
+
+Flathub wants an ID that is the reverse-DNS of a domain the developer controls. `issinoho.com`
+resolves (81.129.52.28, no-ip nameservers), so it is owned, but as of 17 September 2026 nothing
+answered on port 80 or 443 — checked from a corporate network that may well filter a residential
+address, so whether it serves a site is *unconfirmed*. Worth settling, because:
+
+- **Acceptance.** `com.issinoho.Veetee` is defensible on ownership alone, but a reviewer may ask,
+  the homepage in the metainfo being `issinoho.github.io`.
+- **Verified publisher**, later, needs a token served at
+  `https://issinoho.com/.well-known/org.flathub.VerifiedApps.txt`. Flathub's other route, proving
+  it through the source host, is open only to `io.github.*` IDs — so with this ID the website is
+  the only way.
+
+Changing the ID is not a small thing: it is the desktop file, the metainfo, the icon names, the
+D-Bus name and every already-installed copy. Ownership of the domain is the better thing to fix.
 
 ## The permissions, and why
 

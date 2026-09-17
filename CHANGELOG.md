@@ -5,15 +5,18 @@ milestones (0.3 = M3). The format follows [Keep a Changelog](https://keepachange
 
 ## [Unreleased]
 
-- **Added: manifests for winget and Flathub**, so neither submission starts from a blank page.
+- **Added: manifests for winget and Flathub**, and veetee is now submitted to winget.
   `packaging/winget` treats the Windows zip as a portable package — winget unpacks it and puts
   `veetee` and `vt-headless` on the path, the GTK runtime being in the zip already — and
   `cargo xtask winget VERSION` points the manifests at a release, taking the checksum from its
-  `SHA256SUMS` and the date from its tag. `winget validate` passes.
+  `SHA256SUMS` and the date from its tag. Installing from them locally works: the checksum
+  verifies, and both programs run from an unrelated directory. 0.8.12 went to
+  [winget-pkgs#436670](https://github.com/microsoft/winget-pkgs/pull/436670).
 
   `packaging/flathub` is the Flatpak manifest with the one change Flathub requires, a source
   pinned to a tag and its commit, and a README with written answers for the permissions reviewers
-  ask about. The metainfo gains `<branding>` colours and passes `appstreamcli validate`.
+  ask about, and the commands to build and lint it on a Linux desktop. The metainfo gains
+  `<branding>` colours and passes `appstreamcli validate`.
 
 ## [0.8.12] - 2026-09-17
 
