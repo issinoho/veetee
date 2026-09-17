@@ -731,7 +731,9 @@ fn browse_lat(
         let mut browser = match named.and_then(|name| vt_transport::lat::Browser::open(&name)) {
             Ok(browser) => browser,
             Err(e) => {
-                let _ = tx.send_blocking(Err(e.to_string()));
+                // A sandbox is the one refusal no capability answers.
+                let grantable = e.kind() != std::io::ErrorKind::Unsupported;
+                let _ = tx.send_blocking(Err((e.to_string(), grantable)));
                 return;
             }
         };
@@ -746,7 +748,8 @@ fn browse_lat(
                     }
                 }
                 Err(e) => {
-                    let _ = tx.send_blocking(Err(e.to_string()));
+                    let grantable = e.kind() != std::io::ErrorKind::Unsupported;
+                    let _ = tx.send_blocking(Err((e.to_string(), grantable)));
                     return;
                 }
             }
@@ -798,10 +801,26 @@ fn browse_lat(
                     });
                     group.add(&row);
                 }
-                Err(why) => {
+                Err((why, grantable)) => {
                     waiting.set_title("Cannot listen for LAT services");
                     waiting.set_subtitle(&why);
+                    // The command is the whole use of the message, so it can
+                    // be selected, and taken in one go where there is one.
+                    waiting.set_subtitle_selectable(true);
                     spinner.set_visible(false);
+                    if grantable {
+                        let copy = gtk::Button::builder()
+                            .icon_name("edit-copy-symbolic")
+                            .tooltip_text("Copy the command that grants it")
+                            .valign(gtk::Align::Center)
+                            .css_classes(["flat"])
+                            .build();
+                        copy.connect_clicked(|button| {
+                            button.clipboard().set_text(&vt_transport::lat::grant());
+                            button.set_tooltip_text(Some("Copied"));
+                        });
+                        waiting.add_suffix(&copy);
+                    }
                     return;
                 }
             }

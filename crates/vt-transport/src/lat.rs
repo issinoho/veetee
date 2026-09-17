@@ -302,9 +302,10 @@ fn from_helper(interface: &str, refused: &io::Error) -> io::Result<Listener> {
                     e.kind(),
                     format!(
                         "LAT needs veetee-lat-helper to open a socket, and there is none at \
-                         {0}.\nIn a build tree, build it:  cargo build -p vt-lat-helper\nThen \
-                         grant it the capability:  sudo setcap cap_net_raw+ep {0}",
-                        helper.display()
+                         {}.\nIn a build tree, build it:  cargo build -p vt-lat-helper\nThen \
+                         grant it the capability:  {}",
+                        helper.display(),
+                        grant()
                     ),
                 )
             } else {
@@ -335,10 +336,7 @@ fn from_helper(interface: &str, refused: &io::Error) -> io::Result<Listener> {
                 if why.is_empty() {
                     format!("{} gave back no socket", helper.display())
                 } else {
-                    format!(
-                        "{why}\nGrant it with: sudo setcap cap_net_raw+ep {}",
-                        helper.display()
-                    )
+                    format!("{why}\nGrant it with: {}", grant())
                 },
             ))
         }
@@ -367,6 +365,15 @@ fn take_socket(from: &std::os::unix::net::UnixStream) -> io::Result<Option<Owned
         RecvAncillaryMessage::ScmRights(fds) => fds.into_iter().next(),
         _ => None,
     }))
+}
+
+/// What to type to let the helper open a socket: for a message to show, or a
+/// button to put it on the clipboard with.
+///
+/// The capability lives in the file, so it is granted once — and again after
+/// every upgrade, a new package being a new file.
+pub fn grant() -> String {
+    format!("sudo setcap cap_net_raw+ep {}", helper_path().display())
 }
 
 /// Where to look for the helper: beside the running program, where a build

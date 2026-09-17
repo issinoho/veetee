@@ -56,7 +56,9 @@ flatpak run com.issinoho.Veetee --telnet vms1
 
 In the Flatpak, local shells, commands and `--ssh` run on the host through `flatpak-spawn`, so
 they see your own shell, files and `~/.ssh`; settings are kept in
-`~/.var/app/com.issinoho.Veetee/config/veetee`. Build it yourself with
+`~/.var/app/com.issinoho.Veetee/config/veetee`. **LAT cannot work in the Flatpak**: its sandbox
+refuses raw Ethernet sockets outright, so use the package or the tarball for that. Build it
+yourself with
 `flatpak-builder --user --install --force-clean build packaging/flatpak/com.issinoho.Veetee.yml`.
 
 For Windows 10 (1809) or later, unzip `veetee-0.8.9-x86_64-windows.zip` and run
@@ -189,6 +191,11 @@ capability is not granted when veetee is installed:
 ```sh
 sudo setcap cap_net_raw+ep /usr/libexec/veetee-lat-helper
 ```
+
+**Again after every upgrade.** The capability is an attribute of the file, so it survives reboots
+and logins but not a new package: installing a new veetee replaces the helper, and the new one
+has no capability until it is granted. The Connections window offers the command to copy when it
+finds the helper cannot open a socket.
 
 From a build tree the helper is a crate of its own, and `cargo run -p veetee` does not build it:
 
