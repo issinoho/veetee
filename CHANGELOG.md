@@ -13,6 +13,10 @@ milestones (0.3 = M3). The format follows [Keep a Changelog](https://keepachange
   verifies, and both programs run from an unrelated directory. 0.8.12 went to
   [winget-pkgs#436670](https://github.com/microsoft/winget-pkgs/pull/436670).
 
+  This is the whole of the Windows distribution story: **no Inno Setup or WiX installer** will be
+  built. `winget uninstall` works and an Add/Remove Programs entry is registered, so only a Start
+  menu shortcut is given up.
+
 - **Fixed: winget's `PublisherUrl` pointed at a domain that does not answer.** The validation bot
   could not reach `https://issinoho.com`, which resolves but serves nothing on port 80 or 443, so
   the publisher is now `https://github.com/issinoho`.

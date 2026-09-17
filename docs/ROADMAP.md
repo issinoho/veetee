@@ -136,23 +136,27 @@ left here is other people's hardware rather than work.
 ## Left before 1.0
 
 **Every milestone is done.** M5 was the last, closing with LAT in 0.8.9 and RFC 2217 proved
-against `ser2net` in 0.8.10. Nothing below is engineering: they are decisions to make, and
-limitations 1.0 would ship with rather than fix.
+against `ser2net` in 0.8.10. Nothing below is engineering. The distribution decisions are settled
+too — winget alone on Windows, no Flathub — so **the only one left open is when to call 1.0**;
+the rest of this section is limitations 1.0 would ship with rather than fix.
 
 ### Decisions
 
 - **1.0 itself**: when to call it. The version is the user's call, and there is no longer anything
   outstanding that has to land first.
-- **Windows installer, or winget alone.** A release ships a zip holding the GTK runtime, so there
-  is no Start menu entry, no uninstall and no upgrade path. **winget is submitted**:
-  [winget-pkgs#436670](https://github.com/microsoft/winget-pkgs/pull/436670) offers 0.8.12 as a
-  portable package, awaiting the validation bot and a moderator. It was installed from the local
-  manifests first and does work: winget verifies the zip's checksum, unpacks it, and both
-  `veetee` and `vt-headless` run from an unrelated directory, GTK resolving beside them.
+- **Windows: winget alone** (17 September 2026). No Inno Setup or WiX installer. A release ships
+  a zip holding the GTK runtime, and winget takes that zip as a portable package:
+  [winget-pkgs#436670](https://github.com/microsoft/winget-pkgs/pull/436670) offers 0.8.12, is
+  past URL validation and waiting on a moderator. It was installed from the local manifests first
+  and does work — winget verifies the checksum, unpacks it, and both `veetee` and `vt-headless`
+  run from an unrelated directory with GTK resolving beside them. `winget uninstall` removes it
+  and it registers an Add/Remove Programs entry, so uninstall and upgrade are answered.
+
+  What veetee gives up by not building an installer is a **Start menu shortcut**, which for a
+  windowed application is a real gap: a first-time user has to know to type `veetee` in a shell.
+  That was judged not worth a second artifact to build and code-sign every release.
   [`packaging/winget`](../packaging/winget) has the manifests, `cargo xtask winget VERSION` points
-  them at a release, and its README covers the submission. What is left is deciding whether a
-  Start menu entry and an uninstall entry are worth an **Inno Setup or WiX installer** as well — a
-  second thing to build and code-sign every release — or whether winget answers it.
+  them at a release, and its README covers the submission.
 - **Flathub: decided against** (17 September 2026). The manifest in
   [`packaging/flathub`](../packaging/flathub) was finished and Flathub's own
   `flatpak-builder-lint` run against it, which returned three errors. `appid-url-not-reachable`

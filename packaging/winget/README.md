@@ -8,6 +8,11 @@ nothing else is needed and nothing is installed into the system.
 That means no new artifact to build or sign — the manifests here point at the zip a release
 already publishes.
 
+This is the chosen route for Windows: **there is no Inno Setup or WiX installer**, and none is
+planned. `winget uninstall` removes veetee and it registers an Add/Remove Programs entry, so the
+only thing given up is a Start menu shortcut — judged not worth a second artifact to build and
+code-sign every release.
+
 ## What is here
 
 They sit in `manifests/` rather than beside this file because `winget validate` reads *every*
