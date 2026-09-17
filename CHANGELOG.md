@@ -5,6 +5,36 @@ milestones (0.3 = M3). The format follows [Keep a Changelog](https://keepachange
 
 ## [Unreleased]
 
+## [0.8.10] - 2026-09-17
+
+Says what to do when LAT cannot open a socket, having told the first people to try it very little
+of use.
+
+- **Fixed: LAT in the Flatpak says so.** Its sandbox refuses a raw Ethernet socket outright rather
+  than for want of privilege, which veetee passed on as `Address family not supported by protocol
+  (os error 97)` — true, and no help to anybody. It now says that the Flatpak does not allow the
+  socket and to use the package or the tarball instead. The fallback to the helper was matching on
+  being refused permission alone, so a refusal of any other kind never reached it.
+
+- **Fixed: the capability is asked for once, and can be copied.** The message said the same thing
+  twice, and began by suggesting `sudo` — which is right for `vt-headless` and wrong for a GTK
+  terminal, since one raised by file capabilities does not start at all. What is left is the
+  reason and the remedy:
+
+  ```
+  Operation not permitted (os error 1): LAT needs CAP_NET_RAW
+  Grant it with: sudo setcap cap_net_raw+ep /usr/libexec/veetee-lat-helper
+  ```
+
+  The command could not be taken out of the window, an `AdwActionRow` subtitle not being
+  selectable, so the one thing to run had to be typed out by hand. It is selectable now, and where
+  a capability is what is wanted the row carries a button that puts the command on the clipboard.
+
+- **Documented: the capability is granted again after every upgrade.** It is an attribute of the
+  file, so it lasts across reboots and logins but not across a new package, which is a new file.
+  The README says so, and says in the Flatpak section — rather than only further down — that LAT
+  cannot work there at all.
+
 ## [0.8.9] - 2026-09-17
 
 LAT, DEC's own terminal protocol: veetee opens a session on an OpenVMS node over raw Ethernet,
@@ -398,7 +428,8 @@ The first release: VT100 through VT420 emulation with local, Telnet, SSH and ser
   `cargo deny` licence checks and parser fuzzing.
 - `cargo xtask dist` builds the release tarball and Debian package.
 
-[Unreleased]: https://github.com/issinoho/veetee/compare/v0.8.9...HEAD
+[Unreleased]: https://github.com/issinoho/veetee/compare/v0.8.10...HEAD
+[0.8.10]: https://github.com/issinoho/veetee/compare/v0.8.9...v0.8.10
 [0.8.9]: https://github.com/issinoho/veetee/compare/v0.8.8...v0.8.9
 [0.8.8]: https://github.com/issinoho/veetee/compare/v0.8.7...v0.8.8
 [0.8.7]: https://github.com/issinoho/veetee/compare/v0.8.6...v0.8.7
