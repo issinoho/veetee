@@ -33,6 +33,24 @@ const SLOT_DATA: u8 = 0x00;
 /// One length byte counts a slot's data, so this is as much as one carries.
 const MAX_SLOT: usize = 255;
 
+/// As much credit as the low nibble of a control byte will hold.
+///
+/// A slot spends one of the credits the far end has been given, and a node
+/// with none left stops sending: MYI64 broke off mid-word in the middle of a
+/// system description, then acknowledged politely for as long as it was
+/// asked to, having been granted fifteen at the start of the session and
+/// nothing since.
+const MAX_CREDIT: u8 = 15;
+
+/// Grant more once the far end is down to this much, so that it is never
+/// left waiting between one grant and the next.
+///
+/// 🔎 Granting is read as adding to what the far end has rather than
+/// replacing it, because OpenVMS grants zero on most slots and a session
+/// carries on through them. How much a node ought to grant, and what it
+/// spends credit on besides a slot, are not read.
+const LOW_CREDIT: u8 = MAX_CREDIT / 2;
+
 /// The first identifier this end gives its own side of a circuit. Any number
 /// will do — the far end simply quotes it back — and this one is veetee's.
 const FIRST_CIRCUIT: u16 = 0x1001;
@@ -124,6 +142,9 @@ pub struct Session {
     /// to us.
     local_slot: u8,
     remote_slot: u8,
+    /// How much credit the far end has left: it spends one on every slot it
+    /// sends, and stops sending when it has none.
+    credit: u8,
     /// Frames waiting to be sent.
     outgoing: Vec<Vec<u8>>,
     /// Typing that arrived before the far end had prompted, which it would
@@ -143,6 +164,7 @@ impl Session {
             heard: 0,
             local_slot: 1,
             remote_slot: 1,
+            credit: 0,
             outgoing: Vec::new(),
             early: Vec::new(),
         }
@@ -275,6 +297,9 @@ impl Session {
             data: &data,
         }]);
         self.outgoing.push(frame);
+        // SLOT_START carries fifteen in its low nibble, which is the whole of
+        // the far end's allowance until this end grants more.
+        self.credit = MAX_CREDIT;
         self.state = State::Asked;
         Event::Opened
     }
@@ -318,6 +343,7 @@ impl Session {
                 data.extend_from_slice(slot.data);
             }
         }
+        self.spend(run.slots.len());
         if data.len() == before {
             return Event::Housekeeping;
         }
@@ -342,16 +368,47 @@ impl Session {
         Event::Closed
     }
 
-    /// A run message carrying one slot of session data.
+    /// A run message carrying one slot of session data, and any credit that
+    /// has fallen due with it.
     fn data_frame(&mut self, data: &[u8]) -> Vec<u8> {
+        // Type zero is session data, against SLOT_START for the slot that
+        // asks for a service; the low nibble is what the far end may spend.
+        let control = SLOT_DATA | self.grant();
         self.slot_frame(&[Slot {
             to: self.remote_slot,
             from: self.local_slot,
-            // Session data, against SLOT_START for the slot that asks for a
-            // service.
-            control: 0,
+            control,
             data,
         }])
+    }
+
+    /// Counts what the far end has spent, and grants more before it runs out.
+    ///
+    /// A terminal has nothing to say for as long as the user is reading, so
+    /// the grant cannot wait for something to carry it: OpenVMS sends empty
+    /// slots for this, and so does veetee.
+    fn spend(&mut self, slots: usize) {
+        self.credit = self
+            .credit
+            .saturating_sub(u8::try_from(slots).unwrap_or(u8::MAX));
+        if self.credit <= LOW_CREDIT {
+            let control = SLOT_DATA | self.grant();
+            let frame = self.slot_frame(&[Slot {
+                to: self.remote_slot,
+                from: self.local_slot,
+                control,
+                data: &[],
+            }]);
+            self.outgoing.push(frame);
+        }
+    }
+
+    /// What to put in the low nibble of the next slot sent: enough to bring
+    /// the far end back to a full allowance.
+    fn grant(&mut self) -> u8 {
+        let grant = MAX_CREDIT - self.credit;
+        self.credit = MAX_CREDIT;
+        grant
     }
 
     /// A run message with nothing in it, which says only what has been heard.
@@ -569,8 +626,9 @@ mod tests {
         assert_eq!(typed.slots.len(), 1);
         assert_eq!(typed.slots[0].data, b"SYSTEM\r");
         assert_eq!(
-            typed.slots[0].control, 0,
-            "session data, against SLOT_START for the request"
+            typed.slots[0].control,
+            SLOT_DATA | 2,
+            "session data, granting back the two slots the prompt spent"
         );
         assert_eq!(
             (typed.slots[0].to, typed.slots[0].from),
@@ -582,6 +640,74 @@ mod tests {
             "after the start and the prompt were answered"
         );
         assert_eq!(typed.acknowledged, 3);
+    }
+
+    #[test]
+    fn the_far_end_is_granted_more_credit_before_it_runs_out() {
+        let (mut session, mut data) = agreed();
+        assert_eq!(
+            session.credit, MAX_CREDIT,
+            "the slot asking for a service grants a full allowance"
+        );
+
+        // Eight slots of the circuit talking, which carry no terminal data
+        // but are spent all the same.
+        let spent = Run {
+            flags: 0,
+            theirs: 0x7001,
+            ours: 0xe001,
+            sequence: 4,
+            acknowledged: 3,
+            slots: vec![
+                Slot {
+                    to: 1,
+                    from: 1,
+                    control: 0xa0,
+                    data: &[0xff; 4],
+                };
+                8
+            ],
+        }
+        .build();
+        assert_eq!(session.receive(&spent, &mut data), Event::Housekeeping);
+        assert_eq!(session.credit, MAX_CREDIT, "topped back up");
+
+        let out = session.take_outgoing();
+        assert_eq!(out.len(), 2, "the acknowledgement, and then the credit");
+        let Ok(Message::Run(granted)) = crate::parse(&out[1]) else {
+            panic!("not a run")
+        };
+        assert_eq!(granted.slots.len(), 1);
+        assert!(
+            granted.slots[0].data.is_empty(),
+            "a terminal has nothing to say while the user reads, so the grant
+             goes on its own"
+        );
+        assert_eq!(
+            granted.slots[0].control,
+            SLOT_DATA | 8,
+            "session data, granting back the eight that were spent"
+        );
+    }
+
+    #[test]
+    fn typing_carries_the_credit_that_is_due() {
+        let (mut session, mut data) = agreed();
+        session.receive(PROMPT, &mut data);
+        session.take_outgoing();
+        session.credit = MAX_CREDIT - 2;
+
+        session.write(b"x");
+        let out = session.take_outgoing();
+        let Ok(Message::Run(typed)) = crate::parse(&out[0]) else {
+            panic!("not a run")
+        };
+        assert_eq!(
+            typed.slots[0].control,
+            SLOT_DATA | 2,
+            "a slot on its way carries the grant rather than waiting"
+        );
+        assert_eq!(typed.slots[0].data, b"x");
     }
 
     #[test]

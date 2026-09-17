@@ -238,9 +238,29 @@ login, because both decisions turned on the wrong nibble.
 🔎 veetee shows the terminal type 0 and nothing else, so a data slot of a type never seen
 would be dropped rather than displayed.
 
-🔎 **Credit is not understood.** veetee grants fifteen in the slot that asks for a service and
-never grants any again, and a session survives a login and several commands that way. Whether a
-long enough burst of output would stall for want of it is untested.
+**Credit is flow control, and running out of it stops a session dead.** A slot spends one of the
+credits its sender has been granted; a node with none left sends nothing but acknowledgements. That
+is not a deduction from the shape of the byte — veetee granted fifteen at the start of a session
+and none afterwards, and MYI64 broke off in the middle of a word:
+
+```
+circuit 0x9001: 15 sent, 30 heard, 1 slot
+      session 1 to 1  control 0x00  254 bytes  ... Hardware type: HP rx2660 ...       Software
+circuit 0x9001: heard 31
+circuit 0x9001: heard 32
+```
+
+It had more to send, it was still acknowledging, and it never sent another byte.
+
+🔎 A grant **adds** to what the far end has rather than replacing it, because OpenVMS grants
+zero on most of its slots and a session carries on through them. veetee grants the far end back up
+to fifteen whenever it is down to seven, on a slot that is going anyway or on an empty one if
+nothing is — a terminal has nothing to say for as long as the user is reading, and the host sends
+empty slots for the same reason (`control 0x03` and `0x0f` with no data). How much a node ought to
+grant, and whether anything but a slot spends credit, are not read.
+
+🔎 veetee does not count its own credit, only what it has granted. Typing is a trickle beside a
+listing, so nothing has run it out; pasting into a session might.
 
 🔎 The byte that pads an odd-length slot is **not** zeroed: OpenVMS sent `0x25` in one
 observed, which looks like whatever was in its buffer rather than anything meant. A reader should
@@ -259,7 +279,8 @@ this document.
   a parameter block, three bytes, and two empty ones — and ends with a slot **from session 0**
   carrying nothing, sent as VMS closes the login. The second is very likely the session ending,
   but only its position says so, so veetee does not act on it.
-- **Credit**, as above: granted once and never again, with no sign yet of that being too few.
+- **How much credit to grant, and what spends it.** That a slot spends one, and that running out
+  stops a sender, is settled; the rest of the policy is veetee's own choice.
 - **The flag bits** that make a run message `0x00`, `0x01` or `0x02`.
 - **Stop (`0x0a`)** is seen once, eleven bytes, and not understood beyond its shape.
 - **`0x3c`**, sent by both nodes, carrying a node address and the same version and frame size as an
