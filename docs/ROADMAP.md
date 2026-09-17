@@ -106,6 +106,13 @@ left here is a limitation rather than work.
   a saved-connection kind in `profiles.toml`; and an entry in the connection dialog beside Telnet
   and SSH.
 
+  In the window it is a DEC terminal on a DEC protocol, which is the whole point of the project.
+  `SET TERMINAL/INQUIRE` at login identifies veetee as `Device_Type: VT400_Series` and then sets
+  the line up for it — `CSI 62 " p` for the VT400 conformance level, `CSI 24 * |` for the page,
+  `CSI ? 3 l` for eighty columns, `ESC SP F` for 7-bit controls — and `SHOW TERMINAL` reports
+  80 × 24, `Eightbit`, `Soft Characters` and `DEC_CRT` through `DEC_CRT4`. A file of sixty lines
+  types out without a pause.
+
   Left: the **service browser**, listing what is announcing itself so a node can be picked rather
   than typed — `vt-headless lat INTERFACE` already reads the announcements, so this is the dialog
   rather than the protocol. Several fields of the messages are still copied rather than

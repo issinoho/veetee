@@ -199,9 +199,18 @@ the caller's to take down. Seen twice: on `LOGOUT`, and when a login was timed o
 password.
 
 `SHOW TERMINAL` on the far end reports the name from the start message — `LAT Server/Port:
-VEETEE` — which is one more field of it confirmed. It reports the page size from the
-cursor-position probe VMS makes at login rather than from the slot that asked for the service, so
-what that slot declares has not been proved to matter.
+VEETEE` — which is one more field of it confirmed. Behind the terminal itself it reports:
+
+```
+Terminal: _LTA5052:   Device_Type: VT400_Series  Owner: TEST
+   Input:    9600     Width:  80      Output:   9600     Page:   24
+   Eightbit ... Soft Characters ... DEC_CRT  DEC_CRT2  DEC_CRT3  DEC_CRT4
+```
+
+So `SET TERMINAL/INQUIRE` at login identifies veetee as a VT420 over LAT, and sets the line up
+for 8-bit controls and soft character sets. 🔎 Whether the page size comes from the slot that
+asked for the service or from the cursor-position probe VMS makes at login is still not told
+apart, both saying the same thing now that a real terminal answers the probe.
 
 ### Starting a session
 
