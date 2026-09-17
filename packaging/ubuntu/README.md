@@ -41,7 +41,15 @@ dput ppa:issinoho/veetee target/ppa/SERIES/veetee_VERSION-0ubuntu1~SERIES1_sourc
 Each series needs its own upload, and a version can only be uploaded once — a rejected or
 superseded upload needs the `~series2` suffix bumped.
 
-## Two traps worth knowing
+## Three traps worth knowing
+
+**One orig tarball serves every series, and it has to be byte-identical.** Launchpad keeps a single
+`veetee_VERSION.orig.tar.xz` per archive: the first series to be accepted defines it, and a later
+upload carrying the same name with different bytes is rejected. `cargo vendor` is not reproducible
+enough to survive being run twice, so `build-source.sh` vendors once, caches the tarball at
+`target/ppa/veetee_VERSION.orig.tar.xz` and unpacks every series' tree from that exact file. If a
+rejection ever mentions the orig tarball, delete the cached one and rebuild every series together.
+
 
 **`dh_clean` deletes the vendored manifests.** Its `find` removes every `*.orig` in the tree, which
 takes out the `Cargo.toml.orig` that each crate's `.cargo-checksum.json` accounts for, and cargo

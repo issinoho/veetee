@@ -19,17 +19,26 @@ OUT="$ROOT/target/ppa/$SERIES"
 SRC="$OUT/veetee-$VERSION"
 TAG="v$VERSION"
 
+# One orig tarball serves every series, and it must be byte-identical between
+# them: Launchpad keeps a single veetee_VERSION.orig.tar.xz per archive and
+# rejects a second upload that carries the same name with different contents.
+# cargo vendor is not reproducible enough to rely on running it twice, so it
+# runs once and the result is cached here.
+ORIG="$ROOT/target/ppa/veetee_$VERSION.orig.tar.xz"
+
 git -C "$ROOT" rev-parse -q --verify "refs/tags/$TAG" >/dev/null || {
     echo "no such tag: $TAG" >&2; exit 1; }
 
-echo "==> preparing $SRC from $TAG"
-rm -rf "$OUT"; mkdir -p "$SRC"
-git -C "$ROOT" archive --format=tar "$TAG" | tar -x -C "$SRC"
+if [ ! -f "$ORIG" ]; then
+    BUILD="$ROOT/target/ppa/.orig-build"
+    echo "==> preparing the shared orig tarball from $TAG"
+    rm -rf "$BUILD"; mkdir -p "$BUILD/veetee-$VERSION"
+    git -C "$ROOT" archive --format=tar "$TAG" | tar -x -C "$BUILD/veetee-$VERSION"
 
-echo "==> vendoring crates (needs network here; the builder has none)"
-( cd "$SRC" && cargo vendor --locked --versioned-dirs vendor >/dev/null )
-mkdir -p "$SRC/.cargo"
-cat > "$SRC/.cargo/config.toml" <<'EOF'
+    echo "==> vendoring crates (needs network here; the builder has none)"
+    ( cd "$BUILD/veetee-$VERSION" && cargo vendor --locked --versioned-dirs vendor >/dev/null )
+    mkdir -p "$BUILD/veetee-$VERSION/.cargo"
+    cat > "$BUILD/veetee-$VERSION/.cargo/config.toml" <<'EOF'
 [source.crates-io]
 replace-with = "vendored-sources"
 
@@ -37,10 +46,22 @@ replace-with = "vendored-sources"
 directory = "vendor"
 EOF
 
-# The packaging itself is not in the orig tarball: it is the Debian diff.
-echo "==> orig tarball"
-tar --create --xz --directory "$OUT" \
-    --exclude-vcs --file "$OUT/veetee_$VERSION.orig.tar.xz" "veetee-$VERSION"
+    mkdir -p "$(dirname "$ORIG")"
+    tar --create --xz --directory "$BUILD" \
+        --exclude-vcs --file "$ORIG" "veetee-$VERSION"
+    rm -rf "$BUILD"
+    echo "    $ORIG"
+else
+    echo "==> reusing the shared orig tarball"
+    echo "    $ORIG"
+fi
+
+# Unpack the source from that exact tarball, so the tree and the orig always
+# agree no matter which series is built first.
+echo "==> preparing $SRC"
+rm -rf "$OUT"; mkdir -p "$OUT"
+tar -xf "$ORIG" -C "$OUT"
+cp "$ORIG" "$OUT/"
 
 echo "==> debian/ for $SERIES"
 cp -a "$HERE/debian" "$SRC/debian"
