@@ -54,25 +54,43 @@ Install `ser2net` and give it the adapter. Version 4, which is what current dist
 
 ```yaml
 connection: &usb
-  accepter: telnet(rfc2217),tcp,2001
+  accepter: telnet(rfc2217),tcp,localhost,4001
   connector: serialdev,/dev/ttyUSB0,9600n81,local
 ```
 
 `telnet(rfc2217)` is the part that matters: without it ser2net serves plain Telnet and refuses the
-option, which is worth trying too — it is test 2 from the other side. Version 3 uses
-`/etc/ser2net.conf` and one line per port, where the option is enabled by adding `remctl`:
+option, which is worth trying too — it is test 2 from the other side.
+
+**Pick a port the packaged configuration does not already claim.** Debian and Ubuntu ship an
+`/etc/ser2net.yaml` with connections on **2000, 2001, 3000 and 3001**, wired to `/dev/ttyS0` and
+`/dev/ttyS1`. Adding a second connection on one of those does not replace it: the packaged one
+answers, tries to open a serial port the machine has not got, and drops the connection with
+`Device open failure: Internal I/O error` — which reaches a client as `Connection reset by peer`,
+and looks for all the world like a fault in the client. 4001 is out of the way.
+
+Version 3 uses `/etc/ser2net.conf` and one line per port, where the option is enabled by adding
+`remctl`:
 
 ```
 2001:telnet:600:/dev/ttyUSB0:9600 8DATABITS NONE 1STOPBIT remctl
 ```
 
+**Restart ser2net after editing** — `sudo systemctl restart ser2net` — or the running one keeps
+the configuration it started with. A stale one still accepts the connection and then drops it,
+which veetee reports as `Connection reset by peer`; `ser2net -n -d -c /etc/ser2net.yaml` in the
+foreground says what it is really doing.
+
 Then ask for something distinctive and look at the port:
 
 ```sh
+telnet localhost 4001                      # should stay open; ^] then quit to leave
 stty -F /dev/ttyUSB0 -a | head -2          # before: 9600, cs8, -parenb
-veetee --telnet localhost:2001 -b 19200 -d 7 -p e -s 2 -f h
+veetee --telnet localhost:4001 -b 19200 -d 7 -p e -s 2 -f h
 stty -F /dev/ttyUSB0 -a | head -2          # during the session
 ```
+
+The `telnet` first is worth the ten seconds: if ser2net drops that, it will drop veetee, and the
+fault is in the configuration rather than in anything being tested.
 
 The second `stty` should report `speed 19200 baud`, `cs7`, `parenb -parodd`, `cstopb` and
 `crtscts`. Anything veetee asked for that is not there is a fault worth reporting, and anything
@@ -84,7 +102,7 @@ Work through the settings one at a time — `-b 1200`, `-b 115200`, `-p o`, `-d 
 A capture is easy here too, the whole conversation being on the loopback interface:
 
 ```sh
-sudo tcpdump -i lo -w rfc2217.pcap tcp port 2001
+sudo tcpdump -i lo -w rfc2217.pcap tcp port 4001
 ```
 
 ### What to plug the cable into
