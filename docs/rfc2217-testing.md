@@ -18,7 +18,8 @@ not mistaken for a fault.
   Lantronix, Moxa NPort, Digi, or anything else of the kind.
 - Something on the far end of that serial line whose speed you can change or know — a VAX or Alpha
   console, a PDP-11, a modem, a second computer running `screen` or `picocom`, even a loopback
-  plug.
+  plug. For the `ser2net` route below, **nothing at all**: see
+  [what to plug in](#what-to-plug-the-cable-into).
 
 ## Which servers speak it
 
@@ -86,9 +87,27 @@ A capture is easy here too, the whole conversation being on the loopback interfa
 sudo tcpdump -i lo -w rfc2217.pcap tcp port 2001
 ```
 
-A loopback plug on the adapter (pins 2 and 3 joined) makes the session echo what is typed, which
-shows data flowing as well as settings landing. It cannot show a speed mismatch, both ends of the
-loop being the same line — for that, two adapters and a null modem, or a real far end.
+### What to plug the cable into
+
+**Nothing, for the test above.** The adapter goes in a USB port and its serial end can hang free.
+ser2net opens `/dev/ttyUSB0` and applies what veetee asks to the port; `stty` reads it back out of
+the driver. No byte has to arrive anywhere for that to be a real answer, because the question is
+whether the settings reach the line, not whether something is listening on it.
+
+Connecting something buys more, in order of effort:
+
+| On the far end | What it adds |
+|---|---|
+| Nothing | Tests 1, 2, 7, 8 and every setting check. Most of this page |
+| A loopback plug | Typing echoes back, so data is shown flowing at the settings that were asked for |
+| A second machine, or a real device | A wrong speed shows as rubbish; break and flow control become testable (tests 5 and 6) |
+
+A loopback plug is a DB9 with **pins 2 and 3 joined** — a paperclip will do. Add **7 to 8**
+(RTS to CTS) if you want to try `-f h` without a stall, since hardware flow control waits on CTS,
+and **4 to 6** (DTR to DSR) for completeness.
+
+One caveat on `-f h` with nothing attached: `stty` will still show `crtscts`, because the request
+did reach the driver. Whether the wires then do anything is a separate question, and needs wires.
 
 ## How veetee speaks it
 
