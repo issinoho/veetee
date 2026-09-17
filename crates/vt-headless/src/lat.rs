@@ -81,17 +81,45 @@ fn connect(
 
     let mut writer = session.writer()?;
     if let Some(text) = &typing {
-        // No waiting for the prompt: the session holds typing back until the
-        // far end has spoken, since it will not read before it has prompted.
-        writeln!(writer, "{text}")?;
+        // A DEC keyboard sends a carriage return for Return, and OpenVMS
+        // submits a line on one: a line feed leaves it sitting at the prompt.
+        // No waiting for the prompt either, since the session holds typing
+        // back until the far end has spoken.
+        let mut line = text.clone().into_bytes();
+        line.push(b'\r');
+        writer.write_all(&line)?;
         eprintln!("typed {text:?}");
     }
+    // Anything else typed goes the same way, so a session can be logged into.
+    // The terminal is in line mode, so a line goes when Return is pressed and
+    // is echoed locally as well as by the host -- a password included, which
+    // LAT carries in clear on the wire in any case.
+    std::thread::spawn(move || {
+        use std::io::Read;
+        let mut stdin = io::stdin().lock();
+        let mut typed = [0u8; 256];
+        while let Ok(n) = stdin.read(&mut typed) {
+            if n == 0 {
+                break;
+            }
+            for byte in &mut typed[..n] {
+                if *byte == b'\n' {
+                    *byte = b'\r';
+                }
+            }
+            if writer.write_all(&typed[..n]).is_err() {
+                break;
+            }
+        }
+    });
 
     let until = seconds.map(|n| Instant::now() + Duration::from_secs(n));
     let mut buf = [0u8; 4096];
     loop {
         if until.is_some_and(|end| Instant::now() >= end) {
-            eprintln!("closing the circuit");
+            // On its own line: what the host last sent may have left the
+            // cursor anywhere, a carriage return without a line feed included.
+            eprintln!("\nclosing the circuit");
             return Ok(());
         }
         match session.read_timeout(&mut buf, Duration::from_millis(500)) {
@@ -117,12 +145,7 @@ fn listen(interface: &str, seconds: Option<u64>) -> io::Result<()> {
     use vt_lat::Message;
     use vt_transport::lat::{Listener, split};
 
-    let mut listener = Listener::open(interface).map_err(|e| {
-        io::Error::new(
-            e.kind(),
-            format!("{e}\nLAT needs CAP_NET_RAW: try sudo, or setcap cap_net_raw+ep"),
-        )
-    })?;
+    let mut listener = Listener::open(interface)?;
     match seconds {
         Some(n) => eprintln!("listening on {interface} for {n} seconds"),
         None => eprintln!("listening on {interface}; announcements come about once a minute"),

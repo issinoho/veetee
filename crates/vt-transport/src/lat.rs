@@ -48,7 +48,19 @@ impl Listener {
             Domain::from(libc::AF_PACKET),
             Type::from(libc::SOCK_RAW),
             Some(Protocol::from(i32::from(ETHERTYPE.to_be()))),
-        )?;
+        )
+        .map_err(|e| {
+            // Say what to do about it, but only when this is what went wrong:
+            // an interface that does not exist is not a question of privilege.
+            if e.kind() == io::ErrorKind::PermissionDenied {
+                io::Error::new(
+                    e.kind(),
+                    format!("{e}: LAT needs CAP_NET_RAW, so try sudo, or setcap cap_net_raw+ep"),
+                )
+            } else {
+                e
+            }
+        })?;
         let index = interface_index(interface)?;
         bind_to(&socket, index)?;
         join_group(&socket, index, interface)?;
@@ -280,12 +292,7 @@ impl Lat {
             .service
             .clone()
             .unwrap_or_else(|| config.node.clone());
-        let mut listener = Listener::open(&config.interface).map_err(|e| {
-            io::Error::new(
-                e.kind(),
-                format!("{e}\nLAT needs CAP_NET_RAW: try sudo, or setcap cap_net_raw+ep"),
-            )
-        })?;
+        let mut listener = Listener::open(&config.interface)?;
         let mut frame = vec![0u8; 2048];
         let peer = match config.address {
             Some(address) => address,
