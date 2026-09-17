@@ -5,6 +5,10 @@ milestones (0.3 = M3). The format follows [Keep a Changelog](https://keepachange
 
 ## [Unreleased]
 
+## [0.8.12] - 2026-09-17
+
+An RPM, so the Debian package is no longer the only one.
+
 - **Added: an RPM.** Releases carry one beside the Debian package and the tarball, built with
   `cargo-generate-rpm` from the same assets. It asks for its libraries by soname rather than by
   package name, so the one package resolves on Fedora, RHEL and openSUSE alike, whatever each
@@ -462,7 +466,8 @@ The first release: VT100 through VT420 emulation with local, Telnet, SSH and ser
   `cargo deny` licence checks and parser fuzzing.
 - `cargo xtask dist` builds the release tarball and Debian package.
 
-[Unreleased]: https://github.com/issinoho/veetee/compare/v0.8.11...HEAD
+[Unreleased]: https://github.com/issinoho/veetee/compare/v0.8.12...HEAD
+[0.8.12]: https://github.com/issinoho/veetee/compare/v0.8.11...v0.8.12
 [0.8.11]: https://github.com/issinoho/veetee/compare/v0.8.10...v0.8.11
 [0.8.10]: https://github.com/issinoho/veetee/compare/v0.8.9...v0.8.10
 [0.8.9]: https://github.com/issinoho/veetee/compare/v0.8.8...v0.8.9
