@@ -1,5 +1,26 @@
 # Submitting veetee to Flathub
 
+> **Decided against, 17 September 2026.** veetee is not being submitted to Flathub, and this
+> directory is kept as the record of why rather than as a plan. Three things stood in the way,
+> and none of them is a packaging problem:
+>
+> - `flatpak-builder-lint` raises `appid-url-not-reachable`, because the app ID
+>   `com.issinoho.Veetee` obliges `https://issinoho.com` to answer and it does not — see below.
+> - It also raises `finish-args-flatpak-spawn-access` and `finish-args-home-filesystem-access`.
+>   Both need exceptions granted by pull request, and Flathub's documentation says such
+>   sandbox-escape exceptions "will not be granted if there are signs of LLM usage in the software
+>   or in the exception PR". This repository's history carries `Co-Authored-By` lines throughout.
+> - Flathub also states that "AI tools or agents must not open or automate Flathub submission pull
+>   requests, or generate their commit messages, descriptions, review comments, or replies", so
+>   the submission would have to be written and carried entirely by hand.
+>
+> The permissions the exceptions would cover — host shells, SSH and writing logs where the user
+> asks — are the ones that make veetee useful, so narrowing them to suit the store was not worth
+> it. `packaging/flatpak/` is unaffected: the Flatpak bundle still builds in CI and ships with
+> every release, and `flatpak install` on the built bundle works as it always did.
+>
+> What follows is the procedure as it stood, should the decision ever be revisited.
+
 `com.issinoho.Veetee.yml` here is the same build as
 [`../flatpak/com.issinoho.Veetee.yml`](../flatpak/com.issinoho.Veetee.yml), with the one change
 Flathub requires: the source is a `git` source pinned to a tag and the commit that tag names,
@@ -81,9 +102,12 @@ not worth breaking every installed copy to silence.
 ### The app ID, and the domain behind it
 
 Flathub wants an ID that is the reverse-DNS of a domain the developer controls. `issinoho.com`
-resolves (81.129.52.28, no-ip nameservers), so it is owned, but as of 17 September 2026 nothing
-answered on port 80 or 443 — checked from a corporate network that may well filter a residential
-address, so whether it serves a site is *unconfirmed*. Worth settling, because:
+resolves (81.129.52.28, no-ip nameservers), so it is owned, but it serves nothing: as of
+17 September 2026 nothing answered on port 80 or 443, checked from two networks, and winget's
+validation bot found the same from a third — which is what
+[winget-pkgs#436670](https://github.com/microsoft/winget-pkgs/pull/436670) failed on. (`www` is a
+different host, 90.211.19.100, which answers on 443 but has no certificate for the name.) Worth
+settling, because:
 
 - **Acceptance.** `com.issinoho.Veetee` is defensible on ownership alone, but a reviewer may ask,
   the homepage in the metainfo being `issinoho.github.io`.

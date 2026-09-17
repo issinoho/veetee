@@ -82,6 +82,23 @@ GitHub's device flow once and caches its own token, after which `submit` needs n
 0.8.12 was submitted this way as
 [winget-pkgs#436670](https://github.com/microsoft/winget-pkgs/pull/436670).
 
+### Every URL in the manifests has to answer
+
+The validation bot fetches each one, and the first attempt failed on exactly that:
+
+```
+Url Validation Error
+  https://issinoho.com
+    Error Message: A connection attempt failed because the connected party did not
+    properly respond after a period of time (issinoho.com:443)
+```
+
+`PublisherUrl` was `https://issinoho.com`, which resolves but serves nothing on 80 or 443 —
+checked from two networks. It is now `https://github.com/issinoho`, which is the usual answer for
+a publisher with no separate site. If the domain is ever stood up, this is the line to change
+back; the Flathub README wants the same domain for a verified badge, so the two would be settled
+together.
+
 ## Notes on the manifests
 
 - `MinimumOSVersion: 10.0.17763.0` is Windows 10 1809, which is what the GTK runtime in the zip

@@ -153,22 +153,24 @@ limitations 1.0 would ship with rather than fix.
   them at a release, and its README covers the submission. What is left is deciding whether a
   Start menu entry and an uninstall entry are worth an **Inno Setup or WiX installer** as well — a
   second thing to build and code-sign every release — or whether winget answers it.
-- **Flathub**: the manifest is ready in [`packaging/flathub`](../packaging/flathub), pinned to a
-  tag and commit as Flathub requires, with a README covering the submission and written answers
-  for the three permissions reviewers ask about — `--device=all` (serial lines, for which Flatpak
-  offers nothing narrower), `--talk-name=org.freedesktop.Flatpak` (host shells and SSH, so the
-  user's own keys apply) and `--filesystem=home` (logs and recordings named by the user). The
-  metainfo carries `<branding>` colours and passes `appstreamcli validate`, and
-  `cargo-sources.json` is current for 0.8.12 — the lock file has gained no external crate since it
-  was written.
+- **Flathub: decided against** (17 September 2026). The manifest in
+  [`packaging/flathub`](../packaging/flathub) was finished and Flathub's own
+  `flatpak-builder-lint` run against it, which returned three errors. `appid-url-not-reachable`
+  is the app ID's own domain: `com.issinoho.Veetee` obliges `https://issinoho.com` to answer, and
+  it does not — it resolves but serves nothing on 80 or 443, confirmed from three networks, and it
+  is the same fault that failed winget's URL validation. The other two,
+  `finish-args-flatpak-spawn-access` and `finish-args-home-filesystem-access`, need exceptions
+  granted by pull request, and Flathub's documentation says sandbox-escape exceptions "will not be
+  granted if there are signs of LLM usage in the software or in the exception PR"; this repository
+  is full of `Co-Authored-By` lines. Flathub further bars AI agents from opening or writing its
+  submission pull requests at all.
 
-  Left to do, **on a Linux desktop** rather than here: build it from the tag and run Flathub's own
-  `flatpak-builder-lint`, then fork `flathub/flathub` and open the pull request against the
-  `new-pr` branch. The README has the commands; no checkout is needed, the manifest building from
-  the tag. Unsettled: whether `issinoho.com` serves a site. It resolves, so the `com.issinoho`
-  prefix is defensible, but nothing answered on 80 or 443 from this network, and a token at
-  `https://issinoho.com/.well-known/org.flathub.VerifiedApps.txt` is the only route to a verified
-  badge for an ID that is not `io.github.*`.
+  Those two permissions are host shells and SSH, and writing logs where the user asks — the things
+  that make veetee worth installing — so narrowing them to suit one store was not worth it. The
+  metainfo passes `appstreamcli validate` and `--device=all` drew no complaint, so nothing here
+  reflects on the packaging. **`packaging/flatpak` is unaffected**: the bundle still builds in CI
+  and ships with every release. The README in `packaging/flathub` keeps the full reasoning and the
+  procedure, should this ever be reopened.
 
 ### Limitations 1.0 would ship with (from compat-matrix.md)
 
