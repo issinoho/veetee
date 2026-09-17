@@ -70,6 +70,13 @@ milestones (0.3 = M3). The format follows [Keep a Changelog](https://keepachange
   `SHOW TERMINAL` reports `Eightbit`, `Soft Characters` and `DEC_CRT` through `DEC_CRT4` on an
   `LTA` device OpenVMS created for it.
 
+- **Added: a LAT service browser.** The connection dialog has a button beside the node that opens
+  a window listing the services announcing themselves, a row each with its rating and what the
+  node says about itself; picking one fills the connection in, and leaves the service empty when
+  it is the node's own name. Nothing is asked for and nothing waits on a request: a node
+  announces itself about once a minute, and a solicit built by hand has never been answered, so
+  the list fills in as they arrive and says so while it is empty.
+
 - **Added: a helper, so that nothing drawing a terminal holds `CAP_NET_RAW`.**
   `veetee-lat-helper` opens the LAT socket and hands it straight back through a Unix socket pair,
   then exits; the circuit, the session and every frame after that are veetee's own work,

@@ -187,6 +187,65 @@ pub fn interfaces() -> Vec<Interface> {
     found
 }
 
+/// A service heard announcing itself, as a browser shows it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Announced {
+    /// The node offering it, which is what `--lat` wants.
+    pub node: String,
+    /// The service, often the node's own name.
+    pub service: String,
+    /// How willing the node is, recalculated from its load, so worth reading
+    /// afresh rather than remembering.
+    pub rating: u8,
+    /// What the node says about itself, truncated to 64 characters by the
+    /// sender.
+    pub identification: String,
+}
+
+/// Listens for the services announcing themselves on one interface.
+///
+/// There is nothing to ask: a solicit built by hand has never been answered,
+/// so a browser waits, and a node announces itself about once a minute. What
+/// arrives, arrives.
+#[derive(Debug)]
+pub struct Browser {
+    listener: Listener,
+    frame: Vec<u8>,
+}
+
+impl Browser {
+    /// Opens a socket to listen on, through the helper as a session does.
+    pub fn open(interface: &str) -> io::Result<Browser> {
+        Ok(Browser {
+            listener: open(interface)?,
+            frame: vec![0u8; 2048],
+        })
+    }
+
+    /// Waits up to `timeout` for a node to announce itself.
+    ///
+    /// Gives back every service of the one that did, and nothing at all when
+    /// the time runs out, which between announcements is most of the time.
+    pub fn next(&mut self, timeout: Duration) -> io::Result<Vec<Announced>> {
+        let n = self.listener.recv_timeout(&mut self.frame, timeout)?;
+        let Some((_, payload)) = split(&self.frame[..n]) else {
+            return Ok(Vec::new());
+        };
+        let Ok(Message::Announcement(a)) = vt_lat::parse(payload) else {
+            return Ok(Vec::new());
+        };
+        Ok(a.services
+            .iter()
+            .map(|service| Announced {
+                node: a.node.to_string(),
+                service: service.name.to_string(),
+                rating: service.rating,
+                identification: service.identification.trim().to_string(),
+            })
+            .collect())
+    }
+}
+
 /// The helper that holds `CAP_NET_RAW`, as it is installed and as it sits
 /// beside a binary that has not been installed at all.
 const HELPER: &str = "veetee-lat-helper";

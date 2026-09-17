@@ -98,8 +98,8 @@ left here is a limitation rather than work.
   manners — GTK refuses to start at all when it has file capabilities, the kernel setting
   `AT_SECURE`, so LAT in the window was impossible without it. The capability is **not** granted by
   the package: `sudo setcap cap_net_raw+ep /usr/libexec/veetee-lat-helper` turns it on, and veetee
-  says exactly that when it is missing. Still to prove on a wire that a socket crosses and carries
-  a session; the passing itself is tested, and the spawning and its errors are.
+  says exactly that when it is missing, naming the path it looked in. A socket has since crossed
+  from it into a session in the window, which is the whole of it proved.
 
   **LAT is a connection like any other**: `--lat NODE`, with `--interface` only where more than
   one Ethernet interface is up and `--service` only where the service is not the node's own name;
@@ -113,11 +113,17 @@ left here is a limitation rather than work.
   80 × 24, `Eightbit`, `Soft Characters` and `DEC_CRT` through `DEC_CRT4`. A file of sixty lines
   types out without a pause.
 
-  Left: the **service browser**, listing what is announcing itself so a node can be picked rather
-  than typed — `vt-headless lat INTERFACE` already reads the announcements, so this is the dialog
-  rather than the protocol. Several fields of the messages are still copied rather than
-  understood; they are marked in [`lat-protocol.md`](lat-protocol.md). Not available in the
-  Flatpak, which has no raw sockets, nor on Windows, which has no raw Ethernet without a driver.
+  The **service browser** is written: a button beside the node in the connection dialog opens a
+  window that listens and fills in as the announcements arrive, a row for each node and service
+  with its rating, and picking one fills in the connection. Nothing can be asked for — a node
+  announces itself about once a minute and a solicit built by hand has never been answered — so
+  the window says as much rather than looking broken while it waits. 🔎 It has been read but
+  not watched: nothing here can drive a GTK dialog, WSLg having no window manager to talk to.
+
+  Left: nothing, unless watching it turns something up. Several fields of the messages are still
+  copied rather than understood; they are marked in [`lat-protocol.md`](lat-protocol.md). Not
+  available in the Flatpak, which has no raw sockets, nor on Windows, which has no raw Ethernet
+  without a driver.
 
 ### Smaller gaps (from compat-matrix.md)
 

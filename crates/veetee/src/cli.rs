@@ -554,7 +554,7 @@ pub fn open_transport(config: &Config, connection: &Connection) -> io::Result<Bo
 /// reachable on the segment it is on and nowhere else. Choosing for the user
 /// is only safe when there is nothing to choose between.
 #[cfg(target_os = "linux")]
-fn lat_interface(named: Option<&str>) -> io::Result<String> {
+pub fn lat_interface(named: Option<&str>) -> io::Result<String> {
     if let Some(named) = named {
         return Ok(named.to_string());
     }

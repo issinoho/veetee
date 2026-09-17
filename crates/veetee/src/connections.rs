@@ -3,6 +3,10 @@
 
 use std::cell::RefCell;
 use std::rc::Rc;
+#[cfg(target_os = "linux")]
+use std::sync::Arc;
+#[cfg(target_os = "linux")]
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use adw::prelude::*;
 use gtk::glib;
@@ -357,6 +361,15 @@ fn editor(
     let device = adw::EntryRow::builder().title("Device").build();
     let interface = adw::EntryRow::builder().title("Interface").build();
     let service = adw::EntryRow::builder().title("Service").build();
+    // Listening for LAT services needs a socket, so it belongs to the one
+    // platform that has one.
+    let browse = gtk::Button::builder()
+        .icon_name("system-search-symbolic")
+        .tooltip_text("List the LAT services announcing themselves")
+        .valign(gtk::Align::Center)
+        .css_classes(["flat"])
+        .build();
+    host.add_suffix(&browse);
     let speed = combo(
         "Speed",
         &SPEEDS
@@ -479,7 +492,9 @@ fn editor(
             line_group.clone(),
         );
         let (interface, service) = (interface.clone(), service.clone());
+        let browse = browse.clone();
         move |kind: u32| {
+            browse.set_visible(kind == 3 && cfg!(target_os = "linux"));
             // LAT names a node rather than a host, and there is no port: it
             // is not IP at all.
             host.set_visible(kind <= 1 || kind == 3);
@@ -498,6 +513,25 @@ fn editor(
     };
     show_fields(kind.selected());
     kind.connect_selected_notify(move |k| show_fields(k.selected()));
+
+    #[cfg(target_os = "linux")]
+    browse.connect_clicked({
+        let (host, interface, service) = (host.clone(), interface.clone(), service.clone());
+        move |button| {
+            let named = interface.text().trim().to_string();
+            let (host, service) = (host.clone(), service.clone());
+            browse_lat(
+                button,
+                (!named.is_empty()).then_some(named),
+                move |node, name| {
+                    host.set_text(&node);
+                    // The node's own name is the usual service, and saying it
+                    // twice is noise: the field is left empty for that.
+                    service.set_text(if name == node { "" } else { &name });
+                },
+            );
+        }
+    });
 
     let cancel = gtk::Button::with_label("Cancel");
     let save_button = gtk::Button::builder()
@@ -630,4 +664,147 @@ fn editor(
         }
     });
     dialog.present(Some(parent));
+}
+
+/// Lists the LAT services announcing themselves, for one to be picked rather
+/// than typed, and calls `chosen` with the node and service of the one that
+/// is.
+///
+/// Nothing is asked for: a node announces itself about once a minute and a
+/// solicit built by hand has never been answered, so the list fills in as
+/// they arrive rather than all at once. The window says so, or it would look
+/// broken for the first minute.
+#[cfg(target_os = "linux")]
+fn browse_lat(
+    parent: &impl IsA<gtk::Widget>,
+    interface: Option<String>,
+    chosen: impl Fn(String, String) + 'static,
+) {
+    let group = adw::PreferencesGroup::builder()
+        .title("Services")
+        .description("A node announces itself about once a minute, so this fills in as they arrive")
+        .build();
+    let waiting = adw::ActionRow::builder().title("Listening…").build();
+    let spinner = gtk::Spinner::builder().spinning(true).build();
+    waiting.add_prefix(&spinner);
+    group.add(&waiting);
+
+    let page = adw::PreferencesPage::new();
+    page.add(&group);
+    let close = gtk::Button::with_label("Close");
+    let header = adw::HeaderBar::builder()
+        .show_start_title_buttons(false)
+        .show_end_title_buttons(false)
+        .build();
+    header.pack_start(&close);
+    let toolbar = adw::ToolbarView::new();
+    toolbar.add_top_bar(&header);
+    toolbar.set_content(Some(&page));
+    let dialog = adw::Dialog::builder()
+        .title("LAT Services")
+        .content_width(460)
+        .content_height(420)
+        .child(&toolbar)
+        .build();
+    close.connect_clicked({
+        let dialog = dialog.clone();
+        move |_| {
+            dialog.close();
+        }
+    });
+    dialog.present(Some(parent));
+
+    // Opening the socket can want the helper, and reading waits on the wire,
+    // so both happen away from the interface thread.
+    let (tx, rx) = async_channel::bounded(16);
+    // The thread waits on the wire, which is quiet for a minute at a time, so
+    // it cannot be left to notice the receiver going: it would go on polling
+    // for the life of the program after the window had closed.
+    let listening = Arc::new(AtomicBool::new(true));
+    {
+        let listening = listening.clone();
+        dialog.connect_closed(move |_| listening.store(false, Ordering::Relaxed));
+    }
+    let stop = listening.clone();
+    std::thread::spawn(move || {
+        let named = cli::lat_interface(interface.as_deref());
+        let mut browser = match named.and_then(|name| vt_transport::lat::Browser::open(&name)) {
+            Ok(browser) => browser,
+            Err(e) => {
+                let _ = tx.send_blocking(Err(e.to_string()));
+                return;
+            }
+        };
+        loop {
+            match browser.next(std::time::Duration::from_millis(500)) {
+                Ok(found) if found.is_empty() => {}
+                Ok(found) => {
+                    for service in found {
+                        if tx.send_blocking(Ok(service)).is_err() {
+                            return;
+                        }
+                    }
+                }
+                Err(e) => {
+                    let _ = tx.send_blocking(Err(e.to_string()));
+                    return;
+                }
+            }
+            // The window being gone is the only reason to stop.
+            if !stop.load(Ordering::Relaxed) || tx.is_closed() {
+                return;
+            }
+        }
+    });
+
+    let chosen = Rc::new(chosen);
+    glib::spawn_future_local(async move {
+        let mut seen: Vec<(String, String)> = Vec::new();
+        while let Ok(message) = rx.recv().await {
+            if !listening.load(Ordering::Relaxed) {
+                return;
+            }
+            match message {
+                Ok(service) => {
+                    // A node announces itself again and again; one row each.
+                    let key = (service.node.clone(), service.service.clone());
+                    if seen.contains(&key) {
+                        continue;
+                    }
+                    if seen.is_empty() {
+                        group.remove(&waiting);
+                    }
+                    seen.push(key);
+                    let row = adw::ActionRow::builder()
+                        .title(if service.service == service.node {
+                            service.node.clone()
+                        } else {
+                            format!("{} — {}", service.node, service.service)
+                        })
+                        .subtitle(if service.identification.is_empty() {
+                            format!("rating {}", service.rating)
+                        } else {
+                            format!("rating {} · {}", service.rating, service.identification)
+                        })
+                        .activatable(true)
+                        .build();
+                    row.connect_activated({
+                        let (dialog, chosen) = (dialog.clone(), chosen.clone());
+                        let (node, name) = (service.node.clone(), service.service.clone());
+                        move |_| {
+                            chosen(node.clone(), name.clone());
+                            dialog.close();
+                        }
+                    });
+                    group.add(&row);
+                }
+                Err(why) => {
+                    waiting.set_title("Cannot listen for LAT services");
+                    waiting.set_subtitle(&why);
+                    spinner.set_visible(false);
+                    return;
+                }
+            }
+        }
+    });
 }
