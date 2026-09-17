@@ -207,7 +207,7 @@ Each slot is a four-byte header and its data:
 ```
 01 | 01 | 0e | 00 | "\n\r\n\rUsername: "
 ^    ^    ^    ^
-|    |    |    🔎 credit in the high nibble, type in the low, on the evidence of the values seen
+|    |    |    the type in the high nibble, credit in the low
 |    |    byte count
 |    the sending session
 the receiving session
@@ -216,12 +216,31 @@ the receiving session
 **Data is padded to an even length**, and the whole message is then padded to the Ethernet
 minimum with zeros.
 
-🔎 **A slot with zero in the low nibble of that byte carries session data**, and one with
-anything else is the circuit's own business. That is as far as the type can be read: `0x00` on every
-slot of session data in either direction, `0x9f` on the slot that asks for a service, and `0xa1` on
-the answer to it, which arrives beside the login banner and carries back the same coded page size
-the request sent. veetee reads the nibble that way and shows the terminal nothing else, so a data
-slot of a type never seen would be dropped rather than displayed.
+**The type is the high nibble and the credit the low**, which a login to OpenVMS settles. Three
+types have been seen:
+
+| Type | Seen as | Carries |
+|------|---------|---------|
+| 0 | `0x00`, `0x01`, `0x03`, `0x0f` | Session data, in both directions |
+| 9 | `0x9f` | A session starting: the service a caller wants, and the `LTA` device the host created for it |
+| 10 | `0xa0`, `0xa1`, `0xaf` | Thirty-five bytes of terminal parameters, the coded page size among them |
+
+The evidence is that the low nibble varies while the meaning does not. The same parameter block
+arrived as `0xa0`, `0xa1` and `0xaf` in one session, and the login banner, the echo of a username
+and a VMS error message came through as `0x00`, `0x01` and `0x0f` alike. A number that changes
+while what it labels stays the same is a count, not a name — and it is the way round DEC documents
+a LAT slot.
+
+This was read the other way round at first, which cost real data: veetee showed the parameter
+block on screen as thirty-five bytes of rubbish and dropped the banner OpenVMS prints after a
+login, because both decisions turned on the wrong nibble.
+
+🔎 veetee shows the terminal type 0 and nothing else, so a data slot of a type never seen
+would be dropped rather than displayed.
+
+🔎 **Credit is not understood.** veetee grants fifteen in the slot that asks for a service and
+never grants any again, and a session survives a login and several commands that way. Whether a
+long enough burst of output would stall for want of it is untested.
 
 🔎 The byte that pads an odd-length slot is **not** zeroed: OpenVMS sent `0x25` in one
 observed, which looks like whatever was in its buffer rather than anything meant. A reader should
@@ -233,9 +252,14 @@ this document.
 
 ## Not yet observed
 
-- **The slot type and credit byte.** The values fall into two groups, small ones and ones with a
-  high nibble set, which is why the split above is read as credit and type — but which type is
-  which is unread.
+- **What a slot of type 10 says.** Thirty-five bytes of terminal parameters, of which only the
+  coded lines and columns are read. It goes both ways: the host sent one beside the login banner
+  and again as it tried to set the terminal type.
+- **The slots either end of a session.** A session opens with five slots — the `LTA` device name,
+  a parameter block, three bytes, and two empty ones — and ends with a slot **from session 0**
+  carrying nothing, sent as VMS closes the login. The second is very likely the session ending,
+  but only its position says so, so veetee does not act on it.
+- **Credit**, as above: granted once and never again, with no sign yet of that being too few.
 - **The flag bits** that make a run message `0x00`, `0x01` or `0x02`.
 - **Stop (`0x0a`)** is seen once, eleven bytes, and not understood beyond its shape.
 - **`0x3c`**, sent by both nodes, carrying a node address and the same version and frame size as an

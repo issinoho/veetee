@@ -15,15 +15,20 @@ use std::sync::atomic::{AtomicU16, Ordering};
 
 use crate::{Message, Run, Slot, Start, Stop, session_start};
 
-/// A slot's control byte: the low nibble is what it carries.
+/// A slot's control byte: the type in the high nibble, credit in the low.
 ///
-/// 🔎 Credit in the high nibble and a type in the low, on the evidence of
-/// the values seen — `0x00` on every slot of session data in either direction,
-/// [`crate::SLOT_START`] (`0x9f`) on the slot that asks for a service, and
-/// `0xa1` on the answer to it. Which type is which is otherwise unread, so a
-/// slot counts as session data when the low nibble is zero and as the
-/// circuit's own business when it is not.
-const SLOT_TYPE: u8 = 0x0f;
+/// Read from a login to OpenVMS. Type 9 starts a session — `0x9f` named the
+/// `LTA` device the host had created, and is what veetee sends to ask for a
+/// service. Type 10 carries a block of terminal parameters, seen as `0xa0`,
+/// `0xa1` and `0xaf`: the same thirty-five bytes each time, so what varies is
+/// the low nibble and not the meaning. Type 0 is session data, seen as `0x00`,
+/// `0x01`, `0x03` and `0x0f` with the text coming through regardless.
+///
+/// A number that changes while the meaning does not is credit, which is the
+/// way round DEC documents it and the opposite of what was first read here.
+/// Only type zero reaches the terminal.
+const SLOT_KIND: u8 = 0xf0;
+const SLOT_DATA: u8 = 0x00;
 
 /// One length byte counts a slot's data, so this is as much as one carries.
 const MAX_SLOT: usize = 255;
@@ -309,7 +314,7 @@ impl Session {
             if slot.from != 0 {
                 self.remote_slot = slot.from;
             }
-            if slot.control & SLOT_TYPE == 0 {
+            if slot.control & SLOT_KIND == SLOT_DATA {
                 data.extend_from_slice(slot.data);
             }
         }
@@ -577,6 +582,53 @@ mod tests {
             "after the start and the prompt were answered"
         );
         assert_eq!(typed.acknowledged, 3);
+    }
+
+    #[test]
+    fn data_is_read_whatever_credit_it_carries() {
+        let (mut session, mut data) = agreed();
+        // A login to MYI64, as it arrives: the echo and the banner carry
+        // credit in the low nibble, and the block of terminal parameters
+        // beside them carries none but is not data at all.
+        let login = Run {
+            flags: 0,
+            theirs: 0x7001,
+            ours: 0xe001,
+            sequence: 8,
+            acknowledged: 7,
+            slots: vec![
+                Slot {
+                    to: 1,
+                    from: 1,
+                    control: 0xa0,
+                    data: &[0xff; 35],
+                },
+                Slot {
+                    to: 1,
+                    from: 1,
+                    control: 0x01,
+                    data: b"on node MYI64",
+                },
+                Slot {
+                    to: 1,
+                    from: 1,
+                    control: 0x0f,
+                    data: b"!",
+                },
+                Slot {
+                    to: 1,
+                    from: 1,
+                    control: 0x9f,
+                    data: b"LTA5046",
+                },
+            ],
+        }
+        .build();
+        assert_eq!(session.receive(&login, &mut data), Event::Data);
+        assert_eq!(
+            data, b"on node MYI64!",
+            "type zero is the terminal data, whatever credit goes with it"
+        );
     }
 
     #[test]

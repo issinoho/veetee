@@ -8,6 +8,11 @@ license.workspace = true
 authors.workspace = true
 publish = false
 
+# Raw mode for a LAT session, so the terminal stops echoing what the host is
+# already echoing. LAT is Linux only in any case.
+[target.'cfg(target_os = "linux")'.dependencies]
+rustix = { version = "1", features = ["termios", "stdio"] }
+
 [dependencies]
 vt-parser.workspace = true
 vt-core.workspace = true

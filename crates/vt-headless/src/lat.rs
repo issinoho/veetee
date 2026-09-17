@@ -90,10 +90,20 @@ fn connect(
         writer.write_all(&line)?;
         eprintln!("typed {text:?}");
     }
-    // Anything else typed goes the same way, so a session can be logged into.
-    // The terminal is in line mode, so a line goes when Return is pressed and
-    // is echoed locally as well as by the host -- a password included, which
-    // LAT carries in clear on the wire in any case.
+    // The host echoes what it is sent, so a terminal echoing as well shows
+    // everything twice, and a DEC application wants each key as it is pressed
+    // rather than a line at a time. Raw mode is both. It also hands Ctrl-C to
+    // OpenVMS, where it belongs, which leaves the SECONDS argument as the way
+    // out of here -- and the way that closes the circuit properly.
+    if let Some(n) = seconds {
+        eprintln!("raw mode: Ctrl-C goes to the host, and this ends after {n}s");
+    } else {
+        eprintln!("raw mode: Ctrl-C goes to the host, so kill this from elsewhere");
+    }
+    let _cooked = raw_mode();
+
+    // Anything typed goes to the host, a password included -- which LAT
+    // carries in clear on the wire in any case.
     std::thread::spawn(move || {
         use std::io::Read;
         let mut stdin = io::stdin().lock();
@@ -117,9 +127,10 @@ fn connect(
     let mut buf = [0u8; 4096];
     loop {
         if until.is_some_and(|end| Instant::now() >= end) {
-            // On its own line: what the host last sent may have left the
-            // cursor anywhere, a carriage return without a line feed included.
-            eprintln!("\nclosing the circuit");
+            // On a line of its own, and with the carriage returns written out:
+            // the host may have left the cursor anywhere, and raw mode has
+            // stopped the terminal adding one to a line feed.
+            eprint!("\r\nclosing the circuit\r\n");
             return Ok(());
         }
         match session.read_timeout(&mut buf, Duration::from_millis(500)) {
@@ -129,10 +140,51 @@ fn connect(
                 io::stdout().flush()?;
             }
             Err(e) if e.kind() == io::ErrorKind::UnexpectedEof => {
-                eprintln!("\n{e}");
+                eprint!("\r\n{e}\r\n");
                 return Ok(());
             }
             Err(e) => return Err(e),
+        }
+    }
+}
+
+/// Puts the terminal into raw mode for as long as a session lasts.
+///
+/// Gives back what it was, so a shell is not left with its echo off however
+/// the session ends.
+#[cfg(target_os = "linux")]
+fn raw_mode() -> Cooked {
+    use rustix::termios::{OptionalActions, isatty, tcgetattr, tcsetattr};
+
+    let stdin = io::stdin();
+    // A pipe is not a terminal and has nothing to put into raw mode, which is
+    // a fair way to drive this: echo SYSTEM | vt-headless lat ... --connect.
+    if !isatty(&stdin) {
+        return Cooked(None);
+    }
+    let Ok(cooked) = tcgetattr(&stdin) else {
+        return Cooked(None);
+    };
+    let mut raw = cooked.clone();
+    raw.make_raw();
+    match tcsetattr(&stdin, OptionalActions::Now, &raw) {
+        Ok(()) => Cooked(Some(cooked)),
+        Err(_) => Cooked(None),
+    }
+}
+
+/// What the terminal was before the session, put back when it ends.
+#[cfg(target_os = "linux")]
+struct Cooked(Option<rustix::termios::Termios>);
+
+#[cfg(target_os = "linux")]
+impl Drop for Cooked {
+    fn drop(&mut self) {
+        use rustix::termios::{OptionalActions, tcsetattr};
+
+        if let Some(cooked) = &self.0 {
+            // Nothing useful to do if it fails, and `reset` is the answer.
+            let _ = tcsetattr(io::stdin(), OptionalActions::Now, cooked);
         }
     }
 }

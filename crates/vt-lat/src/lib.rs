@@ -97,8 +97,11 @@ pub struct Run<'a> {
 pub struct Slot<'a> {
     pub to: u8,
     pub from: u8,
-    /// 🔎 Credit in the high nibble and a type in the low, on the evidence
-    /// of the values seen.
+    /// The type in the high nibble and credit in the low: type 0 is session
+    /// data, 9 starts a session and 10 carries terminal parameters. Read from
+    /// a login to OpenVMS, where the same parameter block arrived as `0xa0`,
+    /// `0xa1` and `0xaf` — so the low nibble is what varies while the meaning
+    /// does not.
     pub control: u8,
     pub data: &'a [u8],
 }
@@ -388,9 +391,12 @@ impl Stop {
     }
 }
 
-/// The control byte of the slot that asks for a service, against `0x00` for
-/// the slots that carry session data. 🔎 Credit in the high nibble and a
-/// kind in the low, on the evidence of the values seen.
+/// The control byte of the slot that asks for a service: type 9, a session
+/// being started, with fifteen credits granted to the far end.
+///
+/// OpenVMS answers with a slot of the same type — `0x9f` again, naming the
+/// `LTA` device it has created — which is what says the type is the session
+/// start rather than anything peculiar to a request.
 pub const SLOT_START: u8 = 0x9f;
 
 /// Builds the data of the slot that asks for a service, on a page of `rows`
