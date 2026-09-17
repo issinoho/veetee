@@ -46,8 +46,12 @@ milestones (0.3 = M3). The format follows [Keep a Changelog](https://keepachange
   and that typing before the far end has prompted is held back rather than lost, a slot sent early
   being ignored by the host.
 
-  Not proven against a host yet: every test is against captured frames, and none of this has met
-  MYI64. What is left of the item after that is the helper holding `CAP_NET_RAW`, so the interface
+  It has carried a real session: a login to OpenVMS, a 667-file `DIRECTORY SYS$SYSTEM`,
+  `SHOW TERMINAL` and a clean `LOGOUT`, leaving no `LTA` device behind. Meeting a host is what
+  read the last of the protocol — that a slot's type is the high nibble and its credit the low,
+  that credit is flow control and a node granted none stops mid-word, and that a session ends with
+  a slot of a type of its own — each of which veetee had wrong and none of which the captures
+  alone would have settled. What is left is the helper holding `CAP_NET_RAW`, so the interface
   need not run privileged, and a service browser in the connection dialog — which is also what
   would let the GUI offer LAT at all.
 

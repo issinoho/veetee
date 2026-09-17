@@ -30,6 +30,14 @@ use crate::{Message, Run, Slot, Start, Stop, session_start};
 const SLOT_KIND: u8 = 0xf0;
 const SLOT_DATA: u8 = 0x00;
 
+/// The type of slot that says the session is over.
+///
+/// It comes from slot zero with nothing in it, as the last slot the host
+/// sends: seen when OpenVMS timed a login out for want of a password, and
+/// again on `LOGOUT`, after which MYI64 said nothing but what it had heard.
+/// 🔎 Type 11 arrives beside it carrying a single `@`, which is unread.
+const SLOT_END: u8 = 0xd0;
+
 /// One length byte counts a slot's data, so this is as much as one carries.
 const MAX_SLOT: usize = 255;
 
@@ -145,6 +153,10 @@ pub struct Session {
     /// How much credit the far end has left: it spends one on every slot it
     /// sends, and stops sending when it has none.
     credit: u8,
+    /// Whether there is still a circuit to take down. The far end can end the
+    /// session and leave the circuit standing, and does: it acknowledges for
+    /// as long as it is asked to.
+    circuit: bool,
     /// Frames waiting to be sent.
     outgoing: Vec<Vec<u8>>,
     /// Typing that arrived before the far end had prompted, which it would
@@ -165,6 +177,7 @@ impl Session {
             local_slot: 1,
             remote_slot: 1,
             credit: 0,
+            circuit: false,
             outgoing: Vec::new(),
             early: Vec::new(),
         }
@@ -242,7 +255,7 @@ impl Session {
     /// Nothing is sent for a circuit the far end never agreed to: there is
     /// nothing at its end to take down, and no identifier to name it by.
     pub fn close(&mut self) {
-        if self.is_open() {
+        if self.circuit {
             self.outgoing.push(
                 Stop {
                     theirs: self.theirs,
@@ -250,6 +263,7 @@ impl Session {
                 }
                 .build(),
             );
+            self.circuit = false;
         }
         self.state = State::Closed;
     }
@@ -300,6 +314,7 @@ impl Session {
         // SLOT_START carries fifteen in its low nibble, which is the whole of
         // the far end's allowance until this end grants more.
         self.credit = MAX_CREDIT;
+        self.circuit = true;
         self.state = State::Asked;
         Event::Opened
     }
@@ -325,6 +340,7 @@ impl Session {
             self.outgoing.push(frame);
         }
         let before = data.len();
+        let mut ended = false;
         for slot in &run.slots {
             if slot.to != self.local_slot {
                 continue;
@@ -339,11 +355,24 @@ impl Session {
             if slot.from != 0 {
                 self.remote_slot = slot.from;
             }
-            if slot.control & SLOT_KIND == SLOT_DATA {
-                data.extend_from_slice(slot.data);
+            match slot.control & SLOT_KIND {
+                SLOT_DATA => data.extend_from_slice(slot.data),
+                SLOT_END => ended = true,
+                // Every other type is the circuit's own business: the block
+                // of terminal parameters, the LTA device it names at the
+                // start, and the single `@` that comes with the end.
+                _ => {}
             }
         }
         self.spend(run.slots.len());
+        if ended {
+            // Whatever came with it is still the terminal's: OpenVMS says
+            // who logged out in the message before this one, and sometimes
+            // in the same one. The caller reads what is waiting before it
+            // reads the end.
+            self.state = State::Closed;
+            return Event::Closed;
+        }
         if data.len() == before {
             return Event::Housekeeping;
         }
@@ -365,6 +394,7 @@ impl Session {
             return Event::Ignored;
         }
         self.state = State::Closed;
+        self.circuit = false;
         Event::Closed
     }
 
@@ -810,6 +840,50 @@ mod tests {
             })
             .collect();
         assert_eq!(lengths, vec![MAX_SLOT, 10]);
+    }
+
+    #[test]
+    fn the_host_ending_the_session_ends_it_here() {
+        let (mut session, mut data) = agreed();
+        session.receive(PROMPT, &mut data);
+        session.take_outgoing();
+        data.clear();
+
+        // What MYI64 sends on LOGOUT, and on timing a login out: a slot from
+        // slot zero with nothing in it, and a single `@` beside it.
+        let goodbye = Run {
+            flags: 0,
+            theirs: 0x7001,
+            ours: 0xe001,
+            sequence: 9,
+            acknowledged: 8,
+            slots: vec![
+                Slot {
+                    to: 1,
+                    from: 1,
+                    control: 0xb0,
+                    data: b"@",
+                },
+                Slot {
+                    to: 1,
+                    from: 0,
+                    control: 0xd1,
+                    data: &[],
+                },
+            ],
+        }
+        .build();
+        assert_eq!(session.receive(&goodbye, &mut data), Event::Closed);
+        assert!(session.is_closed());
+        assert!(data.is_empty(), "neither slot is the terminal's");
+
+        // The session is over but the circuit is not: MYI64 goes on
+        // acknowledging until it is taken down.
+        session.take_outgoing();
+        session.close();
+        let out = session.take_outgoing();
+        assert_eq!(out.len(), 1, "the circuit is still ours to take down");
+        assert!(matches!(crate::parse(&out[0]), Ok(Message::Stop(_))));
     }
 
     #[test]

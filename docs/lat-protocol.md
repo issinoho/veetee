@@ -189,6 +189,20 @@ Sending a username produced the echo and then `Password:`, so a session carries 
 on the reading here. **The far end will not read before it has prompted**: a slot sent before it
 says anything is ignored.
 
+The whole of a session has since been driven this way — a login, a 667-file `DIRECTORY`,
+`SHOW TERMINAL` and `LOGOUT` — which is where most of what follows was read.
+
+**A session ends with a slot of type 13 from slot 0, carrying nothing**, with a type 11 slot
+holding a single `@` beside it. It is the last slot the host sends; after it OpenVMS acknowledges
+for as long as it is asked to and says nothing more, so the circuit outlives the session and is
+the caller's to take down. Seen twice: on `LOGOUT`, and when a login was timed out for want of a
+password.
+
+`SHOW TERMINAL` on the far end reports the name from the start message — `LAT Server/Port:
+VEETEE` — which is one more field of it confirmed. It reports the page size from the
+cursor-position probe VMS makes at login rather than from the slot that asked for the service, so
+what that slot declares has not been proved to matter.
+
 ### Starting a session
 
 The first run message the calling node sends carries a slot whose data names the service wanted:
@@ -224,6 +238,8 @@ types have been seen:
 | 0 | `0x00`, `0x01`, `0x03`, `0x0f` | Session data, in both directions |
 | 9 | `0x9f` | A session starting: the service a caller wants, and the `LTA` device the host created for it |
 | 10 | `0xa0`, `0xa1`, `0xaf` | Thirty-five bytes of terminal parameters, the coded page size among them |
+| 11 | `0xb0` | One byte, `@`. 🔎 Unread; it comes with the end of a session |
+| 13 | `0xd1` | **The session is over.** From slot 0, with nothing in it |
 
 The evidence is that the low nibble varies while the meaning does not. The same parameter block
 arrived as `0xa0`, `0xa1` and `0xaf` in one session, and the login banner, the echo of a username
@@ -275,14 +291,15 @@ this document.
 - **What a slot of type 10 says.** Thirty-five bytes of terminal parameters, of which only the
   coded lines and columns are read. It goes both ways: the host sent one beside the login banner
   and again as it tried to set the terminal type.
-- **The slots either end of a session.** A session opens with five slots — the `LTA` device name,
-  a parameter block, three bytes, and two empty ones — and ends with a slot **from session 0**
-  carrying nothing, sent as VMS closes the login. The second is very likely the session ending,
-  but only its position says so, so veetee does not act on it.
+- **The five slots a session opens with**: the `LTA` device name, a parameter block, three bytes,
+  and two empty ones. Only the device name is read.
 - **How much credit to grant, and what spends it.** That a slot spends one, and that running out
   stops a sender, is settled; the rest of the policy is veetee's own choice.
 - **The flag bits** that make a run message `0x00`, `0x01` or `0x02`.
-- **Stop (`0x0a`)** is seen once, eleven bytes, and not understood beyond its shape.
+- **Stop (`0x0a`)** is seen once, eleven bytes, and not understood beyond its shape. veetee builds
+  one from those bytes as it leaves, and OpenVMS does release the `LTA` device — but the sessions
+  that were watched had been logged out of first, which is reason enough on its own for VMS to
+  delete it. Leaving a session still logged in and letting veetee exit would separate the two.
 - **`0x3c`**, sent by both nodes, carrying a node address and the same version and frame size as an
   announcement. It answers a solicit, on position alone.
 - **Much of the start message**, including fourteen bytes before the address.

@@ -80,18 +80,26 @@ left here is a limitation rather than work.
   Traffic goes both ways: typing a username gets the echo and then `Password:`, so the protocol
   work is done in substance.
 
-  The `Transport` is written: `vt_transport::lat::Lat` opens the circuit, asks for the service and
-  carries the session both ways, keeping it alive while it is idle and taking it down on the way
-  out, so a terminal can use a LAT session as it uses Telnet. The protocol itself is a state
-  machine in `vt-lat` with no sockets in it, tested against the captured frames of a real login
-  rather than needing a wire. **It has not met a host yet** — every test is against captures — so
-  running it against MYI64 on Linux is the next thing, and until that happens this stays here.
+  The `Transport` is written and **it has carried a real session**: `vt_transport::lat::Lat` opens
+  the circuit, asks for the service and carries the session both ways, keeping it alive while it
+  is idle and taking it down on the way out, so a terminal can use a LAT session as it uses
+  Telnet. Against MYI64 on Linux that means a login, a 667-file `DIRECTORY SYS$SYSTEM`,
+  `SHOW TERMINAL` and a clean `LOGOUT`, with `SHOW DEVICE LTA` showing no devices left behind.
 
-  Left after that: the helper binary holding `CAP_NET_RAW` so the interface need not run
-  privileged, and a service browser in the connection dialog, which is also what would let the GUI
-  offer LAT at all. Several fields of the messages are still copied rather than understood; they
-  are marked in [`lat-protocol.md`](lat-protocol.md). Not available in the Flatpak, which has no
-  raw sockets, nor on Windows, which has no raw Ethernet without a driver.
+  Meeting a host is what read the last of the protocol, and the three things it found were all
+  veetee misreading it: a slot's type is the high nibble and its credit the low, not the other way
+  about, which had been showing a parameter block on screen and swallowing the banner; credit is
+  flow control, and granting it once left OpenVMS stopping mid-word; and a session ends with a
+  slot of type 13 from slot 0, which veetee now acts on rather than acknowledging a dead login.
+  The `Transport` itself needed no change through any of it.
+
+  Left: the helper binary holding `CAP_NET_RAW` so the interface need not run privileged, and a
+  service browser in the connection dialog — which is also what would let the GUI offer LAT at
+  all, and is the only way the page size in the service request can be proved, since VMS takes the
+  size from a cursor-position probe that only a real terminal answers. Several fields of the
+  messages are still copied rather than understood; they are marked in
+  [`lat-protocol.md`](lat-protocol.md). Not available in the Flatpak, which has no raw sockets,
+  nor on Windows, which has no raw Ethernet without a driver.
 
 ### Smaller gaps (from compat-matrix.md)
 
