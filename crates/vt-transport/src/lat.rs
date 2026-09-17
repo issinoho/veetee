@@ -143,17 +143,27 @@ impl AsFd for Listener {
 /// and nothing else, so anything of another kind is no use to it.
 const ARPHRD_ETHER: &str = "1";
 
+/// An interface LAT could speak on.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Interface {
+    pub name: String,
+    /// Wireless, which is Ethernet enough to carry LAT but not where it is
+    /// found: a segment with DEC equipment on it is a wired one. Offered, but
+    /// never chosen for the user.
+    pub wireless: bool,
+}
+
 /// The interfaces that could carry LAT: real Ethernet, and up.
 ///
 /// There is no routing in LAT, so the one sharing a segment with the node is
 /// the only one that will do. Where there is exactly one, it needs no saying.
-pub fn interfaces() -> Vec<String> {
+pub fn interfaces() -> Vec<Interface> {
     let Ok(entries) = std::fs::read_dir("/sys/class/net") else {
         return Vec::new();
     };
-    let mut found: Vec<String> = entries
+    let mut found: Vec<Interface> = entries
         .filter_map(Result::ok)
-        .filter(|entry| {
+        .filter_map(|entry| {
             let at = |what: &str| {
                 std::fs::read_to_string(entry.path().join(what))
                     .map(|s| s.trim().to_string())
@@ -161,11 +171,19 @@ pub fn interfaces() -> Vec<String> {
             };
             // Loopback is another type, so it goes without saying, and a line
             // that is down carries nothing.
-            at("type") == ARPHRD_ETHER && at("operstate") == "up"
+            if at("type") != ARPHRD_ETHER || at("operstate") != "up" {
+                return None;
+            }
+            Some(Interface {
+                name: entry.file_name().to_string_lossy().into_owned(),
+                // Either of these marks a wireless interface; which one
+                // depends on how old the driver is.
+                wireless: entry.path().join("wireless").exists()
+                    || entry.path().join("phy80211").exists(),
+            })
         })
-        .map(|entry| entry.file_name().to_string_lossy().into_owned())
         .collect();
-    found.sort();
+    found.sort_by(|a, b| a.name.cmp(&b.name));
     found
 }
 

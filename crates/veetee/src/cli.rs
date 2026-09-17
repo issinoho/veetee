@@ -558,21 +558,46 @@ fn lat_interface(named: Option<&str>) -> io::Result<String> {
     if let Some(named) = named {
         return Ok(named.to_string());
     }
-    let mut found = vt_transport::lat::interfaces();
-    match found.len() {
-        1 => Ok(found.remove(0)),
-        0 => Err(io::Error::new(
+    choose_interface(&vt_transport::lat::interfaces())
+}
+
+/// Which of the interfaces that are up LAT should speak on.
+#[cfg(target_os = "linux")]
+fn choose_interface(found: &[vt_transport::lat::Interface]) -> io::Result<String> {
+    // Wireless is Ethernet enough to carry LAT, but it is not where LAT is:
+    // a segment with DEC equipment on it is a wired one. So a wireless
+    // interface is never chosen here, only named.
+    let wired: Vec<&str> = found
+        .iter()
+        .filter(|i| !i.wireless)
+        .map(|i| i.name.as_str())
+        .collect();
+    if let [only] = wired[..] {
+        return Ok(only.to_string());
+    }
+    if found.is_empty() {
+        return Err(io::Error::new(
             io::ErrorKind::NotFound,
             "no Ethernet interface is up for LAT to speak on",
-        )),
-        _ => Err(io::Error::new(
-            io::ErrorKind::InvalidInput,
-            format!(
-                "say which interface LAT should use: --interface {}",
-                found.join(" | --interface ")
-            ),
-        )),
+        ));
     }
+    let all: Vec<String> = found
+        .iter()
+        .map(|i| {
+            if i.wireless {
+                format!("{} (wireless)", i.name)
+            } else {
+                i.name.clone()
+            }
+        })
+        .collect();
+    Err(io::Error::new(
+        io::ErrorKind::InvalidInput,
+        format!(
+            "say which interface LAT should use, with --interface: {}",
+            all.join(", ")
+        ),
+    ))
 }
 
 #[cfg(test)]
@@ -640,6 +665,44 @@ mod tests {
             (s.baud, s.data_bits, s.parity, s.stop_bits, s.flow),
             (19200, 7, Parity::Even, 2, FlowControl::None)
         );
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn lat_takes_the_only_wired_interface_and_asks_about_the_rest() {
+        use vt_transport::lat::Interface;
+        let wired = |name: &str| Interface {
+            name: name.into(),
+            wireless: false,
+        };
+        let wireless = |name: &str| Interface {
+            name: name.into(),
+            wireless: true,
+        };
+
+        assert_eq!(
+            choose_interface(&[wired("enp0s31f6")]).unwrap(),
+            "enp0s31f6"
+        );
+        assert_eq!(
+            choose_interface(&[wired("enp0s31f6"), wireless("wlp59s0")]).unwrap(),
+            "enp0s31f6",
+            "a LAT segment is a wired one, so wireless is not weighed against it"
+        );
+
+        // Two of the same kind is a choice nobody else can make.
+        let e = choose_interface(&[wired("eth0"), wired("eth1")]).unwrap_err();
+        assert!(
+            e.to_string().contains("eth0") && e.to_string().contains("eth1"),
+            "{e}"
+        );
+
+        // Wireless alone is offered rather than taken, and said to be wireless.
+        let e = choose_interface(&[wireless("wlp59s0")]).unwrap_err();
+        assert!(e.to_string().contains("wlp59s0 (wireless)"), "{e}");
+
+        let e = choose_interface(&[]).unwrap_err();
+        assert_eq!(e.kind(), io::ErrorKind::NotFound);
     }
 
     #[test]
