@@ -5,7 +5,7 @@ milestones (0.3 = M3). The format follows [Keep a Changelog](https://keepachange
 
 ## [Unreleased]
 
-- **Added: manifests for winget and Flathub**, and veetee is now submitted to winget.
+- **Added: winget manifests**, and veetee is now submitted to winget.
   `packaging/winget` treats the Windows zip as a portable package — winget unpacks it and puts
   `veetee` and `vt-headless` on the path, the GTK runtime being in the zip already — and
   `cargo xtask winget VERSION` points the manifests at a release, taking the checksum from its
@@ -13,10 +13,20 @@ milestones (0.3 = M3). The format follows [Keep a Changelog](https://keepachange
   verifies, and both programs run from an unrelated directory. 0.8.12 went to
   [winget-pkgs#436670](https://github.com/microsoft/winget-pkgs/pull/436670).
 
-  `packaging/flathub` is the Flatpak manifest with the one change Flathub requires, a source
-  pinned to a tag and its commit, and a README with written answers for the permissions reviewers
-  ask about, and the commands to build and lint it on a Linux desktop. The metainfo gains
-  `<branding>` colours and passes `appstreamcli validate`.
+- **Fixed: winget's `PublisherUrl` pointed at a domain that does not answer.** The validation bot
+  could not reach `https://issinoho.com`, which resolves but serves nothing on port 80 or 443, so
+  the publisher is now `https://github.com/issinoho`.
+
+- **Decided against Flathub.** `packaging/flathub` holds the manifest, pinned to a tag and its
+  commit as Flathub requires, but veetee will not be submitted. Flathub's own
+  `flatpak-builder-lint` returns three errors: `appid-url-not-reachable`, because the
+  `com.issinoho.Veetee` app ID obliges `https://issinoho.com` to answer and it does not, and
+  `finish-args-flatpak-spawn-access` and `finish-args-home-filesystem-access`, which need
+  exceptions Flathub does not grant where there are signs of LLM usage. Those two permissions are
+  host shells, SSH and writing logs where the user asks, so narrowing them for one store was not
+  worth it. The directory and its README are kept as the record. `packaging/flatpak` is
+  unaffected and releases still ship a Flatpak bundle. The metainfo gains `<branding>` colours and
+  passes `appstreamcli validate`.
 
 ## [0.8.12] - 2026-09-17
 

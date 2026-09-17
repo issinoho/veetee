@@ -6,7 +6,7 @@ and SSH, Telnet, serial and LAT connections.
 
 **Website:** [veetee.issinoho.com](http://veetee.issinoho.com/) · **Documentation:** [wiki](https://github.com/issinoho/veetee/wiki)
 
-**Status:** early development — 0.8.12: the VT100 through VT525 (colour, VT500 character sets,
+**Status:** feature complete, approaching 1.0 — 0.8.12: the VT100 through VT525 (colour, VT500 character sets,
 dual sessions, page memory, rectangular operations, soft fonts), an LK401 keyboard map with a
 visual editor and VT520 key programming, session recordings, fonts drawn on DEC's own
 character cells, VT420 and VT520 Set-Up, sound, smooth scrolling, a CRT picture, saved connections,
