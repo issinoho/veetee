@@ -109,7 +109,7 @@ pub fn lat(args: impl Iterator<Item = String>) -> io::Result<()> {
                     // agreement and asks for a service, which is what OpenVMS
                     // sends at this point. Their end is named first, as it is
                     // in every message on the circuit.
-                    let data = vt_lat::session_start(c.to);
+                    let data = vt_lat::session_start(c.to, 24, 80);
                     let open = vt_lat::Run {
                         flags: 2,
                         theirs: c.ours,

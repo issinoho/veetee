@@ -216,6 +216,13 @@ the receiving session
 **Data is padded to an even length**, and the whole message is then padded to the Ethernet
 minimum with zeros.
 
+🔎 **A slot with zero in the low nibble of that byte carries session data**, and one with
+anything else is the circuit's own business. That is as far as the type can be read: `0x00` on every
+slot of session data in either direction, `0x9f` on the slot that asks for a service, and `0xa1` on
+the answer to it, which arrives beside the login banner and carries back the same coded page size
+the request sent. veetee reads the nibble that way and shows the terminal nothing else, so a data
+slot of a type never seen would be dropped rather than displayed.
+
 🔎 The byte that pads an odd-length slot is **not** zeroed: OpenVMS sent `0x25` in one
 observed, which looks like whatever was in its buffer rather than anything meant. A reader should
 ignore it, and a writer can send zero.

@@ -9,6 +9,12 @@
 //! messages that carry a session are understood. Anything else is kept whole
 //! as [`Message::Other`] rather than guessed at: several message types have
 //! never been seen, and parts of the ones here are still unread and marked.
+//!
+//! [`Session`] drives a circuit made of them, which is what a terminal needs.
+
+mod session;
+
+pub use session::{Event, Session, SessionConfig};
 
 /// LAT rides directly on Ethernet under this type. There is no IP, so nothing
 /// routes: both ends share a segment.
@@ -361,27 +367,50 @@ impl Start<'_> {
     }
 }
 
+/// 🔎 Five bytes at the end of a stop message that have never been read.
+/// These are what the one stop message ever captured carried; whether any of
+/// it is a reason for the circuit ending is unknown.
+pub const STOP_UNREAD: [u8; 5] = [0x27, 0x29, 0x01, 0x00, 0x01];
+
+impl Stop {
+    /// Builds the message that takes a circuit down.
+    ///
+    /// 🔎 Shaped after the one that was captured, which named the end it was
+    /// sent to and carried zero for its own. This names both, as every message
+    /// on an open circuit does, and ends with [`STOP_UNREAD`].
+    pub fn build(&self) -> Vec<u8> {
+        let mut out = vec![STOP, 0x00];
+        out.extend_from_slice(&self.theirs.to_le_bytes());
+        out.extend_from_slice(&self.ours.to_le_bytes());
+        out.extend_from_slice(&STOP_UNREAD);
+        out.resize(out.len().max(MIN_PAYLOAD), 0);
+        out
+    }
+}
+
 /// The control byte of the slot that asks for a service, against `0x00` for
 /// the slots that carry session data. 🔎 Credit in the high nibble and a
 /// kind in the low, on the evidence of the values seen.
 pub const SLOT_START: u8 = 0x9f;
 
-/// Builds the data of the slot that asks for a service.
+/// Builds the data of the slot that asks for a service, on a page of `rows`
+/// by `cols`.
 ///
 /// 🔎 Copied from the one slot of its kind ever captured, with the service
 /// name replaced. The bytes around the name are unread: they end in what look
-/// like coded values, of which `07 02 18 00` is twenty-four lines and
-/// `08 02 50 00` is eighty columns, so the terminal describes itself here.
-pub fn session_start(service: &str) -> Vec<u8> {
+/// like coded values, a tag and a length before each, of which `07 02 18 00`
+/// is twenty-four lines and `08 02 50 00` is eighty columns — so the terminal
+/// describes itself here, and the page size is sent rather than assumed.
+pub fn session_start(service: &str, rows: u16, cols: u16) -> Vec<u8> {
     let mut out = vec![0x01, 0x01, 0xfe];
     text(&mut out, service);
     out.push(0); // 🔎 an empty name, a port perhaps
-    out.extend_from_slice(&[
-        0x01, 0x02, 0x04, 0x00, // 🔎
-        0x07, 0x02, 0x18, 0x00, // twenty-four lines
-        0x08, 0x02, 0x50, 0x00, // eighty columns
-        0x00, // the end of them
-    ]);
+    out.extend_from_slice(&[0x01, 0x02, 0x04, 0x00]); // 🔎
+    out.extend_from_slice(&[0x07, 0x02]); // lines
+    out.extend_from_slice(&rows.to_le_bytes());
+    out.extend_from_slice(&[0x08, 0x02]); // columns
+    out.extend_from_slice(&cols.to_le_bytes());
+    out.push(0x00); // the end of them
     out
 }
 
@@ -473,7 +502,7 @@ mod tests {
     ];
 
     /// The solicit OpenVMS V9.2-3 sent, asking MYI64 for its service.
-    const X86VMS_SOLICIT: &[u8] = &[
+    pub(crate) const X86VMS_SOLICIT: &[u8] = &[
         0x38, 0x00, 0x05, 0x05, 0x05, 0x03, 0xdc, 0x05, 0x26, 0x5a, 0x02, 0x00, 0x05, b'M', b'Y',
         b'I', b'6', b'4', 0x01, 0x01, 0x06, b'X', b'8', b'6', b'V', b'M', b'S', 0x05, b'M', b'Y',
         b'I', b'6', b'4', 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
@@ -491,7 +520,7 @@ mod tests {
     ];
 
     /// MYI64 answering, naming its own end of the circuit.
-    const START_REPLY_FRAME: &[u8] = &[
+    pub(crate) const START_REPLY_FRAME: &[u8] = &[
         0x04, 0x00, 0x01, 0x70, 0x01, 0xe0, 0x00, 0x00, 0xdc, 0x05, 0x05, 0x03, 0x10, 0x09, 0x08,
         0x14, 0x00, 0x00, 0x03, 0x03, 0x05, b'M', b'Y', b'I', b'6', b'4', 0x06, b'X', b'8', b'6',
         b'V', b'M', b'S', 0x00, 0x01, 0x02, 0x0a, 0x00, 0x02, 0x10, 0x80, 0xf2, 0xb4, 0x78, 0x6a,
@@ -499,7 +528,7 @@ mod tests {
     ];
 
     /// Two slots, the second carrying MYI64's username prompt.
-    const PROMPT: &[u8] = &[
+    pub(crate) const PROMPT: &[u8] = &[
         0x00, 0x02, 0x01, 0x70, 0x01, 0xe0, 0x03, 0x02, 0x01, 0x01, 0x23, 0xa1, 0x46, 0x13, 0x11,
         0x13, 0x11, 0x01, 0x01, 0x48, 0x02, 0x04, 0x80, 0x25, 0x00, 0x00, 0x03, 0x04, 0x80, 0x25,
         0x00, 0x00, 0x04, 0x01, 0x01, 0x05, 0x01, 0x00, 0x07, 0x02, 0x18, 0x00, 0x08, 0x02, 0x50,
@@ -508,7 +537,7 @@ mod tests {
     ];
 
     /// An idle circuit: no slots, padded to the Ethernet minimum.
-    const KEEPALIVE: &[u8] = &[
+    pub(crate) const KEEPALIVE: &[u8] = &[
         0x00, 0x00, 0x01, 0x70, 0x01, 0xe0, 0x04, 0x03, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
         0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
         0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
@@ -685,5 +714,27 @@ mod tests {
         let mut broken = X86VMS_SOLICIT.to_vec();
         broken[13] = 0xff; // the first letter of the node name
         assert_eq!(parse(&broken), Err(Error::NotText));
+    }
+
+    #[test]
+    fn the_service_request_carries_the_page_size() {
+        // The coded values at the end of the one slot of its kind captured:
+        // twenty-four lines and eighty columns, a tag and a length before each.
+        let page = session_start("MYI64", 24, 80);
+        assert!(page.ends_with(&[0x07, 0x02, 0x18, 0x00, 0x08, 0x02, 0x50, 0x00, 0x00]));
+        let wide = session_start("MYI64", 48, 132);
+        assert!(wide.ends_with(&[0x07, 0x02, 0x30, 0x00, 0x08, 0x02, 0x84, 0x00, 0x00]));
+        assert_eq!(page.len(), wide.len(), "the size is coded, not written out");
+    }
+
+    #[test]
+    fn a_stop_rebuilds_as_it_is_read() {
+        let stop = Stop {
+            theirs: 0xc001,
+            ours: 0x1001,
+        };
+        // The captured stop was eleven bytes: this pads to the Ethernet
+        // minimum as the other messages do, which the card would do anyway.
+        assert_eq!(parse(&stop.build()), Ok(Message::Stop(stop)));
     }
 }
