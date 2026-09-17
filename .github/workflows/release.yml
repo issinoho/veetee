@@ -135,8 +135,8 @@ jobs:
         run: |
           cd dist
           mv veetee-x86_64.flatpak "veetee-$VERSION-x86_64.flatpak"
-          sha256sum veetee-*.tar.gz veetee_*.deb veetee-*.zip veetee-*.flatpak > SHA256SUMS
+          sha256sum veetee-*.tar.gz veetee_*.deb veetee-*.rpm veetee-*.zip veetee-*.flatpak > SHA256SUMS
           gh release create "$GITHUB_REF_NAME" \
             --title "veetee $VERSION" \
             --notes-file ../notes.md \
-            veetee-*.tar.gz veetee_*.deb veetee-*.zip veetee-*.flatpak SHA256SUMS
+            veetee-*.tar.gz veetee_*.deb veetee-*.rpm veetee-*.zip veetee-*.flatpak SHA256SUMS

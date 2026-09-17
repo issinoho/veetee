@@ -5,6 +5,14 @@ milestones (0.3 = M3). The format follows [Keep a Changelog](https://keepachange
 
 ## [Unreleased]
 
+- **Added: an RPM.** Releases carry one beside the Debian package and the tarball, built with
+  `cargo-generate-rpm` from the same assets. It asks for its libraries by soname rather than by
+  package name, so the one package resolves on Fedora, RHEL and openSUSE alike, whatever each
+  calls the thing holding `libgtk-4.so.1`.
+
+  CI builds the tarball, the Debian package and the RPM on every push as well. Packaging is the
+  part nobody looks at until a release is being cut, which is the worst moment to find it broken.
+
 ## [0.8.11] - 2026-09-17
 
 An interface to pick from rather than type for LAT, and RFC 2217 proved against a real server,

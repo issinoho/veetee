@@ -139,6 +139,20 @@ jobs:
           manifest-path: packaging/flatpak/com.issinoho.Veetee.yml
           cache-key: flatpak-builder-${{ hashFiles('packaging/flatpak/cargo-sources.json') }}
 
+  packages:
+    # Packaging breaks where nobody looks until a release is being cut, so it
+    # is built here instead: the tarball, the Debian package and the RPM.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: sudo apt-get update && sudo apt-get install -y libgtk-4-dev libadwaita-1-dev libasound2-dev
+      - run: cargo install cargo-deb cargo-generate-rpm --locked
+      - run: cargo xtask dist
+      - name: Show what came out
+        run: ls -l target/dist && cat target/dist/SHA256SUMS
+
   licenses:
     runs-on: ubuntu-latest
     steps:

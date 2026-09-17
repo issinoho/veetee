@@ -22,9 +22,10 @@ tasks:
   openvms [--bless] [NAME ...]
       Replay the session recordings in tests/conformance/openvms and compare
       each checkpoint screen with NAME/CHECKPOINT.screen.
-  dist [--no-deb]
+  dist [--no-deb] [--no-rpm]
       Build release binaries and package them under target/dist: a
-      veetee-VERSION-x86_64-linux.tar.gz, a Debian package (needs cargo-deb)
+      veetee-VERSION-x86_64-linux.tar.gz, a Debian package (needs cargo-deb),
+      an RPM (needs cargo-generate-rpm)
       and SHA256SUMS.";
 
 /// Pinned vttest release. Update both together.
@@ -340,6 +341,7 @@ fn fetch_esctest() -> Result<PathBuf> {
 
 fn dist(args: &[String]) -> Result<()> {
     let deb = !args.iter().any(|a| a == "--no-deb");
+    let rpm = !args.iter().any(|a| a == "--no-rpm");
     let version = env!("CARGO_PKG_VERSION");
     let arch = env::consts::ARCH;
     // Release artifacts carry no debug information.
@@ -426,6 +428,28 @@ fn dist(args: &[String]) -> Result<()> {
         for entry in read_dir_sorted(&dist)? {
             if entry.extension().is_some_and(|e| e == "deb") {
                 files.push(entry.file_name().unwrap().to_string_lossy().into_owned());
+            }
+        }
+    }
+
+    if rpm {
+        // cargo-generate-rpm writes where it likes, so the package is moved
+        // into the dist directory beside the others afterwards.
+        run(Command::new(env!("CARGO"))
+            .args(["generate-rpm", "-p", "crates/veetee"])
+            .current_dir(root()))
+        .map_err(|e| {
+            format!(
+                "{e}
+(install it with `cargo install cargo-generate-rpm`, or pass --no-rpm)"
+            )
+        })?;
+        let built = target().join("generate-rpm");
+        for entry in read_dir_sorted(&built)? {
+            if entry.extension().is_some_and(|e| e == "rpm") {
+                let name = entry.file_name().unwrap().to_string_lossy().into_owned();
+                fs::rename(&entry, dist.join(&name)).map_err(|e| e.to_string())?;
+                files.push(name);
             }
         }
     }

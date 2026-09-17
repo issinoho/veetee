@@ -56,3 +56,29 @@ assets = [
     ["../../THIRD-PARTY.md", "usr/share/doc/veetee/THIRD-PARTY.md", "644"],
     ["../vt-fonts/fonts/OFL.txt", "usr/share/doc/veetee/fonts-OFL.txt", "644"],
 ]
+
+# The same again for RPM distributions, built with cargo-generate-rpm. Paths
+# here are relative to the workspace root, which is where cargo runs it.
+[package.metadata.generate-rpm]
+summary = "DEC VT terminal emulator for OpenVMS and other DEC hosts"
+# Read the dependencies out of the ELF rather than shelling out to
+# /usr/lib/rpm/find-requires, which is not on the Ubuntu runner that builds
+# this. Sonames are what an RPM wants anyway: they name the same library on
+# Fedora and openSUSE, whatever each calls the package holding it.
+auto-req = "builtin"
+assets = [
+    { source = "target/release/veetee", dest = "/usr/bin/veetee", mode = "755" },
+    { source = "target/release/vt-headless", dest = "/usr/bin/vt-headless", mode = "755" },
+    # LAT only, and only useful once it has been given CAP_NET_RAW, which is
+    # not done here: see docs/lat-protocol.md and the helper's own comments.
+    { source = "target/release/veetee-lat-helper", dest = "/usr/libexec/veetee-lat-helper", mode = "755" },
+    { source = "data/com.issinoho.Veetee.desktop", dest = "/usr/share/applications/com.issinoho.Veetee.desktop", mode = "644" },
+    { source = "data/com.issinoho.Veetee.metainfo.xml", dest = "/usr/share/metainfo/com.issinoho.Veetee.metainfo.xml", mode = "644" },
+    { source = "data/icons/com.issinoho.Veetee.svg", dest = "/usr/share/icons/hicolor/scalable/apps/com.issinoho.Veetee.svg", mode = "644" },
+    { source = "README.md", dest = "/usr/share/doc/veetee/README.md", mode = "644", doc = true },
+    { source = "CHANGELOG.md", dest = "/usr/share/doc/veetee/CHANGELOG.md", mode = "644", doc = true },
+    { source = "LICENSE-APACHE", dest = "/usr/share/doc/veetee/LICENSE-APACHE", mode = "644", doc = true },
+    { source = "LICENSE-MIT", dest = "/usr/share/doc/veetee/LICENSE-MIT", mode = "644", doc = true },
+    { source = "THIRD-PARTY.md", dest = "/usr/share/doc/veetee/THIRD-PARTY.md", mode = "644", doc = true },
+    { source = "crates/vt-fonts/fonts/OFL.txt", dest = "/usr/share/doc/veetee/fonts-OFL.txt", mode = "644", doc = true },
+]

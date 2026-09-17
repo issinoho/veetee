@@ -39,12 +39,17 @@ documentation.
 
 ## Installing
 
-[Releases](https://github.com/issinoho/veetee/releases) provide a Debian/Ubuntu package and an
-x86_64 Linux tarball, both needing GTK 4.14+ and libadwaita 1.5+:
+[Releases](https://github.com/issinoho/veetee/releases) provide a Debian/Ubuntu package, an RPM
+and an x86_64 Linux tarball, all needing GTK 4.14+ and libadwaita 1.5+:
 
 ```sh
-sudo apt install ./veetee_0.8.11-1_amd64.deb
+sudo apt install ./veetee_0.8.11-1_amd64.deb          # Debian, Ubuntu
+sudo dnf install ./veetee-0.8.11-1.x86_64.rpm         # Fedora, RHEL
+sudo zypper install ./veetee-0.8.11-1.x86_64.rpm      # openSUSE
 ```
+
+The RPM asks for the libraries it needs by soname rather than by package name, so it resolves on
+any RPM distribution that has them, whatever each calls the packages.
 
 Any Linux distribution with Flatpak can install the Flatpak bundle from a release (it uses the
 GNOME runtime from Flathub):
