@@ -326,7 +326,7 @@ footer p { margin: 0 0 8px; }
           <a class="key light" href="https://github.com/issinoho/veetee"><small>Find</small><strong>Source</strong></a>
           <a class="key" href="https://github.com/issinoho/veetee/wiki"><small>Help</small><strong>Wiki</strong></a>
         </div>
-        <p class="version" style="margin-top:22px">Linux · Windows · GTK 4 · MIT or Apache-2.0 · .deb, tarball and zip</p>
+        <p class="version" style="margin-top:22px">Linux · Windows · GTK 4 · MIT or Apache-2.0 · .deb, .rpm, tarball and zip</p>
       </div>
       <div>
         <div class="crt">
@@ -482,6 +482,12 @@ footer p { margin: 0 0 8px; }
 $ curl -LO https://github.com/issinoho/veetee/\
     releases/download/v0.8.12/veetee_0.8.12-1_amd64.deb
 $ sudo apt install ./veetee_0.8.12-1_amd64.deb</div>
+          <h3 style="margin-top:32px">Fedora, RHEL and openSUSE</h3>
+          <p>An RPM, which asks for its libraries by soname rather than by package name, so the one package suits them all.</p>
+          <div class="term"><span class="c"># fetch and install veetee 0.8.12</span>
+$ curl -LO https://github.com/issinoho/veetee/\
+    releases/download/v0.8.12/veetee-0.8.12-1.x86_64.rpm
+$ sudo dnf install ./veetee-0.8.12-1.x86_64.rpm     <span class="c"># zypper on openSUSE</span></div>
           <h3 style="margin-top:32px">Any distribution, with Flatpak</h3>
           <p>A Flatpak bundle runs on any distribution with the GNOME runtime from Flathub. Local shells and <code>--ssh</code> run on the host, so your own shell and <code>~/.ssh</code> apply.</p>
           <div class="term"><span class="c"># install the bundle from a release</span>
