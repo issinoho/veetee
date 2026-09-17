@@ -604,6 +604,11 @@ impl Lat {
     fn closed(&self) -> bool {
         lock(&self.shared).session.is_closed()
     }
+
+    /// How the session ended, for the terminal to show.
+    fn ending(&self) -> &'static str {
+        lock(&self.shared).session.ending()
+    }
 }
 
 impl crate::Transport for Lat {
@@ -612,7 +617,7 @@ impl crate::Transport for Lat {
             return Ok(self.drain(buf));
         }
         if self.closed() {
-            return Err(down());
+            return Err(down(self.ending()));
         }
         let deadline = Instant::now() + timeout;
         loop {
@@ -647,7 +652,7 @@ impl crate::Transport for Lat {
             // took the circuit down; the read after this one reports that.
             Ok(self.drain(buf))
         } else if self.closed() {
-            Err(down())
+            Err(down(self.ending()))
         } else {
             Ok(0)
         }
@@ -727,13 +732,11 @@ fn flush(listener: &mut Listener, peer: [u8; 6], shared: &mut Shared) -> io::Res
     Ok(())
 }
 
-/// What a read gives once the circuit has gone, which is how a terminal is
-/// told a session has ended.
-fn down() -> io::Error {
-    io::Error::new(
-        io::ErrorKind::UnexpectedEof,
-        "the host took the circuit down",
-    )
+/// What a read gives once the session has gone, which is how a terminal is
+/// told it is over. The words come from the session, which knows whether it
+/// was the session that ended or the circuit that was taken down.
+fn down(why: &str) -> io::Error {
+    io::Error::new(io::ErrorKind::UnexpectedEof, why.to_string())
 }
 
 /// A poisoned lock is no reason to lose a session: the state behind it is a

@@ -59,19 +59,35 @@ const MAX_CREDIT: u8 = 15;
 /// spends credit on besides a slot, are not read.
 const LOW_CREDIT: u8 = MAX_CREDIT / 2;
 
-/// The first identifier this end gives its own side of a circuit. Any number
-/// will do — the far end simply quotes it back — and this one is veetee's.
+/// The identifier this end falls back on for its side of a circuit.
 const FIRST_CIRCUIT: u16 = 0x1001;
+
+/// Where this run of veetee starts numbering its circuits.
+///
+/// Not a constant, and that matters: a host remembers a circuit until it
+/// times out, so one veetee that was killed rather than closed leaves MYI64
+/// to take its circuit down on its own, and the stop that follows names an
+/// identifier. Were every run to begin at the same number, the next veetee
+/// would take that stop for its own and lose a session it had just opened.
+fn first_circuit() -> u16 {
+    let pid = u16::try_from(std::process::id() & 0xffff).unwrap_or(0);
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |since| since.subsec_nanos() as u16);
+    // Zero is what a start message sends for an end it cannot name yet, so
+    // the top bit keeps these clear of it however the mixing turns out.
+    0x1000 | ((pid ^ now) & 0x0fff)
+}
 
 /// The identifier for the next session, so that two sessions from one node
 /// cannot be taken for each other: a window holds two, and the far end tells
 /// circuits apart by nothing else.
 fn next_circuit() -> u16 {
-    static NEXT: AtomicU16 = AtomicU16::new(FIRST_CIRCUIT);
-    let id = NEXT.fetch_add(1, Ordering::Relaxed);
-    // A start message sends zero for an end it cannot name yet, so zero is
-    // never an identifier of ours. Wrapping round to the first one again
-    // takes 65,535 sessions, by which time the first is long gone.
+    static BASE: std::sync::OnceLock<u16> = std::sync::OnceLock::new();
+    static COUNT: AtomicU16 = AtomicU16::new(0);
+    let id = BASE
+        .get_or_init(first_circuit)
+        .wrapping_add(COUNT.fetch_add(1, Ordering::Relaxed));
     if id == 0 { FIRST_CIRCUIT } else { id }
 }
 
@@ -162,6 +178,9 @@ pub struct Session {
     /// Typing that arrived before the far end had prompted, which it would
     /// have ignored. Held back rather than dropped, and sent once it speaks.
     early: Vec<u8>,
+    /// How the session ended, for the terminal to say. The two are worth
+    /// telling apart: a logout ends a session and leaves the circuit up.
+    ended: Option<&'static str>,
 }
 
 impl Session {
@@ -180,6 +199,7 @@ impl Session {
             circuit: false,
             outgoing: Vec::new(),
             early: Vec::new(),
+            ended: None,
         }
     }
 
@@ -284,6 +304,11 @@ impl Session {
         self.state == State::Closed
     }
 
+    /// How the session ended, in a few words a terminal can show.
+    pub fn ending(&self) -> &'static str {
+        self.ended.unwrap_or("the session is over")
+    }
+
     /// The service this session asked for.
     pub fn service(&self) -> &str {
         &self.config.service
@@ -366,6 +391,7 @@ impl Session {
         }
         self.spend(run.slots.len());
         if ended {
+            self.ended = Some("the host ended the session");
             // Whatever came with it is still the terminal's: OpenVMS says
             // who logged out in the message before this one, and sometimes
             // in the same one. The caller reads what is waiting before it
@@ -387,14 +413,16 @@ impl Session {
 
     /// The far end taking the circuit down.
     fn stopped(&mut self, stop: Stop) -> Event {
-        // 🔎 The one stop message ever captured named the receiving end and
-        // sent zero for its own, so either identifier matching is taken as
-        // enough; the rest of the message is unread.
-        if stop.theirs != self.ours && (stop.ours == 0 || stop.ours != self.theirs) {
+        // Naming this end is the least a stop of ours can do. 🔎 The one
+        // ever captured sent zero for its own end, so that much is allowed,
+        // but nothing looser: a stop for somebody else's circuit must not
+        // take this one down.
+        if stop.theirs != self.ours || (stop.ours != 0 && stop.ours != self.theirs) {
             return Event::Ignored;
         }
         self.state = State::Closed;
         self.circuit = false;
+        self.ended = Some("the host closed the circuit");
         Event::Closed
     }
 
@@ -884,6 +912,72 @@ mod tests {
         let out = session.take_outgoing();
         assert_eq!(out.len(), 1, "the circuit is still ours to take down");
         assert!(matches!(crate::parse(&out[0]), Ok(Message::Stop(_))));
+    }
+
+    #[test]
+    fn a_stop_for_another_circuit_is_left_alone() {
+        let (mut session, mut data) = agreed();
+        // A veetee that was killed rather than closed leaves a circuit for
+        // the host to time out on its own, and the stop that follows names
+        // that one. Taking it would lose a session just opened.
+        let earlier = Stop {
+            theirs: 0x1001,
+            ours: 0xe001,
+        }
+        .build();
+        assert_eq!(session.receive(&earlier, &mut data), Event::Ignored);
+        assert!(!session.is_closed(), "that circuit is not this one");
+
+        // Naming this end but some other far end is no better.
+        let confused = Stop {
+            theirs: 0x7001,
+            ours: 0x9999,
+        }
+        .build();
+        assert_eq!(session.receive(&confused, &mut data), Event::Ignored);
+        assert!(!session.is_closed());
+    }
+
+    #[test]
+    fn an_identifier_is_never_zero_whatever_the_run() {
+        let base = first_circuit();
+        assert_ne!(base, 0, "zero is an end that has not been named");
+        assert_eq!(base & 0xf000, 0x1000, "and it is kept well clear of it");
+    }
+
+    #[test]
+    fn how_a_session_ended_is_worth_saying() {
+        let (mut session, mut data) = agreed();
+        session.receive(PROMPT, &mut data);
+        let goodbye = Run {
+            flags: 0,
+            theirs: 0x7001,
+            ours: 0xe001,
+            sequence: 9,
+            acknowledged: 8,
+            slots: vec![Slot {
+                to: 1,
+                from: 0,
+                control: 0xd1,
+                data: &[],
+            }],
+        }
+        .build();
+        session.receive(&goodbye, &mut data);
+        assert_eq!(session.ending(), "the host ended the session");
+
+        let (mut session, mut data) = agreed();
+        let stop = Stop {
+            theirs: 0x7001,
+            ours: 0xe001,
+        }
+        .build();
+        session.receive(&stop, &mut data);
+        assert_eq!(
+            session.ending(),
+            "the host closed the circuit",
+            "a logout is not a circuit going down, and a reader should be told which"
+        );
     }
 
     #[test]
