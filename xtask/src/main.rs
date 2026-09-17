@@ -22,6 +22,10 @@ tasks:
   openvms [--bless] [NAME ...]
       Replay the session recordings in tests/conformance/openvms and compare
       each checkpoint screen with NAME/CHECKPOINT.screen.
+  winget VERSION
+      Point packaging/winget at a published release: its checksum, its date
+      and the version in every field and path.
+
   dist [--no-deb] [--no-rpm]
       Build release binaries and package them under target/dist: a
       veetee-VERSION-x86_64-linux.tar.gz, a Debian package (needs cargo-deb),
@@ -45,6 +49,7 @@ fn main() -> ExitCode {
         Some("esctest") => esctest(&args[1..]),
         Some("dist") => dist(&args[1..]),
         Some("openvms") => openvms(&args[1..]),
+        Some("winget") => winget(&args[1..]),
         _ => Err(USAGE.to_string()),
     };
     match result {
@@ -140,6 +145,100 @@ fn vttest(args: &[String]) -> Result<()> {
             failed.join(", ")
         ))
     }
+}
+
+/// Points the winget manifests at a published release.
+///
+/// The version appears in all three of them, twice inside the zip's own paths,
+/// and the checksum and release date come from the release itself. Editing
+/// that by hand is how a package ends up pointing at the wrong file.
+fn winget(args: &[String]) -> Result<()> {
+    let version = args
+        .iter()
+        .find(|a| !a.starts_with("--"))
+        .ok_or("usage: cargo xtask winget VERSION")?
+        .trim_start_matches('v');
+    // The manifests live in a directory of their own: `winget validate`
+    // reads every file it is given, and chokes on a README.
+    let dir = root().join("packaging/winget/manifests");
+    let manifests = [
+        "issinoho.veetee.yaml",
+        "issinoho.veetee.installer.yaml",
+        "issinoho.veetee.locale.en-US.yaml",
+    ];
+
+    // Whatever the manifests say now, so every mention of it can be replaced:
+    // the version is in paths as well as fields.
+    let first = fs::read_to_string(dir.join(manifests[0])).map_err(|e| e.to_string())?;
+    let current = first
+        .lines()
+        .find_map(|line| line.strip_prefix("PackageVersion:"))
+        .ok_or("no PackageVersion in the version manifest")?
+        .trim()
+        .to_string();
+
+    let url = format!("https://github.com/issinoho/veetee/releases/download/v{version}/SHA256SUMS");
+    let sums = Command::new("curl")
+        .args(["-fsSL", &url])
+        .output()
+        .map_err(|e| format!("curl: {e}"))?;
+    if !sums.status.success() {
+        return Err(format!(
+            "{url} could not be fetched; is v{version} released?"
+        ));
+    }
+    let sums = String::from_utf8_lossy(&sums.stdout);
+    let zip = format!("veetee-{version}-x86_64-windows.zip");
+    let sha = sums
+        .lines()
+        .find(|line| line.trim_end().ends_with(&zip))
+        .and_then(|line| line.split_whitespace().next())
+        .ok_or_else(|| format!("{zip} is not listed in {url}"))?
+        .to_uppercase();
+
+    // The day the release was tagged, which is what winget wants.
+    let dated = Command::new("git")
+        .args(["log", "-1", "--format=%cs", &format!("v{version}")])
+        .current_dir(root())
+        .output()
+        .map_err(|e| format!("git: {e}"))?;
+    let date = String::from_utf8_lossy(&dated.stdout).trim().to_string();
+    if date.is_empty() {
+        return Err(format!("no tag v{version} here to take a date from"));
+    }
+
+    for name in manifests {
+        let path = dir.join(name);
+        let mut text = fs::read_to_string(&path).map_err(|e| format!("{name}: {e}"))?;
+        text = text.replace(&current, version);
+        text = replace_field(&text, "InstallerSha256:", &sha);
+        text = replace_field(&text, "ReleaseDate:", &date);
+        fs::write(&path, text).map_err(|e| format!("{name}: {e}"))?;
+    }
+    println!("winget manifests now point at v{version} ({date})");
+    println!("  {zip}");
+    println!("  {sha}");
+    println!(r"check them with: winget validate --manifest packaging\winget\manifests");
+    Ok(())
+}
+
+/// Replaces the value of one `Field: value` line, leaving its indentation.
+fn replace_field(text: &str, field: &str, value: &str) -> String {
+    text.lines()
+        .map(|line| match line.trim_start().starts_with(field) {
+            true => {
+                let indent = &line[..line.len() - line.trim_start().len()];
+                format!("{indent}{field} {value}")
+            }
+            false => line.to_string(),
+        })
+        .collect::<Vec<_>>()
+        .join(
+            "
+",
+        )
+        + "
+"
 }
 
 fn read_dir_sorted(dir: &Path) -> Result<Vec<PathBuf>> {

@@ -143,20 +143,25 @@ limitations 1.0 would ship with rather than fix.
 
 - **1.0 itself**: when to call it. The version is the user's call, and there is no longer anything
   outstanding that has to land first.
-- **Windows installer, or something short of one.** A release ships a zip holding the GTK runtime,
-  so there is no Start menu entry, no uninstall and no upgrade path. Two routes: a **winget**
-  manifest wrapping the existing zip as a portable package, which is the Windows counterpart of
-  the Flathub item and needs no new artifact; or an **Inno Setup or WiX installer**, which adds a
-  second thing to build and code-sign every release. Worth deciding whether a Start menu entry and
-  an uninstall entry are worth that, or whether winget alone answers it.
-- **Flathub** (parked 2026-09-15): the Flatpak builds in CI and ships with releases. To submit:
-  make a copy of `packaging/flatpak/com.issinoho.Veetee.yml` with a `type: git` source pinned to a
-  release tag and commit; pass Flathub's `flatpak-builder-lint` (the `org.flatpak.Builder` Flatpak,
-  about 1 GB; ask before installing) and consider `<branding>` colours in the metainfo; justify
-  `--talk-name=org.freedesktop.Flatpak` (host shells and ssh), `--device=all` (serial) and
-  `--filesystem=home` (logs; may be asked to narrow). The user forks `flathub/flathub`, opens the
-  pull request against the `new-pr` branch, and may publish the verification token at
-  `https://issinoho.com/.well-known/org.flathub.VerifiedApps.txt`.
+- **Windows installer, or winget alone.** A release ships a zip holding the GTK runtime, so there
+  is no Start menu entry, no uninstall and no upgrade path. The **winget** half is ready:
+  [`packaging/winget`](../packaging/winget) has validated manifests treating the zip as a portable
+  package, `cargo xtask winget VERSION` points them at a release, and its README covers the
+  submission. What is left is deciding whether a Start menu entry and an uninstall entry are worth
+  an **Inno Setup or WiX installer** as well — a second thing to build and code-sign every
+  release — or whether winget answers it.
+- **Flathub**: the manifest is ready in [`packaging/flathub`](../packaging/flathub), pinned to a
+  tag and commit as Flathub requires, with a README covering the submission and written answers
+  for the three permissions reviewers ask about — `--device=all` (serial lines, for which Flatpak
+  offers nothing narrower), `--talk-name=org.freedesktop.Flatpak` (host shells and SSH, so the
+  user's own keys apply) and `--filesystem=home` (logs and recordings named by the user). The
+  metainfo carries `<branding>` colours and passes `appstreamcli validate`.
+
+  Left to do at submission: run Flathub's own `flatpak-builder-lint` (the `org.flatpak.Builder`
+  Flatpak, about 1 GB — ask before installing), fork `flathub/flathub`, and open the pull request
+  against the `new-pr` branch. Publishing a token at
+  `https://issinoho.com/.well-known/org.flathub.VerifiedApps.txt` marks the app as verified
+  afterwards.
 
 ### Limitations 1.0 would ship with (from compat-matrix.md)
 

@@ -1,0 +1,59 @@
+# Flathub manifest for veetee.
+#
+# The same build as packaging/flatpak/com.issinoho.Veetee.yml, with one
+# difference that matters: Flathub builds from a tag in the repository rather
+# than from a working directory, so the source is `type: git` pinned to both a
+# tag and the commit it names.
+#
+# To submit, copy this file and cargo-sources.json into a repository of their
+# own and open a pull request; see README.md beside this file. Update the tag
+# and commit for every release, and regenerate cargo-sources.json whenever the
+# dependencies change.
+id: com.issinoho.Veetee
+runtime: org.gnome.Platform
+runtime-version: '50'
+sdk: org.gnome.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.rust-stable
+command: veetee
+finish-args:
+  - --share=ipc
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --device=dri
+  # Keyclick, bells and the DECPS tones a VT520 plays.
+  - --socket=pulseaudio
+  # Telnet and SSH.
+  - --share=network
+  # Serial lines. A terminal emulator that cannot open /dev/ttyUSB0 cannot do
+  # the job people install this one for: a console port is still how a VAX,
+  # an Alpha and most DEC hardware is reached.
+  - --device=all
+  # Local shells, `--command` and the OpenSSH client run on the host through
+  # the portal, so the user's own shell, ~/.ssh and known_hosts apply. Running
+  # a sandboxed copy of ssh with no access to the user's keys would be worse
+  # than useless.
+  - --talk-name=org.freedesktop.Flatpak
+  # Session logs and recordings are written where the user names them, on the
+  # command line or in a saved connection, and read back for replay.
+  - --filesystem=home
+build-options:
+  append-path: /usr/lib/sdk/rust-stable/bin
+  env:
+    CARGO_HOME: /run/build/veetee/cargo
+    CARGO_NET_OFFLINE: 'true'
+modules:
+  - name: veetee
+    buildsystem: simple
+    build-commands:
+      - cargo --offline build --release --locked -p veetee
+      - install -Dm755 target/release/veetee /app/bin/veetee
+      - install -Dm644 data/com.issinoho.Veetee.desktop -t /app/share/applications
+      - install -Dm644 data/com.issinoho.Veetee.metainfo.xml -t /app/share/metainfo
+      - install -Dm644 data/icons/com.issinoho.Veetee.svg -t /app/share/icons/hicolor/scalable/apps
+    sources:
+      - type: git
+        url: https://github.com/issinoho/veetee.git
+        tag: v0.8.12
+        commit: ccd0991a01245c9bfdd1da74971de74da7564f25
+      - cargo-sources.json

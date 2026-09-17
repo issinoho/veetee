@@ -5,6 +5,16 @@ milestones (0.3 = M3). The format follows [Keep a Changelog](https://keepachange
 
 ## [Unreleased]
 
+- **Added: manifests for winget and Flathub**, so neither submission starts from a blank page.
+  `packaging/winget` treats the Windows zip as a portable package — winget unpacks it and puts
+  `veetee` and `vt-headless` on the path, the GTK runtime being in the zip already — and
+  `cargo xtask winget VERSION` points the manifests at a release, taking the checksum from its
+  `SHA256SUMS` and the date from its tag. `winget validate` passes.
+
+  `packaging/flathub` is the Flatpak manifest with the one change Flathub requires, a source
+  pinned to a tag and its commit, and a README with written answers for the permissions reviewers
+  ask about. The metainfo gains `<branding>` colours and passes `appstreamcli validate`.
+
 ## [0.8.12] - 2026-09-17
 
 An RPM, so the Debian package is no longer the only one.

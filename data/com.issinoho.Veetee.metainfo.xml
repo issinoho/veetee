@@ -41,6 +41,12 @@
       <image>https://issinoho.github.io/veetee/img/vt525-colour.png</image>
     </screenshot>
   </screenshots>
+  <!-- Flathub and GNOME Software tint the application page with these: the
+       phosphor green of the website on its near-black, light and dark. -->
+  <branding>
+    <color type="primary" scheme_preference="light">#b9e9c6</color>
+    <color type="primary" scheme_preference="dark">#0a1f12</color>
+  </branding>
   <categories>
     <category>System</category>
     <category>TerminalEmulator</category>
