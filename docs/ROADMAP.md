@@ -5,7 +5,7 @@ The working roadmap: what is done, what is left before 1.0, and what is parked. 
 every control function are in [compat-matrix.md](compat-matrix.md), and released changes in
 [CHANGELOG.md](../CHANGELOG.md).
 
-Latest release: **0.8.10**. Until 1.0 the minor version follows the milestone reached; patch
+Latest release: **0.8.11**. Until 1.0 the minor version follows the milestone reached; patch
 releases carry fixes and work that completes a milestone.
 
 ## Goal

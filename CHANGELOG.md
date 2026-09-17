@@ -5,6 +5,11 @@ milestones (0.3 = M3). The format follows [Keep a Changelog](https://keepachange
 
 ## [Unreleased]
 
+## [0.8.11] - 2026-09-17
+
+An interface to pick from rather than type for LAT, and RFC 2217 proved against a real server,
+which completes M5 and with it every milestone.
+
 - **Added: an interface picker for LAT.** The connection dialog lists the Ethernet interfaces that
   are up, so a LAT connection is chosen rather than typed and nobody has to leave the window to
   run `ip addr`. A name a saved connection carries is kept and shown even on a machine where that
@@ -449,7 +454,8 @@ The first release: VT100 through VT420 emulation with local, Telnet, SSH and ser
   `cargo deny` licence checks and parser fuzzing.
 - `cargo xtask dist` builds the release tarball and Debian package.
 
-[Unreleased]: https://github.com/issinoho/veetee/compare/v0.8.10...HEAD
+[Unreleased]: https://github.com/issinoho/veetee/compare/v0.8.11...HEAD
+[0.8.11]: https://github.com/issinoho/veetee/compare/v0.8.10...v0.8.11
 [0.8.10]: https://github.com/issinoho/veetee/compare/v0.8.9...v0.8.10
 [0.8.9]: https://github.com/issinoho/veetee/compare/v0.8.8...v0.8.9
 [0.8.8]: https://github.com/issinoho/veetee/compare/v0.8.7...v0.8.8

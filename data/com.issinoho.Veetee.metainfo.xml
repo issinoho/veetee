@@ -61,6 +61,11 @@
   </supports>
   <content_rating type="oars-1.1"/>
   <releases>
+    <release version="0.8.11" date="2026-09-17">
+      <description>
+        <p>LAT connections pick an interface from a list, and RFC 2217 is proved against a real server.</p>
+      </description>
+    </release>
     <release version="0.8.10" date="2026-09-17">
       <description>
         <p>Says what to do when LAT cannot open a socket, and lets the command be copied.</p>
