@@ -359,7 +359,51 @@ fn editor(
     port.set_subtitle("0 uses the standard port");
     let command = adw::EntryRow::builder().title("Command").build();
     let device = adw::EntryRow::builder().title("Device").build();
-    let interface = adw::EntryRow::builder().title("Interface").build();
+    // What is up now, so nobody has to leave the window to run `ip addr`.
+    // A name a saved connection carries is kept even when that interface is
+    // not here, since connections travel between machines.
+    let saved = match &p.connection {
+        Connection::Lat { interface, .. } => interface.clone(),
+        _ => None,
+    };
+    let live = lat_interfaces();
+    // Automatic first, then the saved one where there is one, then the rest
+    // of what is up. The saved one keeps its place whether or not it is here.
+    let mut wires: Vec<Option<String>> = vec![None];
+    let mut labels: Vec<String> = vec!["Automatic".into()];
+    if let Some(name) = &saved {
+        labels.push(live.iter().find(|(up, _)| up == name).map_or_else(
+            || format!("{name} (not here now)"),
+            |(_, label)| label.clone(),
+        ));
+        wires.push(Some(name.clone()));
+    }
+    for (name, label) in live {
+        if wires
+            .iter()
+            .any(|wire| wire.as_deref() == Some(name.as_str()))
+        {
+            continue;
+        }
+        wires.push(Some(name));
+        labels.push(label);
+    }
+    let interface = adw::ComboRow::builder()
+        .title("Interface")
+        .subtitle("Automatic uses the one Ethernet interface that is up")
+        .model(&gtk::StringList::new(
+            &labels.iter().map(String::as_str).collect::<Vec<_>>(),
+        ))
+        .build();
+    let wires = Rc::new(wires);
+    let chosen_wire = {
+        let wires = wires.clone();
+        move |combo: &adw::ComboRow| wires.get(combo.selected() as usize).cloned().flatten()
+    };
+    let save_wire = {
+        let wires = wires.clone();
+        move |combo: &adw::ComboRow| wires.get(combo.selected() as usize).cloned().flatten()
+    };
     let service = adw::EntryRow::builder().title("Service").build();
     // Listening for LAT services needs a socket, so it belongs to the one
     // platform that has one.
@@ -429,7 +473,9 @@ fn editor(
         } => {
             kind.set_selected(3);
             host.set_text(node);
-            interface.set_text(i.as_deref().unwrap_or(""));
+            if i.is_some() {
+                interface.set_selected(1);
+            }
             service.set_text(sv.as_deref().unwrap_or(""));
         }
         Connection::Shell => kind.set_selected(4),
@@ -518,7 +564,7 @@ fn editor(
     browse.connect_clicked({
         let (host, interface, service) = (host.clone(), interface.clone(), service.clone());
         move |button| {
-            let named = interface.text().trim().to_string();
+            let named = chosen_wire(&interface).unwrap_or_default();
             let (host, service) = (host.clone(), service.clone());
             browse_lat(
                 button,
@@ -628,7 +674,7 @@ fn editor(
                         (!text.is_empty()).then_some(text)
                     };
                     Connection::Lat {
-                        interface: named(&interface),
+                        interface: save_wire(&interface),
                         node,
                         service: named(&service),
                     }
@@ -664,6 +710,30 @@ fn editor(
         }
     });
     dialog.present(Some(parent));
+}
+
+/// The interfaces LAT could speak on: the name, and a label to show.
+///
+/// Empty where LAT cannot work at all, which leaves the picker with nothing
+/// but Automatic and a saved name, and costs nothing: the connection can
+/// still be edited on a machine that will never open it.
+fn lat_interfaces() -> Vec<(String, String)> {
+    #[cfg(target_os = "linux")]
+    {
+        vt_transport::lat::interfaces()
+            .into_iter()
+            .map(|found| {
+                let label = if found.wireless {
+                    format!("{} (wireless)", found.name)
+                } else {
+                    found.name.clone()
+                };
+                (found.name, label)
+            })
+            .collect()
+    }
+    #[cfg(not(target_os = "linux"))]
+    Vec::new()
 }
 
 /// Lists the LAT services announcing themselves, for one to be picked rather

@@ -184,7 +184,10 @@ cargo run -p veetee -- --lat MYI64 --service TERMINALS    # a service other than
 ```
 
 Nothing routes, so the node has to be on the same segment; there is no port and no host name.
-The interface is worked out when only one Ethernet interface is up, and named otherwise.
+The interface is worked out when there is only one it could be, and named otherwise; the
+connection dialog offers a list of what is up rather than asking for a name. LAT over wireless
+works — a session to OpenVMS has been run over one — but where there is a wire as well, the
+wire is taken, a segment with DEC equipment on it being the likelier of the two.
 
 Raw Ethernet needs `CAP_NET_RAW`, which nothing that draws a terminal should hold — and GTK will
 not start with it at all. A small helper opens the socket and hands it back instead, and the

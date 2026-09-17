@@ -564,9 +564,10 @@ pub fn lat_interface(named: Option<&str>) -> io::Result<String> {
 /// Which of the interfaces that are up LAT should speak on.
 #[cfg(target_os = "linux")]
 fn choose_interface(found: &[vt_transport::lat::Interface]) -> io::Result<String> {
-    // Wireless is Ethernet enough to carry LAT, but it is not where LAT is:
-    // a segment with DEC equipment on it is a wired one. So a wireless
-    // interface is never chosen here, only named.
+    // LAT over wireless works — a session to OpenVMS has been run over it —
+    // but where there is a wire as well, the wire is the likelier segment to
+    // find DEC equipment on. So a wireless interface is not weighed against a
+    // wired one; it is only passed over when there is something else to take.
     let wired: Vec<&str> = found
         .iter()
         .filter(|i| !i.wireless)
@@ -574,6 +575,13 @@ fn choose_interface(found: &[vt_transport::lat::Interface]) -> io::Result<String
         .collect();
     if let [only] = wired[..] {
         return Ok(only.to_string());
+    }
+    // Nothing but wireless, and only one of it: there is no choice to make,
+    // and refusing to make it would be obstruction rather than caution.
+    if wired.is_empty()
+        && let [only] = found
+    {
+        return Ok(only.name.clone());
     }
     if found.is_empty() {
         return Err(io::Error::new(
@@ -697,9 +705,13 @@ mod tests {
             "{e}"
         );
 
-        // Wireless alone is offered rather than taken, and said to be wireless.
-        let e = choose_interface(&[wireless("wlp59s0")]).unwrap_err();
-        assert!(e.to_string().contains("wlp59s0 (wireless)"), "{e}");
+        // LAT over wireless works, so the only interface there is gets used
+        // whatever kind it is: refusing would be obstruction, not caution.
+        assert_eq!(choose_interface(&[wireless("wlp59s0")]).unwrap(), "wlp59s0");
+
+        // Two of them is a choice again, and each is named for what it is.
+        let e = choose_interface(&[wireless("wlan0"), wireless("wlan1")]).unwrap_err();
+        assert!(e.to_string().contains("wlan0 (wireless)"), "{e}");
 
         let e = choose_interface(&[]).unwrap_err();
         assert_eq!(e.kind(), io::ErrorKind::NotFound);

@@ -5,6 +5,16 @@ milestones (0.3 = M3). The format follows [Keep a Changelog](https://keepachange
 
 ## [Unreleased]
 
+- **Added: an interface picker for LAT.** The connection dialog lists the Ethernet interfaces that
+  are up, so a LAT connection is chosen rather than typed and nobody has to leave the window to
+  run `ip addr`. A name a saved connection carries is kept and shown even on a machine where that
+  interface is not present, since connections travel between machines.
+
+- **Fixed: a lone wireless interface is used rather than refused.** LAT over wireless works — a
+  session to OpenVMS has been run over one — and veetee was declining to choose a wireless
+  interface at all, so a machine with nothing else up was told to name it by hand. A wire is still
+  preferred where there is one, a segment with DEC equipment on it being the likelier of the two.
+
 - **RFC 2217 is proved against a real implementation.** The serial line options over `--telnet`
   had only ever been checked against the RFC itself, which says what the bytes should be and
   nothing about whether a server agrees. Against `ser2net`, veetee asked for 19200, 7 data bits,
