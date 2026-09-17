@@ -7,14 +7,14 @@ export DH_VERBOSE = 1
 export CARGO_HOME = $(CURDIR)/debian/cargo
 export CARGO_NET_OFFLINE = true
 
-# veetee is edition 2024 and needs Rust 1.85 or newer. Resolute's own rustc is
-# new enough; noble ships 1.75 and gets rustc-1.85 from noble-updates, which
-# installs beside the default one rather than over it. Pick the first candidate
-# that is actually new enough rather than assuming either layout.
-RUSTC_CANDIDATES := /usr/lib/rust-1.85/bin /usr/lib/rust-1.86/bin /usr/bin
+# The gtk-rs stack requires rustc 1.92, beyond what veetee's own rust-version
+# asks for. Resolute's default rustc (1.93) is new enough; a versioned package
+# would install beside the default rather than over it, so check both layouts
+# and pick the first candidate that really is new enough.
+RUSTC_CANDIDATES := /usr/lib/rust-1.92/bin /usr/lib/rust-1.93/bin /usr/bin
 RUST_BIN := $(firstword $(foreach d,$(RUSTC_CANDIDATES),\
     $(shell test -x $(d)/rustc && $(d)/rustc --version 2>/dev/null | \
-        awk '{split($$2,v,"."); if (v[1]>1 || (v[1]==1 && v[2]>=85)) print "$(d)"}')))
+        awk '{split($$2,v,"."); if (v[1]>1 || (v[1]==1 && v[2]>=92)) print "$(d)"}')))
 # Leave PATH alone when nothing matched: an empty RUST_BIN would prepend an
 # empty entry, which POSIX reads as the current directory.
 ifneq ($(RUST_BIN),)

@@ -11,6 +11,16 @@ set -euo pipefail
 
 VERSION=${1:?usage: build-source.sh VERSION SERIES [KEYID]}
 SERIES=${2:?usage: build-source.sh VERSION SERIES [KEYID]}
+
+# Only series whose archive can offer rustc 1.92 or newer can build veetee at
+# all: the gtk-rs crates require it. Noble tops out at 1.91 and its build fails.
+case "$SERIES" in
+    resolute|stonking) ;;
+    noble|jammy|questing)
+        echo "$SERIES cannot build veetee: its newest archive rustc is older than the" >&2
+        echo "1.92 the gtk-rs crates require. See README.md here." >&2
+        exit 1 ;;
+esac
 KEYID=${3:-}
 
 HERE=$(cd "$(dirname "$0")" && pwd)

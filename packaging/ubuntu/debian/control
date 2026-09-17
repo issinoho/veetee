@@ -7,8 +7,8 @@ Build-Depends: debhelper-compat (= 13),
                libgtk-4-dev (>= 4.14),
                libadwaita-1-dev (>= 1.5),
                libasound2-dev,
-               rustc (>= 1.85) | rustc-1.85,
-               cargo (>= 1.85) | cargo-1.85
+               rustc (>= 1.92) | rustc-1.92,
+               cargo (>= 1.92) | cargo-1.92
 Standards-Version: 4.7.0
 Homepage: https://veetee.issinoho.com/
 Vcs-Browser: https://github.com/issinoho/veetee

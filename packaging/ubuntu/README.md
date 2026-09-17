@@ -6,21 +6,27 @@ that `cargo xtask dist` makes, and it builds in a chroot with **no network** —
 `Cargo.lock` is vendored into the orig tarball and `.cargo/config.toml` redirects crates.io at it.
 That is the same problem `packaging/flatpak/cargo-sources.json` solves, by a different route.
 
-## Which series, and why those
+## Which series, and why only resolute
 
-veetee is edition 2024 and needs Rust 1.85 or newer, which is what decides this:
+**Rust decides this, and it is not veetee's own `rust-version` that matters.** The gtk-rs stack —
+`glib`, `gio`, `gdk4`, `cairo-rs`, `graphene`, `gdk-pixbuf` — requires **rustc 1.92**, well beyond
+the 1.85 the workspace declared until 1.0. The real question for any series is whether the archive
+can offer 1.92.
 
-| Series | rustc | libadwaita | Verdict |
+| Series | newest rustc in the archive | libadwaita | Verdict |
 |---|---|---|---|
-| **resolute** 26.04 LTS | 1.93 by default | 1.9.0 | builds as-is |
-| **noble** 24.04 LTS | 1.75 by default, `rustc-1.85` in noble-updates/universe | 1.5.0 | builds against the versioned package |
-| questing 25.10 | 1.85.1 | — | end of life, skipped |
-| jammy 22.04 LTS | `rustc-1.85` available | 1.1.0 | ruled out: libadwaita far too old |
+| **resolute** 26.04 LTS | 1.93, the default | 1.9.0 | builds |
+| noble 24.04 LTS | 1.91 (`rustc-1.91`, noble-updates) | 1.5.0 | **one version short**; cannot build |
+| questing 25.10 | 1.85.1 | — | end of life |
+| jammy 22.04 LTS | 1.85 | 1.1.0 | far too old on both counts |
 
-Noble sits exactly on veetee's stated minimums, GTK 4.14 and libadwaita 1.5. `debian/control` asks
-for `rustc (>= 1.85) | rustc-1.85`, which resolute satisfies with its own rustc and noble satisfies
-with the versioned one, so one control file serves both. `debian/rules` then probes for a rustc
-that really is new enough rather than assuming where it lives.
+Noble was tried and rejected on evidence rather than on paper: the upload was accepted and the
+build failed with `rustc 1.85.1 is not supported by the following packages`, listing the whole
+gtk-rs stack. `rustc-1.89` and `rustc-1.91` exist in noble-updates but `rustc-1.92` does not, so
+there is nothing to reach for. If Ubuntu ever backports 1.92 or newer to noble, the packaging here
+needs no change beyond adding the series back to the build command — `debian/control` already asks
+for `rustc (>= 1.92) | rustc-1.92`, and `debian/rules` probes for a toolchain that really is new
+enough rather than assuming where it lives.
 
 ## Building
 

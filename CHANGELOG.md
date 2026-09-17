@@ -8,13 +8,20 @@ Before 1.0 the minor version followed the project milestones (0.3 = M3). The for
 
 ## [Unreleased]
 
-- **Added: an Ubuntu PPA**, `ppa:issinoho/veetee`, for the two current LTS releases: noble (24.04)
-  and resolute (26.04). Launchpad builds from a source package in a chroot with no network, so
-  `packaging/ubuntu` vendors every crate in `Cargo.lock` into the orig tarball and points
-  `.cargo/config.toml` at it. veetee is edition 2024 and needs Rust 1.85 or newer, which noble's
-  default 1.75 does not satisfy: the build depends on `rustc (>= 1.85) | rustc-1.85`, taking the
-  versioned package from noble-updates, and `debian/rules` probes for a toolchain that really is
-  new enough rather than assuming where it lives. `build-source.sh` builds from the release tag.
+- **Added: an Ubuntu PPA**, `ppa:issinoho/veetee`, for resolute (26.04 LTS). Launchpad builds from
+  a source package in a chroot with no network, so `packaging/ubuntu` vendors every crate in
+  `Cargo.lock` into the orig tarball and points `.cargo/config.toml` at it. `build-source.sh`
+  builds from the release tag rather than the working tree.
+
+  Noble (24.04 LTS) is **not** supported and the script refuses it. Its newest archive rustc is
+  1.91 and the gtk-rs crates require 1.92; the noble build was attempted and failed on exactly
+  that. If Ubuntu backports a newer rustc the packaging needs no change beyond allowing the series.
+
+- **Fixed: the declared minimum Rust version was wrong.** `rust-version` said 1.85, but the gtk-rs
+  stack -- `glib`, `gio`, `gdk4`, `cairo-rs`, `graphene`, `gdk-pixbuf` -- requires 1.92, so anyone
+  building with 1.85 through 1.91 got a wall of crate errors rather than one clear message. It now
+  says 1.92, which is what the tree has really needed for some time. CI, the Flatpak SDK and a
+  rustup toolchain are all newer than that, which is why nothing had caught it.
 
 ## [1.0.0] - 2026-09-17
 
