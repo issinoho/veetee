@@ -117,13 +117,11 @@ left here is a limitation rather than work.
   window that listens and fills in as the announcements arrive, a row for each node and service
   with its rating, and picking one fills in the connection. Nothing can be asked for — a node
   announces itself about once a minute and a solicit built by hand has never been answered — so
-  the window says as much rather than looking broken while it waits. 🔎 It has been read but
-  not watched: nothing here can drive a GTK dialog, WSLg having no window manager to talk to.
+  the window says as much rather than looking broken while it waits.
 
-  Left: nothing, unless watching it turns something up. Several fields of the messages are still
-  copied rather than understood; they are marked in [`lat-protocol.md`](lat-protocol.md). Not
-  available in the Flatpak, which has no raw sockets, nor on Windows, which has no raw Ethernet
-  without a driver.
+  Left: nothing. Several fields of the messages are still copied rather than understood; they are
+  marked in [`lat-protocol.md`](lat-protocol.md). Not available in the Flatpak, which has no raw
+  sockets, nor on Windows, which has no raw Ethernet without a driver.
 
 ### Smaller gaps (from compat-matrix.md)
 
