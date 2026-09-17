@@ -5,6 +5,17 @@ milestones (0.3 = M3). The format follows [Keep a Changelog](https://keepachange
 
 ## [Unreleased]
 
+- **RFC 2217 is proved against a real implementation.** The serial line options over `--telnet`
+  had only ever been checked against the RFC itself, which says what the bytes should be and
+  nothing about whether a server agrees. Against `ser2net`, veetee asked for 19200, 7 data bits,
+  even parity, 2 stop bits and RTS/CTS, and every setting came back from the server as it was
+  sent — the four-byte speed included, which is the encoding most likely to be got wrong.
+  [docs/rfc2217-testing.md](docs/rfc2217-testing.md) has the exchange written out, and what to do
+  to repeat it: a USB serial adapter, with nothing on the far end of it.
+
+  That completes M5. What is left is other people's hardware — whether a DECserver, Lantronix or
+  Moxa answers the option at all — rather than anything in veetee.
+
 ## [0.8.10] - 2026-09-17
 
 Says what to do when LAT cannot open a socket, having told the first people to try it very little

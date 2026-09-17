@@ -1,9 +1,12 @@
 # Testing RFC 2217 against a terminal server
 
 veetee can set up the serial line behind a terminal server — speed, word size, parity, stop bits,
-flow control and a line break — with RFC 2217 (Telnet COM Port Control). It is written, and its
-tests assert that the bytes on the wire match the RFC, which is a weaker claim than it sounds:
-**none of it has ever met real hardware.** This page is for somebody who has some.
+flow control and a line break — with RFC 2217 (Telnet COM Port Control).
+
+**It has since been proved against `ser2net`**, which answered every setting with the same value
+it was asked for; see [what was proved](#what-was-proved). What has not been tried is a terminal
+server — a DECserver, a Lantronix, a Moxa — and whether one speaks the option at all. This page is
+for somebody who has one.
 
 Everything here is a question rather than an instruction. A result of "the server refused the
 option" is as useful as a result of "it worked", and far more useful than no result.
@@ -80,17 +83,32 @@ the configuration it started with. A stale one still accepts the connection and 
 which veetee reports as `Connection reset by peer`; `ser2net -n -d -c /etc/ser2net.yaml` in the
 foreground says what it is really doing.
 
-Then ask for something distinctive and look at the port:
+Then ask for something distinctive and watch the wire. **`stty` cannot be used for this**, which
+was the first thing tried here: ser2net opens the port exclusively, so nothing else can read its
+settings while a session is up, and it puts them back when the session ends. The conversation is
+the evidence, and it is better evidence, since it shows what the server said as well as what
+veetee asked.
+
+All of it in one terminal — `tcpdump` writes a capture in the background, veetee holds the
+foreground until its window is closed:
 
 ```sh
-telnet localhost 4001                      # should stay open; ^] then quit to leave
-stty -F /dev/ttyUSB0 -a | head -2          # before: 9600, cs8, -parenb
+telnet localhost 4001              # ten seconds well spent: if this drops, so will veetee
+sudo -v                            # or the backgrounded sudo waits for a password nobody types
+sudo tcpdump -i lo -n -w /tmp/rfc2217.pcap 'tcp port 4001' 2>/dev/null &
 veetee --telnet localhost:4001 -b 19200 -d 7 -p e -s 2 -f h
-stty -F /dev/ttyUSB0 -a | head -2          # during the session
+#   ... close the window, and then:
+sudo pkill tcpdump
+tcpdump -r /tmp/rfc2217.pcap -n -X | tail -50
 ```
 
-The `telnet` first is worth the ten seconds: if ser2net drops that, it will drop veetee, and the
-fault is in the configuration rather than in anything being tested.
+Write a capture file rather than piping `-X` to one: `tcpdump` block-buffers its text output, so a
+plain redirection loses the end of the conversation — which is exactly the part with the answers
+in it.
+
+The `telnet` first tells a configuration problem from anything worth reporting. A stale or
+misconfigured ser2net accepts the connection and drops it, which reaches a client as
+`Connection reset by peer` and looks for all the world like a fault in the client.
 
 The second `stty` should report `speed 19200 baud`, `cs7`, `parenb -parodd`, `cstopb` and
 `crtscts`. Anything veetee asked for that is not there is a fault worth reporting, and anything
@@ -104,6 +122,42 @@ A capture is easy here too, the whole conversation being on the loopback interfa
 ```sh
 sudo tcpdump -i lo -w rfc2217.pcap tcp port 4001
 ```
+
+### What was proved
+
+Against `ser2net` 4 on Ubuntu, with an FTDI USB adapter and nothing on the far end, on
+17 September 2026. veetee asked for 19200, 7 data bits, even parity, 2 stop bits and RTS/CTS
+(`-b 19200 -d 7 -p e -s 2 -f h`), and the whole conversation was:
+
+```
+veetee → ff fb 2c                          WILL COM-PORT-OPTION
+ser2net→ ff fd 2c                          DO
+veetee → ff fa 2c 01 00 00 4b 00 ff f0     SET-BAUDRATE 19200
+         ff fa 2c 02 07 ff f0              SET-DATASIZE 7
+         ff fa 2c 03 03 ff f0              SET-PARITY even
+         ff fa 2c 04 02 ff f0              SET-STOPSIZE 2
+         ff fa 2c 05 03 ff f0              SET-CONTROL hardware
+ser2net→ ff fa 2c 6f ff ff ff f0           MODEMSTATE-MASK IS 0xff   (unasked for)
+         ff fa 2c 6b 00 ff f0              NOTIFY-MODEMSTATE 0       (unasked for)
+         ff fa 2c 65 00 00 4b 00 ff f0     BAUDRATE IS 19200
+         ff fa 2c 66 07 ff f0              DATASIZE IS 7
+         ff fa 2c 67 03 ff f0              PARITY   IS even
+         ff fa 2c 68 02 ff f0              STOPSIZE IS 2
+         ff fa 2c 69 03 ff f0              CONTROL  IS hardware
+```
+
+Every setting came back as it was sent, including the four-byte speed, which is the encoding most
+likely to be got wrong and the hardest to check without a server to answer.
+
+Two things worth taking from it beyond "it works":
+
+- **A server may send notifications nobody asked for.** ser2net sent the modem-state mask and a
+  modem-state notification unbidden. veetee ignores both, as it says it does, and the session was
+  unaffected — so that gap costs nothing against this implementation.
+- **`telnet` is enough to see it.** No terminal server was needed to prove the client side. What a
+  terminal server would answer is a different question: whether it speaks the option at all.
+
+Tests 5 and 6 — flow control and break — were not done, having no far end to feel them.
 
 ### What to plug the cable into
 

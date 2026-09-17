@@ -24,7 +24,7 @@ esctest2, and defaults to DEC and OpenVMS behaviour everywhere (see [CLAUDE.md](
 | M2 VT220/VT320 | Character sets and NRCS, soft fonts, UDKs, 8-bit controls, selective erase, status line, reports | Done |
 | M3 VT420 | Left/right margins, rectangles, checksums, pages, macros, state reports, esctest2 | Done (0.3.0) |
 | M4 VT510/VT520/VT525 | Colour, dual sessions, cursor styles, VT500 modes, reports, keyboard controls, character sets | Done (0.4.0) |
-| M5 Transports | PTY, serial, Telnet, SSH; RFC 2217; LAT | Partly done |
+| M5 Transports | PTY, serial, Telnet, SSH; RFC 2217; LAT | Done (0.8.9–0.8.10) |
 | M6 Keyboard and DEC applications | Keymap and LK401 editor, DECFNK, VT520 key programming, recordings; OpenVMS acceptance recordings | Done (0.6.0) |
 | M7 Fonts and look | DEC-cell fonts for every model and width, VT420 and VT500 Set-Up, sound, smooth scroll, CRT picture, Display Controls | Done (0.7.1) |
 | M8 Polish and 1.0 | Saved connections, logs, history search, copy and paste translation, screen readers, throughput, Flatpak, signed Windows builds | Planned work done (0.8.1–0.8.8) |
@@ -52,20 +52,27 @@ left here is a limitation rather than work.
 - PCTerm mode and key position reports (DECPCTERM, DECKPM, DECEKBD): not planned for 1.0; OpenVMS
   does not use them.
 
-## Left before 1.0
+## M5: connections
 
-### M5: connections
+Complete: LAT shipped in 0.8.9 and RFC 2217 is proved against a reference implementation. What is
+left here is other people's hardware rather than work.
 
-- **RFC 2217** (Telnet COM Port Control) to terminal servers. Which ones answer it is itself
-  unknown: the option is from 1997 and DEC's own servers are older, so a DECserver may refuse it.
-  Implemented: the serial line options work with `--telnet`, setting speed, data bits, parity, stop
-  bits and flow control, and a break goes as SET-CONTROL rather than a Telnet break. Not yet
-  proven, so it stays here: nothing subscribes to NOTIFY-LINESTATE or NOTIFY-MODEMSTATE, so a
-  dropped line goes unnoticed; the server's replies are ignored rather than checked against what
-  was asked for; and none of it has met real hardware. The tests assert the bytes match the RFC,
-  which is a weaker claim. A session with a DECserver would settle it, and
-  [`rfc2217-testing.md`](rfc2217-testing.md) is a page for whoever has one: what to run, what to
-  look for, and what veetee is known not to do, so a gap is not reported as a fault.
+
+- **RFC 2217** (Telnet COM Port Control) is **proved against `ser2net`**: veetee asked for 19200,
+  7 data bits, even parity, 2 stop bits and RTS/CTS, and every one came back from the server as it
+  was sent, the four-byte speed included. The exchange is written out in
+  [`rfc2217-testing.md`](rfc2217-testing.md), which is also the page for anyone wanting to repeat
+  it — it wants a USB serial adapter and nothing on the other end of it.
+
+  What remains is other people's hardware rather than veetee: whether a DECserver, Lantronix or
+  Moxa answers the option at all. The option is from 1997 and DEC's own servers are older, so a
+  DECserver may well refuse it, and that would be a result worth having.
+
+  Two known gaps, neither of which cost anything against ser2net: nothing subscribes to
+  NOTIFY-LINESTATE or NOTIFY-MODEMSTATE, so a dropped line goes unnoticed — though ser2net sends
+  modem state unbidden and veetee tolerates it — and the server's replies are ignored rather than
+  checked, so veetee would report what it asked for if a server settled on something else.
+  Break and flow control are untested for want of anything on the far end to feel them.
 - **LAT** (Local Area Transport), clean-room from packet captures of OpenVMS LATACP: `latd` is
   GPL, so none of it is read. Still the largest item left, but no longer untouched.
 
@@ -125,6 +132,8 @@ left here is a limitation rather than work.
   Left: nothing. Several fields of the messages are still copied rather than understood; they are
   marked in [`lat-protocol.md`](lat-protocol.md). Not available in the Flatpak, which has no raw
   sockets, nor on Windows, which has no raw Ethernet without a driver.
+
+## Left before 1.0
 
 ### Smaller gaps (from compat-matrix.md)
 
