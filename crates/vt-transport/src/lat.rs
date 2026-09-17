@@ -54,13 +54,12 @@ impl Listener {
             Some(Protocol::from(i32::from(ETHERTYPE.to_be()))),
         )
         .map_err(|e| {
-            // Say what to do about it, but only when this is what went wrong:
-            // an interface that does not exist is not a question of privilege.
+            // Say why, but not what to do about it: this is reached through
+            // the helper as often as not, and whoever catches it knows which
+            // program wants the capability and where it lives. Telling a user
+            // to sudo the terminal would be worse than saying nothing.
             if e.kind() == io::ErrorKind::PermissionDenied {
-                io::Error::new(
-                    e.kind(),
-                    format!("{e}: LAT needs CAP_NET_RAW, so try sudo, or setcap cap_net_raw+ep"),
-                )
+                io::Error::new(e.kind(), format!("{e}: LAT needs CAP_NET_RAW"))
             } else {
                 e
             }
