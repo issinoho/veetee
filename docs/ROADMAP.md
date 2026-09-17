@@ -56,13 +56,16 @@ left here is a limitation rather than work.
 
 ### M5: connections
 
-- **RFC 2217** (Telnet COM Port Control) to terminal servers such as DECserver, Lantronix and Moxa.
+- **RFC 2217** (Telnet COM Port Control) to terminal servers. Which ones answer it is itself
+  unknown: the option is from 1997 and DEC's own servers are older, so a DECserver may refuse it.
   Implemented: the serial line options work with `--telnet`, setting speed, data bits, parity, stop
   bits and flow control, and a break goes as SET-CONTROL rather than a Telnet break. Not yet
   proven, so it stays here: nothing subscribes to NOTIFY-LINESTATE or NOTIFY-MODEMSTATE, so a
   dropped line goes unnoticed; the server's replies are ignored rather than checked against what
   was asked for; and none of it has met real hardware. The tests assert the bytes match the RFC,
-  which is a weaker claim. A session with a DECserver would settle it.
+  which is a weaker claim. A session with a DECserver would settle it, and
+  [`rfc2217-testing.md`](rfc2217-testing.md) is a page for whoever has one: what to run, what to
+  look for, and what veetee is known not to do, so a gap is not reported as a fault.
 - **LAT** (Local Area Transport), clean-room from packet captures of OpenVMS LATACP: `latd` is
   GPL, so none of it is read. Still the largest item left, but no longer untouched.
 

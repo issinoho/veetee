@@ -33,7 +33,9 @@ const SGA: u8 = 3;
 const TTYPE: u8 = 24;
 const NAWS: u8 = 31;
 const TSPEED: u8 = 32;
-/// RFC 2217 COM Port Control, for terminal servers such as DECserver.
+/// RFC 2217 COM Port Control, for terminal servers. 🔎 Which servers answer
+/// it is untested: the option is from 1997 and DEC's own are older, so a
+/// DECserver may well refuse it. See `docs/rfc2217-testing.md`.
 const COM_PORT: u8 = 44;
 
 // RFC 2217 client commands. The server answers with the command plus 100,

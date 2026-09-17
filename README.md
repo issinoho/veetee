@@ -91,7 +91,9 @@ tips, is in the [wiki](https://github.com/issinoho/veetee/wiki).
 Telnet negotiates terminal type (`VT420`, or the selected model), window size and
 suppress-go-ahead; F5 sends a BREAK. BINARY, for 8-bit controls, is offered only with
 `--telnet-binary`, because OpenVMS answers it by putting the terminal in PASSALL. The serial line
-options work with `--telnet` as well, where they set up a terminal server's line with RFC 2217.
+options work with `--telnet` as well, where they set up a terminal server's line with RFC 2217 —
+which has never met real hardware, so [docs/rfc2217-testing.md](docs/rfc2217-testing.md) asks
+anyone with a terminal server to try it.
 SSH runs the system `ssh -tt`, so keys, agents, `ProxyJump` and `known_hosts` behave exactly as in
 a shell, with `TERM` set to the emulated model. LAT opens a session on an OpenVMS node over raw
 Ethernet, on Linux; see below. Network and serial sessions keep their window open when the
