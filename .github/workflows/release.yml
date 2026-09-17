@@ -32,6 +32,7 @@ jobs:
       - run: cargo test --workspace --locked
 
       - run: cargo install cargo-deb --locked
+      - run: cargo install cargo-generate-rpm --locked
       - run: cargo xtask dist
       - uses: actions/upload-artifact@v4
         with:
@@ -39,6 +40,7 @@ jobs:
           path: |
             target/dist/veetee-*.tar.gz
             target/dist/veetee_*.deb
+            target/dist/veetee-*.rpm
 
   windows:
     runs-on: windows-latest
