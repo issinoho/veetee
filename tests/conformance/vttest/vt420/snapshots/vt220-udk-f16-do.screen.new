@@ -1,0 +1,28 @@
+page 24x80 cursor 5,17 visible
+modes decawm
+ 1  |Test User-Defined Keys (DECUDK)
+ 2  |Press 'q' to quit.  Function keys should echo their labels.
+ 3  |(On a DEC terminal you must press SHIFT as well).
+ 4  |
+ 5  |          F 1 6
+   ~.........8888888
+ 6  |
+ 7  |
+ 8  |
+ 9  |
+10  |
+11  |
+12  |
+13  |
+14  |
+15  |
+16  |
+17  |
+18  |
+19  |
+20  |
+21  |
+22  |
+23  |
+24  |
+status indicator

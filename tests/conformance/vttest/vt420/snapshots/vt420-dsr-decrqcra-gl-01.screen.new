@@ -1,0 +1,29 @@
+page 24x80 cursor 23,14 visible
+modes decawm
+ 1  |Testing DECCKSR: Test Checksum of Rectangular Area (DECRQCRA): GL
+ 2  |
+ 3  |          <27> P 1 ! ~ E A E D <27> \  ok
+   ~.........88888888888888888888888888888
+ 4  |
+ 5  |     20 FFE0   0 30 FFD0   @ 40 FFC0   P 50 FFB0   ` 60 FFA0   p 70 FF90
+ 6  |   ! 21 FFDF   1 31 FFCF   A 41 FFBF   Q 51 FFAF   a 61 FF9F   q 71 FF8F
+ 7  |   " 22 FFDE   2 32 FFCE   B 42 FFBE   R 52 FFAE   b 62 FF9E   r 72 FF8E
+ 8  |   # 23 FFDD   3 33 FFCD   C 43 FFBD   S 53 FFAD   c 63 FF9D   s 73 FF8D
+ 9  |   $ 24 FFDC   4 34 FFCC   D 44 FFBC   T 54 FFAC   d 64 FF9C   t 74 FF8C
+10  |   % 25 FFDB   5 35 FFCB   E 45 FFBB   U 55 FFAB   e 65 FF9B   u 75 FF8B
+11  |   & 26 FFDA   6 36 FFCA   F 46 FFBA   V 56 FFAA   f 66 FF9A   v 76 FF8A
+12  |   ' 27 FFD9   7 37 FFC9   G 47 FFB9   W 57 FFA9   g 67 FF99   w 77 FF89
+13  |   ( 28 FFD8   8 38 FFC8   H 48 FFB8   X 58 FFA8   h 68 FF98   x 78 FF88
+14  |   ) 29 FFD7   9 39 FFC7   I 49 FFB7   Y 59 FFA7   i 69 FF97   y 79 FF87
+15  |   * 2A FFD6   : 3A FFC6   J 4A FFB6   Z 5A FFA6   j 6A FF96   z 7A FF86
+16  |   + 2B FFD5   ; 3B FFC5   K 4B FFB5   [ 5B FFA5   k 6B FF95   { 7B FF85
+17  |   , 2C FFD4   < 3C FFC4   L 4C FFB4   \ 5C FFA4   l 6C FF94   | 7C FF84
+18  |   - 2D FFD3   = 3D FFC3   M 4D FFB3   ] 5D FFA3   m 6D FF93   } 7D FF83
+19  |   . 2E FFD2   > 3E FFC2   N 4E FFB2   ^ 5E FFA2   n 6E FF92   ~ 7E FF82
+20  |   / 2F FFD1   ? 3F FFC1   O 4F FFB1   _ 5F FFA1   o 6F FF91   All: 1D3B
+   ~...............................................................33311
+21  |
+22  |Checksum for individual character is highlighted if mismatched.
+23  |Push <RETURN>
+24  |
+status indicator

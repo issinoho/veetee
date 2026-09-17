@@ -1,0 +1,27 @@
+page 24x80 cursor 17,1 visible
+modes decawm
+ 1  |
+ 2  |
+ 3  |
+ 4  |
+ 5  |Finally, a check of the ANSWERBACK MESSAGE, which can be sent
+ 6  |by pressing CTRL-BREAK. The answerback message can be loaded
+ 7  |in SET-UP B by pressing SHIFT-A and typing e.g.
+ 8  |
+ 9  |         " H e l l o , w o r l d Return "
+10  |
+11  |(the double-quote characters included).  Do that, and then try
+12  |to send an answerback message with CTRL-BREAK.  If it works,
+13  |the answerback message should be displayed in reverse mode.
+14  |Finish with a single RETURN.
+15  |
+16  |
+17  | H e l l o , <32> w o r l d
+   ~8888888888888888888888888888
+18  |
+19  |
+20  |
+21  |
+22  |
+23  |
+24  |

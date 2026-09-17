@@ -1,0 +1,29 @@
+page 24x80 cursor 24,14 visible
+modes decawm
+ 1  |         These are the G0 and G1 character sets.
+ 2  |
+ 3  |Character set B (US ASCII)                     Selected as G0 (with SI)
+   ~11111111111111111111111111
+ 4  |          !"#$%&'()*+,-./0123456789:;<=>?
+ 5  |         @ABCDEFGHIJKLMNOPQRSTUVWXYZ[\]^_
+ 6  |         `abcdefghijklmnopqrstuvwxyz{|}~
+ 7  |Character set A (ISO Latin-1)                  Selected as G1 (with SO)
+   ~11111111111111111111111111111
+ 8  |          ¡¢£¤¥¦§¨©ª«¬­®¯°±²³´µ¶·¸¹º»¼½¾¿
+ 9  |         ÀÁÂÃÄÅÆÇÈÉÊËÌÍÎÏÐÑÒÓÔÕÖ×ØÙÚÛÜÝÞß
+10  |         àáâãäåæçèéêëìíîïðñòóôõö÷øùúûüýþÿ
+11  |
+12  |
+13  |
+14  |
+15  |
+16  |
+17  |
+18  |
+19  |
+20  |
+21  |
+22  |
+23  |
+24  |Push <RETURN>
+status indicator

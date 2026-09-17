@@ -1,0 +1,27 @@
+page 24x80 cursor 12,14 visible
+modes decawm
+ 1  |
+ 2  |
+ 3  |
+ 4  |
+ 5  |This is a test of the ANSWERBACK MESSAGE. (To load the A.B.M.
+ 6  |see the TEST KEYBOARD part of this program). Below here, the
+ 7  |current answerback message in your terminal should be
+ 8  |displayed. Finish this test with RETURN.
+ 9  |
+10  | H e l l o , <32> w o r l d
+   ~8888888888888888888888888888
+11  |
+12  |Push <RETURN>
+13  |
+14  |
+15  |
+16  |
+17  |
+18  |
+19  |
+20  |
+21  |
+22  |
+23  |
+24  |

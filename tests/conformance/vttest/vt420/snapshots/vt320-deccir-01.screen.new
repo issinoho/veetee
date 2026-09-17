@@ -1,0 +1,28 @@
+page 24x80 cursor 23,14 visible
+modes decawm
+ 1  |Testing DECRQPSR: Cursor Information Report (DECCIR)
+ 2  |
+ 3  |          <27> P 1 $ u 3 ; 1 0 ; 1 ; @ ; @ ; @ ; 0 ; 2 ; N ; B A A A <27> \  ok
+   ~.........8888888888888888888888888888888888888888888888888888888888888888888
+ 4  |(valid request)
+ 5  |          Cursor (3,10), page 1
+ 6  |         Rendition:
+ 7  |          Selective erase: off
+ 8  |         Flags:
+ 9  |          Character set in GL: G0
+10  |          Character set in GR: G2
+11  |          Character set sizes: G0(94) G1(96) G2(96) G3(96)
+12  |          Character set names for G0...G3:
+13  |            US ASCII
+14  |            ISO Latin-1
+15  |            ISO Latin-1
+16  |            ISO Latin-1
+17  |
+18  |
+19  |
+20  |
+21  |
+22  |
+23  |Push <RETURN>
+24  |
+status indicator

@@ -1,0 +1,27 @@
+page 24x80 cursor 14,14 visible
+modes decawm
+ 1  |The cursor should be a blinking rectangle
+ 2  |Push <RETURN>
+ 3  |The cursor should be a blinking rectangle
+ 4  |Push <RETURN>
+ 5  |The cursor should be a nonblinking rectangle
+ 6  |Push <RETURN>
+ 7  |The cursor should be a blinking underline
+ 8  |Push <RETURN>
+ 9  |The cursor should be a nonblinking underline
+10  |Push <RETURN>
+11  |xterm: The cursor should be a blinking vertical bar
+12  |Push <RETURN>
+13  |xterm: The cursor should be a nonblinking vertical bar
+14  |Push <RETURN>
+15  |
+16  |
+17  |
+18  |
+19  |
+20  |
+21  |
+22  |
+23  |
+24  |
+status indicator

@@ -1,0 +1,27 @@
+page 24x80 cursor 8,14 visible
+modes decawm
+ 1  |This is a simple test of the status-line
+ 2  |
+ 3  |There should be TEXT IN THE STATUS LINE
+ 4  |Push <RETURN>
+ 5  |There should be no status line
+ 6  |Push <RETURN>
+ 7  |The status line should be normal (i.e., indicator)
+ 8  |Push <RETURN>
+ 9  |
+10  |
+11  |
+12  |
+13  |
+14  |
+15  |
+16  |
+17  |
+18  |
+19  |
+20  |
+21  |
+22  |
+23  |
+24  |
+status indicator

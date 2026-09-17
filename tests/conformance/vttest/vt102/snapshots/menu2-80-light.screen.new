@@ -1,0 +1,26 @@
+page 24x80 cursor 20,74 visible
+modes decawm decscnm
+ 1  |1234567890123456789012345678901234567890123456789012345678901234567890123456789
+ 2  |
+ 3  |  This is 80 column mode, light background.
+ 4  |   This is 80 column mode, light background.
+ 5  |    This is 80 column mode, light background.
+ 6  |     This is 80 column mode, light background.
+ 7  |      This is 80 column mode, light background.
+ 8  |       This is 80 column mode, light background.
+ 9  |        This is 80 column mode, light background.
+10  |         This is 80 column mode, light background.
+11  |          This is 80 column mode, light background.
+12  |           This is 80 column mode, light background.
+13  |            This is 80 column mode, light background.
+14  |             This is 80 column mode, light background.
+15  |              This is 80 column mode, light background.
+16  |               This is 80 column mode, light background.
+17  |                This is 80 column mode, light background.
+18  |                 This is 80 column mode, light background.
+19  |                  This is 80 column mode, light background.
+20  |                   This is 80 column mode, light background.Push <RETURN>
+21  |
+22  |
+23  |
+24  |

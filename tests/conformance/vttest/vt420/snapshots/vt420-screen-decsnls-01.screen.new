@@ -1,0 +1,29 @@
+page 24x80 cursor 4,14 visible
+modes decawm
+memory page 1/6 window 1,48
+ 1  |Testing Select Number of Lines per Screen (DECSNLS)
+ 2  |
+ 3  |48 Lines/Screen: <27> P 1 $ r 4 8 * | <27> \
+   ~................88888888888888888888888888888
+ 4  |Push <RETURN>
+ 5  |
+ 6  |
+ 7  |
+ 8  |
+ 9  |
+10  |
+11  |
+12  |
+13  |
+14  |
+15  |
+16  |
+17  |
+18  |
+19  |
+20  |
+21  |
+22  |
+23  |
+24  |
+status indicator

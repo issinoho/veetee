@@ -1,0 +1,40 @@
+page 24x80 cursor 23,14 visible
+modes decawm
+ 1  |
+ 2  |
+ 3  |
+ 4  |
+ 5  |    **********************************************
+   ~....cccccccccccccccccccccccccccccccccccccccccccccc
+ 6  |    *UVWXYZABCDEFGHIJKLMNOPQRSTUVWXYZABCDEFGHIJKL*
+   ~....c88888888888888888888888888888888888888888888c
+ 7  |    *NOPQRSTUVWXYZABCDEFGHIJKLMNOPQRSTUVWXYZABCDE*
+   ~....c88888888888888888888888888888888888888888888c
+ 8  |    *GHIJKLMNOPQRSTUVWXYZABCDEFGHIJKLMNOPQRSTUVWX*****
+   ~....c88888888888888888888888888888888888888888888ccccc
+ 9  |    *ZABCDEFGHIJKLMNOPQRSTUVWXYZABCDEFGHIJKLMNOPQ*   *
+   ~....c88888888888888888888888888888888888888888888c...c
+10  |    *STUVWXYZABCDEFGHIJKLMNOPQRSTUVWXYZABCDEFGHIJ*   *
+   ~....c88888888888888888888888888888888888888888888c...c
+11  |    *LMNOPQRSTUVWXYZABCDEFGHIJKLMNOPQRSTUVWXYZABC*   *
+   ~....c88888888888888888888888888888888888888888888c...c
+12  |    *EFGHIJKLMNOPQRSTUVWXYZABCDEFGHIJKLMNOPQRSTUV*   *
+   ~....c88888888888888888888888888888888888888888888c...c
+13  |    *XYZABCDEFGHIJKLMNOPQRSTUVWXYZABCDEFGHIJKLMNO*   *
+   ~....c88888888888888888888888888888888888888888888c...c
+14  |    **********************************************   *
+   ~....cccccccccccccccccccccccccccccccccccccccccccccc...c
+15  |        *                                            *
+   ~........c............................................c
+16  |        *                                            *
+   ~........c............................................c
+17  |        **********************************************
+   ~........cccccccccccccccccccccccccccccccccccccccccccccc
+18  |
+19  |
+20  |
+21  |Test Copy Rectangular area (DECCRA)rlapping (down 3, right 4)
+22  |The 10x46 box will be copied (down 3, right 4)
+23  |Push <RETURN>
+24  |
+status indicator

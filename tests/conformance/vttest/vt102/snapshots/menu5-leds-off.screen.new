@@ -1,0 +1,26 @@
+page 24x80 cursor 12,14 visible
+modes decawm
+ 1  |
+ 2  |
+ 3  |
+ 4  |
+ 5  |
+ 6  |
+ 7  |
+ 8  |
+ 9  |
+10  |These LEDs ("lamps") on the keyboard should be on:
+11  |
+12  |Push <RETURN>
+13  |
+14  |
+15  |
+16  |
+17  |
+18  |
+19  |
+20  |
+21  |
+22  |
+23  |
+24  |

@@ -1,0 +1,28 @@
+page 24x80 cursor 24,14 visible
+modes decawm
+ 1  |
+ 2  |Test of the "Request Terminal Parameters" feature, argument 0.
+ 3  |
+ 4  |
+ 5  |Report is: <27> [ 2 ; 1 ; 1 ; 1 1 2 ; 1 1 2 ; 1 ; 0 x  -- OK
+   ~..........88888888888888888888888888888888888888888888
+ 6  | This means: Parity NONE, 8 bits, xmitspeed 9600, recvspeed 9600. (CLoCk MULtipl
+ 7  |ier = 1, STP option flags = 0)
+ 8  |
+ 9  |
+10  |Test of the "Request Terminal Parameters" feature, argument 1.
+11  |
+12  |
+13  |Report is: <27> [ 3 ; 1 ; 1 ; 1 1 2 ; 1 1 2 ; 1 ; 0 x  -- OK
+   ~..........88888888888888888888888888888888888888888888
+14  |
+15  |
+16  |
+17  |
+18  |
+19  |
+20  |
+21  |
+22  |
+23  |
+24  |Push <RETURN>

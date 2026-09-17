@@ -1,0 +1,26 @@
+page 24x80 cursor 10,14 visible
+modes decawm
+ 1  |If your terminal has the ANSI 'Insert Character' function
+ 2  |(the VT102 does not), then you should see a line like this
+ 3  |  A B C D E F G H I J K L M N O P Q R S T U V W X Y Z
+ 4  |below:
+ 5  |
+ 6  |A
+ 7  |
+ 8  |
+ 9  |
+10  |Push <RETURN>
+11  |
+12  |
+13  |
+14  |
+15  |
+16  |
+17  |
+18  |
+19  |
+20  |
+21  |
+22  |
+23  |
+24  |

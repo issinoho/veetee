@@ -1,0 +1,30 @@
+page 24x80 cursor 3,14 visible
+modes decawm
+ 1  |This test demonstrates cursor-movement in the status-line
+ 2  |Push <RETURN>
+ 3  |Push <RETURN>
+   ~1111111111111
+ 4  |
+ 5  |
+ 6  |
+ 7  |
+ 8  |
+ 9  |
+10  |
+11  |
+12  |
+13  |
+14  |
+15  |
+16  |
+17  |
+18  |
+19  |
+20  |
+21  |
+22  |
+23  |
+24  |
+status host-writable
+ S  |                                          Last wordFourth Third Second First
+   ~...................................................44444448888882222222111111

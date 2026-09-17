@@ -1,0 +1,28 @@
+page 24x80 cursor 23,14 visible
+modes decawm
+ 1  |Testing DECRQSS: Terminal Mode Emulation (DECTME)
+ 2  |
+ 3  |          <27> P 1 $ r 1 <32> ~ <27> \  ok (valid request)
+   ~.........888888888888888888888888888888
+ 4  |         <27> [ 1 <32> ~
+ 5  |
+ 6  |
+ 7  |
+ 8  |
+ 9  |
+10  |
+11  |
+12  |
+13  |
+14  |
+15  |
+16  |
+17  |
+18  |
+19  |
+20  |
+21  |
+22  |
+23  |Push <RETURN>
+24  |
+status indicator

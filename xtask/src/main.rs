@@ -62,6 +62,16 @@ fn root() -> PathBuf {
         .to_path_buf()
 }
 
+/// Where cargo puts what it builds, which is not always `target` under the
+/// root: `CARGO_TARGET_DIR` moves it, and a checkout shared between two
+/// platforms wants it moved, or each build throws the other's away.
+fn target() -> PathBuf {
+    match env::var_os("CARGO_TARGET_DIR") {
+        Some(dir) => PathBuf::from(dir),
+        None => root().join("target"),
+    }
+}
+
 fn run(cmd: &mut Command) -> Result<()> {
     let status = cmd
         .status()
@@ -85,7 +95,7 @@ fn vttest(args: &[String]) -> Result<()> {
     run(Command::new(env!("CARGO"))
         .args(["build", "--quiet", "-p", "vt-headless"])
         .current_dir(root()))?;
-    let headless = root().join("target/debug/vt-headless");
+    let headless = target().join("debug/vt-headless");
 
     let suite = root().join("tests/conformance/vttest");
     let mut scripts = Vec::new();
@@ -142,7 +152,7 @@ fn read_dir_sorted(dir: &Path) -> Result<Vec<PathBuf>> {
 
 /// Downloads, verifies and builds vttest under target/conformance. Returns the binary path.
 fn build_vttest() -> Result<PathBuf> {
-    let work = root().join("target/conformance");
+    let work = target().join("conformance");
     let src = work.join(format!("vttest-{VTTEST_VERSION}"));
     let binary = src.join("vttest");
     if binary.exists() {
@@ -192,7 +202,7 @@ fn esctest(args: &[String]) -> Result<()> {
     run(Command::new(env!("CARGO"))
         .args(["build", "--quiet", "-p", "vt-headless"])
         .current_dir(root()))?;
-    let work = root().join("target/conformance");
+    let work = target().join("conformance");
     let log = work.join("esctest.log");
     let _ = fs::remove_file(&log);
 
@@ -216,7 +226,7 @@ fn esctest(args: &[String]) -> Result<()> {
         ),
     )
     .map_err(|e| e.to_string())?;
-    run(Command::new(root().join("target/debug/vt-headless"))
+    run(Command::new(target().join("debug/vt-headless"))
         .arg("run")
         .arg(&script))?;
 
@@ -352,7 +362,7 @@ fn dist(args: &[String]) -> Result<()> {
         .envs(release_env)
         .current_dir(root()))?;
 
-    let dist = root().join("target/dist");
+    let dist = target().join("dist");
     let name = format!("veetee-{version}-{arch}-linux");
     let stage = dist.join(&name);
     let _ = fs::remove_dir_all(&dist);
@@ -362,14 +372,19 @@ fn dist(args: &[String]) -> Result<()> {
         fs::copy(root().join(from), &dest).map_err(|e| format!("{from}: {e}"))?;
         Ok(())
     };
-    copy("target/release/veetee", "bin/veetee")?;
-    copy("target/release/vt-headless", "bin/vt-headless")?;
+    // What cargo built, which is not under the root when CARGO_TARGET_DIR
+    // says otherwise; the rest of what goes in is.
+    let binary = |name: &str, to: &str| -> Result<()> {
+        let dest = stage.join(to);
+        fs::create_dir_all(dest.parent().unwrap()).map_err(|e| e.to_string())?;
+        fs::copy(target().join("release").join(name), &dest).map_err(|e| format!("{name}: {e}"))?;
+        Ok(())
+    };
+    binary("veetee", "bin/veetee")?;
+    binary("vt-headless", "bin/vt-headless")?;
     // Out of the way, since nobody runs it by hand, and veetee looks for it
     // beside itself before it looks in libexec.
-    copy(
-        "target/release/veetee-lat-helper",
-        "libexec/veetee-lat-helper",
-    )?;
+    binary("veetee-lat-helper", "libexec/veetee-lat-helper")?;
     copy(
         "data/com.issinoho.Veetee.desktop",
         "share/applications/com.issinoho.Veetee.desktop",
@@ -443,7 +458,7 @@ fn openvms(args: &[String]) -> Result<()> {
     run(Command::new(env!("CARGO"))
         .args(["build", "--quiet", "-p", "vt-headless"])
         .current_dir(root()))?;
-    let headless = root().join("target/debug/vt-headless");
+    let headless = target().join("debug/vt-headless");
     let suite = root().join("tests/conformance/openvms");
     let mut failed = Vec::new();
     let mut count = 0;

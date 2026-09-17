@@ -1,0 +1,29 @@
+page 24x80 cursor 23,14 visible
+modes decawm
+ 1  |Test of Device Status Report 5 (report terminal status).
+ 2  |Report is: <27> [ 0 n  -- means "TERMINAL OK"
+   ~..........888888888888
+ 3  |
+ 4  |Test of Device Status Report 6 (report cursor position).
+ 5  |Report is: <27> [ 5 ; 1 R  -- OK
+   ~..........8888888888888888
+ 6  |
+ 7  |
+ 8  |Report is: <27> [ 5 ; 1 R  -- OK
+   ~..........8888888888888888
+ 9  |
+10  |
+11  |
+12  |
+13  |
+14  |
+15  |
+16  |
+17  |
+18  |
+19  |
+20  |
+21  |
+22  |
+23  |Push <RETURN>
+24  |
