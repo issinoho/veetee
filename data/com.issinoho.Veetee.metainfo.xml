@@ -61,6 +61,11 @@
   </supports>
   <content_rating type="oars-1.1"/>
   <releases>
+    <release version="0.8.9" date="2026-09-17">
+      <description>
+        <p>veetee speaks LAT, so an OpenVMS node can be reached over DEC's own protocol.</p>
+      </description>
+    </release>
     <release version="0.8.8" date="2026-09-16">
       <description>
         <p>veetee can find the LAT services announcing themselves on a wire, on Linux.</p>

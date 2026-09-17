@@ -5,87 +5,42 @@ milestones (0.3 = M3). The format follows [Keep a Changelog](https://keepachange
 
 ## [Unreleased]
 
-- **Added: a LAT session to an OpenVMS host.** `vt-headless lat INTERFACE --connect NODE` waits for
-  the node to announce itself, which is the only way veetee has of learning its Ethernet address,
-  then opens a circuit and asks it for a service. OpenVMS answers with a terminal: it creates an
-  `LTA` device, sends its login banner and `Username:`, and holds the circuit for as long as veetee
-  acknowledges it. `--type TEXT` sends a line once the far end has prompted, and the echo comes back
-  followed by `Password:` — traffic both ways, which is the protocol work done in substance.
+## [0.8.9] - 2026-09-17
 
-  A circuit keeps the little state it needs — the peer, both identifiers, the sequence sent and the
-  highest one heard — and answers every run message that carries slots. A message with no slots is
-  itself an acknowledgement and carries nothing to acknowledge, so answering one draws another back
-  and the two ends then acknowledge each other about once a second for ever; those are left alone.
+LAT, DEC's own terminal protocol: veetee opens a session on an OpenVMS node over raw Ethernet,
+and OpenVMS sets the line up as a VT420.
 
-  Clean-room, from packet captures of OpenVMS LATACP rather than from `latd`, which is GPL, and all
-  of the reading is written down in [docs/lat-protocol.md](docs/lat-protocol.md). Several fields are
-  still copied rather than understood — fourteen bytes of a circuit start, and most of the tail of
-  the slot that asks for a service — and are marked as guesses there. The UIC the captured client
-  sent is left out: it is the identity of the account that was calling, which veetee has not got and
-  should not invent.
-
-  Linux only, as discovery is — LAT is raw Ethernet rather than IP, so it cannot work in the
-  Flatpak, which has no raw sockets, nor on Windows, which has no raw Ethernet without a driver.
-
-- **Added: LAT as a connection, so a terminal can use one.** `vt_transport::lat::Lat` implements
-  the same `Transport` a Telnet or serial line does: it opens the circuit, asks for the service,
-  hands the host's slots to the terminal as a stream of bytes and carries what is typed back,
-  keeps an idle circuit alive while the user reads, and takes it down on the way out so that
-  OpenVMS releases the `LTA` device rather than waiting out its own timer. The slot that asks for
-  a service now carries the terminal's real page size rather than the twenty-four by eighty of the
-  capture, and each session names its own end of its circuit differently, so two from one window
-  cannot be taken for each other. `vt-headless lat INTERFACE --connect NODE` goes through all of
-  this rather than driving the protocol itself; without `--connect` it still prints every frame on
-  the wire, which is the way to watch a session slot by slot.
-
-  The protocol moved to `vt-lat` as a state machine with no sockets in it — frames in, frames out —
-  so it is tested against the captured frames of a real login on any platform rather than only on
-  a wire: that a service is asked for once the circuit is agreed, that the prompt is read and
-  acknowledged while the control slot beside it is not mistaken for terminal data, that an
-  acknowledgement is never acknowledged, that another node's circuit on the same wire is ignored,
-  and that typing before the far end has prompted is held back rather than lost, a slot sent early
-  being ignored by the host.
-
-  It has carried a real session: a login to OpenVMS, a 667-file `DIRECTORY SYS$SYSTEM`,
-  `SHOW TERMINAL` and a clean `LOGOUT`, leaving no `LTA` device behind. Meeting a host is what
-  read the last of the protocol — that a slot's type is the high nibble and its credit the low,
-  that credit is flow control and a node granted none stops mid-word, and that a session ends with
-  a slot of a type of its own — each of which veetee had wrong and none of which the captures
-  alone would have settled.
-
-- **Added: LAT in the window.** `veetee --lat MYI64` opens a LAT session as `--telnet` opens a
-  Telnet one, and it is a saved connection like any other — `connection = "lat"` in
+- **Added: LAT, DEC's own terminal protocol.** `veetee --lat MYI64` opens a session on an OpenVMS
+  node the way `--telnet` opens a Telnet one, and it saves like one: `connection = "lat"` in
   `profiles.toml`, and an entry in the connection dialog beside Telnet and SSH, where a LAT
-  connection names a node rather than a host and has no port, LAT not being IP at all.
+  connection names a node rather than a host and has no port, LAT not being IP at all. It rides
+  directly on Ethernet, so nothing routes and the node has to be on the same segment.
 
-  `--interface` is needed only where more than one Ethernet interface is up: there is no routing
-  in LAT, so the interface is not a preference but the one segment the node is on, and where
-  there is only one it can be worked out. A wireless interface is offered but never chosen, a LAT
-  segment being a wired one. `--service` asks for a service other than the node's own name, which
-  is the usual one.
+  In the window it is a DEC terminal on a DEC protocol, which is what the whole of this was for.
+  `SET TERMINAL/INQUIRE` at login identifies veetee as `Device_Type: VT400_Series` and sets the
+  line up for it — the VT400 conformance level, eighty columns, a twenty-four line page and 7-bit
+  controls — and `SHOW TERMINAL` reports `Eightbit`, `Soft Characters` and `DEC_CRT` through
+  `DEC_CRT4` on an `LTA` device OpenVMS created for it.
 
-  A DEC terminal on a DEC protocol, which is what the whole of this was for: `SET TERMINAL/INQUIRE`
-  at login identifies veetee as `Device_Type: VT400_Series` and sets the line up for it —
-  the VT400 conformance level, eighty columns, a twenty-four line page and 7-bit controls — and
-  `SHOW TERMINAL` reports `Eightbit`, `Soft Characters` and `DEC_CRT` through `DEC_CRT4` on an
-  `LTA` device OpenVMS created for it.
+  `--interface` is wanted only where more than one Ethernet interface is up: the interface is not
+  a preference but the one segment the node is on, and where there is only one it is worked out.
+  A wireless interface is offered but never chosen, a LAT segment being a wired one. `--service`
+  asks for a service other than the node's own name, which is the usual one.
 
-- **Added: a LAT service browser.** The connection dialog has a button beside the node that opens
-  a window listing the services announcing themselves, a row each with its rating and what the
-  node says about itself; picking one fills the connection in, and leaves the service empty when
-  it is the node's own name. Nothing is asked for and nothing waits on a request: a node
-  announces itself about once a minute, and a solicit built by hand has never been answered, so
-  the list fills in as they arrive and says so while it is empty.
+  Linux only: there is no raw Ethernet in the Flatpak, and none on Windows without a driver.
+
+- **Added: a LAT service browser.** A button beside the node in the connection dialog opens a
+  window listing the services announcing themselves, a row each with its rating and what the node
+  says about itself; picking one fills the connection in. Nothing is asked for and nothing waits
+  on an answer: a node announces itself about once a minute, and a solicit built by hand has never
+  been answered, so the list fills in as they arrive and says as much while it is empty.
 
 - **Added: a helper, so that nothing drawing a terminal holds `CAP_NET_RAW`.**
   `veetee-lat-helper` opens the LAT socket and hands it straight back through a Unix socket pair,
   then exits; the circuit, the session and every frame after that are veetee's own work,
-  unprivileged. `vt-headless lat` asks for it when it cannot open a socket itself, so neither
-  listening nor connecting needs `sudo` any more.
-
-  It is more than good manners. GTK refuses to start at all with file capabilities, the kernel
-  setting `AT_SECURE` for a process they raise, so LAT in a window could not have worked any other
-  way.
+  unprivileged. It is more than good manners: GTK refuses to start at all with file capabilities,
+  the kernel setting `AT_SECURE` for a process they raise, so LAT in a window could not have
+  worked any other way.
 
   The capability is not granted by the package — a niche protocol is no reason to ship one nobody
   asked for — so `sudo setcap cap_net_raw+ep /usr/libexec/veetee-lat-helper` turns it on, and
@@ -93,6 +48,31 @@ milestones (0.3 = M3). The format follows [Keep a Changelog](https://keepachange
   allows is worth knowing: anyone who can run the helper can open a socket for LAT frames on one
   interface and send them. That is far narrower than `CAP_NET_RAW` itself, the socket carrying one
   protocol, but it is not nothing.
+
+- **The protocol, clean-room from packet captures.** `latd` is GPL, so none of it is read: what
+  veetee knows of LAT comes from watching OpenVMS LATACP on a wire, and is written down in
+  [docs/lat-protocol.md](docs/lat-protocol.md) — circuits, run messages, slots, sequence and
+  acknowledgement, credit, and the fields still copied rather than understood, which are marked as
+  guesses there. The UIC the captured client sent is left out: it is the identity of the account
+  that was calling, which veetee has not got and should not invent.
+
+  It lives in `vt-lat` as a state machine with no sockets in it, frames in and frames out, so it is
+  tested against the captured frames of a real login on any platform rather than only on a wire.
+  `vt-transport` adds the datalink and a `Transport`, which keeps an idle circuit alive, takes it
+  down on the way out so OpenVMS releases the `LTA` device, and holds typing back until the far end
+  has prompted, since a slot sent earlier is ignored.
+
+  Meeting a host is what read the last of it, and each thing it found was veetee misreading the
+  protocol: a slot's type is the high nibble and its credit the low, not the other way about, which
+  had been putting a parameter block on the screen and swallowing the login banner; credit is flow
+  control, and granting it once left OpenVMS breaking off mid-word; and a session ends with a slot
+  of a type of its own, which veetee had been acknowledging as though the login were still there.
+  Two of the three could not have appeared in a short capture at all.
+
+- **Added: `vt-headless lat`**, which is how the protocol was read and how it is watched.
+  `vt-headless lat INTERFACE` prints every LAT message on the wire, slot by slot with its control
+  byte; `--connect NODE` opens a session without a window, `--type TEXT` types into it, and
+  anything else typed goes the same way. Neither needs `sudo`, both asking the helper for a socket.
 
 ## [0.8.8] - 2026-09-16
 
@@ -418,7 +398,8 @@ The first release: VT100 through VT420 emulation with local, Telnet, SSH and ser
   `cargo deny` licence checks and parser fuzzing.
 - `cargo xtask dist` builds the release tarball and Debian package.
 
-[Unreleased]: https://github.com/issinoho/veetee/compare/v0.8.8...HEAD
+[Unreleased]: https://github.com/issinoho/veetee/compare/v0.8.9...HEAD
+[0.8.9]: https://github.com/issinoho/veetee/compare/v0.8.8...v0.8.9
 [0.8.8]: https://github.com/issinoho/veetee/compare/v0.8.7...v0.8.8
 [0.8.7]: https://github.com/issinoho/veetee/compare/v0.8.6...v0.8.7
 [0.8.6]: https://github.com/issinoho/veetee/compare/v0.8.5...v0.8.6
