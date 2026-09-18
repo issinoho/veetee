@@ -19,6 +19,10 @@ use vt_lat::{Event, Message, Run, Session, SessionConfig, Slot, Start, watch};
 /// as either end can be granted at once.
 const MAX_CREDIT: u8 = 15;
 
+/// What MYI64 reports as its queue limit, and the distance past which it
+/// stopped accepting anything veetee sent.
+const QUEUE_LIMIT: u8 = 24;
+
 /// The far end of a circuit: numbering, acknowledging and spending credit.
 struct Host {
     /// The identifiers, each end naming the other's first.
@@ -30,6 +34,9 @@ struct Host {
     /// The newest of this end's own numbers that veetee has acknowledged.
     /// A real node waits on this before sending anything further.
     acknowledged: u8,
+    /// The newest of veetee's numbers this end has acknowledged, which is the
+    /// newest that carried slots: an acknowledgement is not acknowledged.
+    acked: u8,
     /// What veetee has granted and this end has not spent. A slot costs one.
     credit: i32,
     /// What this end has granted veetee and veetee has not spent. A node that
@@ -53,6 +60,7 @@ impl Host {
             sequence: 0,
             heard: 0,
             acknowledged: 0,
+            acked: 0,
             credit: 0,
             granted: 0,
             typed: Vec::new(),
@@ -83,6 +91,18 @@ impl Host {
                 if watch::newer(run.acknowledged, self.acknowledged) {
                     self.acknowledged = run.acknowledged;
                 }
+                // Only a message with slots in it is acknowledged, and one
+                // more than the queue limit ahead of the last acknowledged is
+                // not accepted at all. A caller that takes a new number for
+                // every keepalive runs away from this and the session dies.
+                if !run.slots.is_empty() {
+                    self.acked = run.sequence;
+                }
+                let ahead = run.sequence.wrapping_sub(self.acked);
+                assert!(
+                    ahead <= QUEUE_LIMIT,
+                    "veetee is {ahead} ahead of the last acknowledged; the limit is {QUEUE_LIMIT}"
+                );
                 for slot in &run.slots {
                     self.credit += i32::from(slot.control & 0x0f);
                     // Only session data with something in it spends an
@@ -222,9 +242,12 @@ fn a_long_session_in_order() {
     );
     assert_eq!(stats.rewinds, 0, "nothing arrived out of order");
     assert_eq!(stats.duplicates, 0, "and nothing arrived twice");
+    // The far end numbers every message; this end numbers only the ones
+    // carrying slots, a bare acknowledgement taking no number of its own, so
+    // its sequence crosses the wrap far more often than ours does.
     assert!(
-        stats.wraps_in > 300 && stats.wraps_out > 300,
-        "both ends should have crossed the wrap hundreds of times: {}",
+        stats.wraps_in > 300 && stats.wraps_out > 10,
+        "both ends should have crossed the wrap: {}",
         stats.summary()
     );
     assert!(
@@ -294,6 +317,37 @@ fn a_far_end_waiting_to_be_acknowledged_is_not_left_waiting() {
             host.sequence
         );
     }
+}
+
+#[test]
+fn a_long_idle_spell_does_not_run_away_from_the_far_end() {
+    let (mut session, mut host, mut data) = opened();
+
+    // Nobody says anything for a long while and both ends keep the circuit
+    // up. A session that takes a new sequence number for every keepalive runs
+    // away from a far end that acknowledges only what carries slots: the gap
+    // grows by one every ten seconds whatever else happens, and past the
+    // queue limit MYI64 stopped accepting anything at all -- typing went
+    // unechoed, SET TERM/INQUIRE timed out into "unknown terminal type", and
+    // the terminal was dead a few minutes into every session.
+    for _ in 0..500 {
+        session.keepalive();
+        flush(&mut session, &mut host);
+        let ack = host.ack();
+        session.receive(&ack, &mut data);
+        flush(&mut session, &mut host);
+    }
+
+    // And after all that, the far end still takes what is typed.
+    let frame = host.speak(b"$ ", 15).expect("credit to prompt with");
+    session.receive(&frame, &mut data);
+    flush(&mut session, &mut host);
+    session.write(b"SHOW TIME\r");
+    flush(&mut session, &mut host);
+    assert_eq!(
+        host.typed, b"SHOW TIME\r",
+        "the far end is still listening after a long idle spell"
+    );
 }
 
 #[test]

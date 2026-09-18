@@ -673,13 +673,28 @@ impl Session {
     /// Builds a run message, counting this end's sequence number up as every
     /// message sent does, acknowledgements included.
     fn slot_frame(&mut self, slots: &[Slot<'_>]) -> Vec<u8> {
-        self.sequence = self.sequence.wrapping_add(1);
         self.stats.frames_out += 1;
-        if self.sequence == 0 {
-            self.stats.wraps_out += 1;
-        }
+        // A message carrying nothing takes no new number. The far end
+        // advances its acknowledgement only for messages that carry slots —
+        // it does not acknowledge an acknowledgement, and neither did veetee
+        // until today — so a number spent on one is a number that will never
+        // be acknowledged, and the gap between what this end has sent and
+        // what the far end has acknowledged grows by one every keepalive,
+        // for ever, whatever else is happening.
+        //
+        // MYI64's queue limit is 24. Past that it stopped accepting anything
+        // at all: typing went unacknowledged and unechoed, SET TERM/INQUIRE
+        // timed out into "unknown terminal type", and the terminal was dead
+        // a few minutes into every session regardless of load, credit or
+        // loss. The count reached 133, 75 and 43 in three traces before it
+        // was read as anything but noise.
         if slots.is_empty() {
             self.stats.acks_out += 1;
+        } else {
+            self.sequence = self.sequence.wrapping_add(1);
+            if self.sequence == 0 {
+                self.stats.wraps_out += 1;
+            }
         }
         self.stats.slots_out += slots.len() as u64;
         // Only session data with something in it spends the allowance, and
@@ -849,7 +864,10 @@ mod tests {
         };
         assert!(ack.slots.is_empty(), "an acknowledgement carries nothing");
         assert_eq!(ack.acknowledged, 3, "the highest sequence heard");
-        assert_eq!(ack.sequence, 2, "ours counts up with every message sent");
+        assert_eq!(
+            ack.sequence, 1,
+            "still the service request's number: a message carrying nothing              takes none of its own, because the far end will never              acknowledge one and the gap would grow for ever"
+        );
     }
 
     #[test]
@@ -933,8 +951,8 @@ mod tests {
             "the slot numbers the far end used"
         );
         assert_eq!(
-            typed.sequence, 3,
-            "after the start and the prompt were answered"
+            typed.sequence, 2,
+            "after the service request; answering the prompt took no number"
         );
         assert_eq!(typed.acknowledged, 3);
     }
@@ -1432,7 +1450,10 @@ mod tests {
             panic!("not a run")
         };
         assert!(idle.slots.is_empty());
-        assert_eq!(idle.sequence, 2, "counted up from the service request");
+        assert_eq!(
+            idle.sequence, 1,
+            "the service request's number, not one of its own"
+        );
     }
 
     #[test]

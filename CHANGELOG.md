@@ -8,6 +8,15 @@ Before 1.0 the minor version followed the project milestones (0.3 = M3). The for
 
 ## [Unreleased]
 
+- **Fixed: a LAT terminal went dead a few minutes into every session.** Typing stopped being
+  echoed, `SET TERM/INQUIRE` reported an unknown terminal type, and the screen froze — on a
+  circuit that was up, with full credit, nothing lost and nothing dropped. veetee took a new
+  sequence number for every message it sent, including bare acknowledgements, and a far end
+  acknowledges only the messages that carry slots. So the gap between what veetee had sent and
+  what the host had acknowledged grew by one every keepalive, for ever; past MYI64's queue limit
+  of 24 the host stopped accepting anything at all. A message carrying nothing now takes no number
+  of its own. That figure had appeared as `unacked` in three traces — 133, 75 and 43 — and been
+  read as an artefact each time.
 - **Fixed: a LAT session froze with both ends healthy and nothing wrong.** A node whose last
   message carries no slots waits to hear that number acknowledged before it sends anything else,
   and veetee advanced the number it acknowledged only on messages that *did* carry slots. So MYI64

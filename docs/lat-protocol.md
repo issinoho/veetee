@@ -405,6 +405,15 @@ it holds the password typed into the session**, in clear, exactly as the wire ca
   either end. The allowance is also worked out from scratch every thirty-two messages, so any
   other way of losing count rights itself.
 
+  **A message carrying nothing takes no sequence number.** Each end acknowledges only the messages
+  that carry slots — neither acknowledges an acknowledgement — so a number spent on one is a number
+  that will never be acknowledged, and the distance between what this end has sent and what the far
+  end has acknowledged grows by one every keepalive, for ever, whatever else is happening. MYI64's
+  `Queue Limit` is 24, and past that it stopped accepting anything veetee sent: typing went
+  unacknowledged and unechoed, `SET TERM/INQUIRE` timed out into "unknown terminal type", and the
+  terminal was dead a few minutes into every session, regardless of load, credit or loss. The count
+  reached 133, 75 and 43 in three traces before it was read as anything but an artefact.
+
   **Which number is acknowledged and whether a frame is sent back are separate questions.** A node
   whose last message carried no slots waits to hear that number back before it sends anything
   else. Answering an acknowledgement directly draws another answer and goes on for ever, so veetee
