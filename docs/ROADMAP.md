@@ -212,3 +212,5 @@ rather than fixes; none of it was judged a reason to hold the release.
 VT340 Sixel and ReGIS graphics, Tektronix 4010/4014, printer controller output to CUPS or PDF,
 Kermit and X/Y/ZMODEM file transfer, scripting and macros. The parser already accepts and safely
 ignores their sequences.
+
+An Android port is planned in outline in [`android.md`](android.md).
