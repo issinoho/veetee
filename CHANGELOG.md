@@ -8,6 +8,15 @@ Before 1.0 the minor version followed the project milestones (0.3 = M3). The for
 
 ## [Unreleased]
 
+- **Fixed: a LAT session froze with both ends healthy and nothing wrong.** A node whose last
+  message carries no slots waits to hear that number acknowledged before it sends anything else,
+  and veetee advanced the number it acknowledged only on messages that *did* carry slots. So MYI64
+  repeated `seq=86` every ten seconds for eleven minutes while veetee answered `ack=85`, each
+  politely acknowledging a stale number at the other: full credit both ways, nothing lost, nothing
+  duplicated, the `LTA` device still online, and the screen stopped. Which number is acknowledged
+  and whether a frame is sent back are now separate decisions — an acknowledgement still draws no
+  answer, since answering one draws another for ever, but the number it carries is taken and goes
+  out with the next keepalive.
 - **Added: the kernel's own frame counts in a LAT trace**, as `kernel=in/dropped` at the end of
   each summary line. A frame the kernel drops for want of room in the socket's receive buffer is
   one veetee lost to itself rather than to the wire, and a gap in the far end's numbering looks

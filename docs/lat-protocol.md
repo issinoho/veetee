@@ -405,6 +405,19 @@ it holds the password typed into the session**, in clear, exactly as the wire ca
   either end. The allowance is also worked out from scratch every thirty-two messages, so any
   other way of losing count rights itself.
 
+  **Which number is acknowledged and whether a frame is sent back are separate questions.** A node
+  whose last message carried no slots waits to hear that number back before it sends anything
+  else. Answering an acknowledgement directly draws another answer and goes on for ever, so veetee
+  does not — but it must still take the number, or the wait never ends. It did not, and MYI64
+  repeated `seq=86` every ten seconds for eleven minutes while veetee answered `ack=85`, both ends
+  healthy, full credit either way, `LTA5074:` still `Online`, and the terminal frozen. The number
+  now follows everything the far end sends and goes out with the next keepalive.
+
+  🔎 Advancing the number past a gap tells the far end that something arrived when it did not, so
+  anything lost stays lost. Holding it until the missing message is repeated is the stricter
+  reading, and risks the same deadlock whenever what went missing is never repeated. Deadlock
+  being much the worse failure, veetee advances.
+
   **The gap has to be measured across everything the host sends, its own acknowledgements
   included.** They carry a sequence number like any other message, and 1.1.0 followed the
   numbering of only the messages with slots in them — so it read every acknowledgement as a

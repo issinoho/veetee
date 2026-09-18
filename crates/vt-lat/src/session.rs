@@ -195,11 +195,6 @@ pub struct Session {
     /// dropped, and the far end then stops acknowledging and takes the
     /// circuit down without a word.
     allowance: i32,
-    /// The newest sequence number seen from the far end on *any* message,
-    /// against [`Session::heard`], which counts only the ones carrying slots
-    /// because only those are acknowledged.
-    seen: u8,
-    seen_any: bool,
     /// How the session ended, for the terminal to say. The two are worth
     /// telling apart: a logout ends a session and leaves the circuit up.
     ended: Option<&'static str>,
@@ -232,8 +227,6 @@ impl Session {
             outgoing: Vec::new(),
             typed: Vec::new(),
             allowance: 0,
-            seen: 0,
-            seen_any: false,
             ended: None,
             heard_any: false,
             since_grant: 0,
@@ -473,46 +466,57 @@ impl Session {
 
         // Follow the far end's numbering across *everything* it sends, its
         // own acknowledgements included: they carry a sequence number like
-        // any other message. Counting only the ones with slots reads every
-        // acknowledgement as a message lost, and a message believed lost is
-        // credit believed spent, so the far end is granted more to make up
-        // for traffic that never existed — and each of those grants costs a
-        // slot of this end's own allowance. Measured on a real session it was
-        // 165 phantom losses and 1361 credits granted against 107 received,
-        // which is how an allowance of fifteen ends up seventy-four in debt.
-        let ahead = !self.seen_any || watch::newer(run.sequence, self.seen);
-        let missed = if self.seen_any && ahead {
-            usize::from(run.sequence.wrapping_sub(self.seen)) - 1
+        // any other message, and two quite different things hang on it.
+        //
+        // Counting only the messages with slots reads every acknowledgement
+        // as a message lost, and a message believed lost is credit believed
+        // spent, so the far end gets granted more to make up for traffic that
+        // never existed — 165 phantom losses and 1361 credits granted against
+        // 107 received, on the session that showed it.
+        //
+        // Worse, *acknowledging* only those numbers deadlocks the circuit.
+        // A far end whose last message carried no slots waits to hear that
+        // number back before it sends anything else, and waits for ever:
+        // MYI64 repeated `seq=86` every ten seconds for eleven minutes while
+        // veetee answered `ack=85` every ten seconds, both ends healthy, full
+        // credit either way, and the terminal frozen. Which number is
+        // acknowledged and whether a frame is sent back are separate
+        // questions, and only the second one is answered below.
+        //
+        // 🔎 Advancing past a gap tells the far end a message arrived when it
+        // did not, so anything lost stays lost. The alternative — holding the
+        // number until the missing one is repeated — is the stricter reading
+        // and risks the same deadlock when what went missing is never
+        // repeated. Deadlock being the worse failure, this is the way round
+        // veetee takes it.
+        let fresh = !self.heard_any || watch::newer(run.sequence, self.heard);
+        let missed = if self.heard_any && fresh {
+            usize::from(run.sequence.wrapping_sub(self.heard)) - 1
         } else {
             0
         };
-        if ahead {
-            if self.seen_any && run.sequence < self.seen {
+        if fresh {
+            if self.heard_any && run.sequence < self.heard {
                 self.stats.wraps_in += 1;
             }
             self.stats.missed += missed as u64;
-            self.seen = run.sequence;
-            self.seen_any = true;
+            self.heard = run.sequence;
+            self.heard_any = true;
         }
 
-        // Answer only what carries slots. Acknowledging an acknowledgement
-        // draws another back, and the two ends then answer each other for
-        // ever.
+        // Answer only what carries slots. Answering an acknowledgement draws
+        // another back, and the two ends then answer each other for ever. The
+        // number just taken from it goes out with the next keepalive, which
+        // is what lets the far end move on.
         if run.slots.is_empty() {
             self.stats.acks_in += 1;
             return Event::Housekeeping;
         }
-        // Whether this is something new, counting the wrap: sequence numbers
-        // are one byte and an idle circuit spends the whole byte in about
-        // three quarters of an hour, so `!=` is right for one session length
-        // and wrong for the next.
-        //
         // Anything not newer is the far end repeating itself, which it does
         // whenever an acknowledgement of ours goes missing. It wants
         // acknowledging again and it has spent its credit again, but its
         // slots have been read once already: reading them twice paints them
         // on the terminal twice.
-        let fresh = !self.heard_any || watch::newer(run.sequence, self.heard);
         if !fresh {
             if run.sequence == self.heard {
                 self.stats.duplicates += 1;
@@ -524,8 +528,6 @@ impl Session {
             self.outgoing.push(frame);
             return Event::Housekeeping;
         }
-        self.heard = run.sequence;
-        self.heard_any = true;
         let frame = self.acknowledge();
         self.outgoing.push(frame);
         let before = data.len();
@@ -1179,6 +1181,45 @@ mod tests {
             "no stop: there is nothing at the far end to take down"
         );
         let _ = data;
+    }
+
+    #[test]
+    fn an_acknowledgement_is_counted_even_though_it_is_not_answered() {
+        let (mut session, mut data) = agreed();
+        session.receive(PROMPT, &mut data);
+        session.take_outgoing();
+
+        // A far end whose last message carried no slots waits to hear that
+        // number back before it sends anything else. Answering it directly
+        // would draw another answer and go on for ever — but taking the
+        // number from it must still happen, or the wait never ends. MYI64
+        // repeated seq=86 every ten seconds for eleven minutes against a
+        // veetee answering ack=85, both ends healthy and the terminal frozen.
+        let ack = Run {
+            flags: 0,
+            theirs: 0x7001,
+            ours: 0xe001,
+            sequence: 4,
+            acknowledged: 2,
+            slots: Vec::new(),
+        }
+        .build();
+        assert_eq!(session.receive(&ack, &mut data), Event::Housekeeping);
+        assert!(
+            session.take_outgoing().is_empty(),
+            "an acknowledgement is not answered"
+        );
+
+        session.keepalive();
+        let out = session.take_outgoing();
+        assert_eq!(out.len(), 1);
+        let Ok(Message::Run(keepalive)) = crate::parse(&out[0]) else {
+            panic!("not a run")
+        };
+        assert_eq!(
+            keepalive.acknowledged, 4,
+            "the number it carried goes out with the next thing sent"
+        );
     }
 
     #[test]

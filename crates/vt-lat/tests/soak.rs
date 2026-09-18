@@ -27,6 +27,9 @@ struct Host {
     sequence: u8,
     /// The newest number heard from veetee.
     heard: u8,
+    /// The newest of this end's own numbers that veetee has acknowledged.
+    /// A real node waits on this before sending anything further.
+    acknowledged: u8,
     /// What veetee has granted and this end has not spent. A slot costs one.
     credit: i32,
     /// What this end has granted veetee and veetee has not spent. A node that
@@ -49,6 +52,7 @@ impl Host {
             theirs: start.ours,
             sequence: 0,
             heard: 0,
+            acknowledged: 0,
             credit: 0,
             granted: 0,
             typed: Vec::new(),
@@ -75,6 +79,9 @@ impl Host {
                 assert_eq!(run.theirs, self.ours, "and this one second");
                 if watch::newer(run.sequence, self.heard) {
                     self.heard = run.sequence;
+                }
+                if watch::newer(run.acknowledged, self.acknowledged) {
+                    self.acknowledged = run.acknowledged;
                 }
                 for slot in &run.slots {
                     self.credit += i32::from(slot.control & 0x0f);
@@ -265,6 +272,28 @@ fn the_far_ends_acknowledgements_are_not_read_as_losses() {
         "the acknowledgements were seen: {}",
         stats.summary()
     );
+}
+
+#[test]
+fn a_far_end_waiting_to_be_acknowledged_is_not_left_waiting() {
+    let (mut session, mut host, mut data) = opened();
+
+    // The host says something with no slots in it and, like a real one, will
+    // not send anything else until it hears that number back. A session that
+    // takes its numbering only from the messages carrying slots never sends
+    // it, and the two ends then acknowledge stale numbers at each other for
+    // as long as anybody is willing to watch.
+    for round in 0..50 {
+        let ack = host.ack();
+        session.receive(&ack, &mut data);
+        session.keepalive();
+        flush(&mut session, &mut host);
+        assert_eq!(
+            host.acknowledged, host.sequence,
+            "round {round}: the host is still waiting to hear {} back",
+            host.sequence
+        );
+    }
 }
 
 #[test]
