@@ -84,7 +84,7 @@ impl UserKeys {
 }
 
 fn decode_hex(hex: &[u8]) -> Option<Vec<u8>> {
-    if hex.len() % 2 != 0 {
+    if !hex.len().is_multiple_of(2) {
         return None;
     }
     hex.chunks(2)

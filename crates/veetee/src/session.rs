@@ -302,22 +302,22 @@ pub fn frame_drawn(session: &Session) {
 /// Writes to the recording, dropping it if the file cannot be written.
 fn record(shared: &Shared, f: impl FnOnce(&mut SessionRecorder) -> io::Result<()>) {
     let mut recorder = shared.recorder.lock().unwrap_or_else(|e| e.into_inner());
-    if let Some(r) = recorder.as_mut() {
-        if let Err(e) = f(r) {
-            eprintln!("veetee: recording stopped: {e}");
-            *recorder = None;
-        }
+    if let Some(r) = recorder.as_mut()
+        && let Err(e) = f(r)
+    {
+        eprintln!("veetee: recording stopped: {e}");
+        *recorder = None;
     }
 }
 
 /// Writes to the log, stopping it if the file cannot be written.
 fn log(shared: &Shared, f: impl FnOnce(&mut crate::log::Logger) -> io::Result<()>) {
     let mut logger = shared.logger.lock().unwrap_or_else(|e| e.into_inner());
-    if let Some(l) = logger.as_mut() {
-        if let Err(e) = f(l) {
-            eprintln!("veetee: log {} stopped: {e}", l.path().display());
-            *logger = None;
-        }
+    if let Some(l) = logger.as_mut()
+        && let Err(e) = f(l)
+    {
+        eprintln!("veetee: log {} stopped: {e}", l.path().display());
+        *logger = None;
     }
 }
 

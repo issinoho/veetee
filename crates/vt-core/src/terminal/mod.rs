@@ -401,12 +401,12 @@ impl Terminal {
             }
             // DECCKD: the key behaves as another key's default.
             let source = self.emu.keyprog.default_source(station);
-            if source != station {
-                if let Some(other) = crate::keyprog::key_at(source) {
-                    let bytes = self.key_bytes(other, mods);
-                    self.transmit(&bytes);
-                    return KeyOutcome::Handled;
-                }
+            if source != station
+                && let Some(other) = crate::keyprog::key_at(source)
+            {
+                let bytes = self.key_bytes(other, mods);
+                self.transmit(&bytes);
+                return KeyOutcome::Handled;
             }
         }
         let bytes = self.key_bytes(key, mods);
@@ -1331,10 +1331,10 @@ impl Emulator {
             Charset::Ascii => char::from(code),
             _ => set.map(code).unwrap_or(char::from(code)),
         };
-        if !self.status.active {
-            if let Some(text) = &mut self.capture {
-                text.extend(bytes[..n].iter().map(|&b| glyph(b)));
-            }
+        if !self.status.active
+            && let Some(text) = &mut self.capture
+        {
+            text.extend(bytes[..n].iter().map(|&b| glyph(b)));
         }
         let line = self.cursor_line_mut();
         for (cell, &code) in line.cells_mut()[col..col + n].iter_mut().zip(bytes) {
@@ -1939,19 +1939,19 @@ impl Emulator {
         designation.extend(intermediate);
         designation.push(final_byte);
         // Soft sets are selected by the designator they were loaded with.
-        if level >= 2 {
-            if let Some(slot) = self.soft.find(&designation, is_96) {
-                self.charsets.g[g] = Charset::Soft { slot, is_96 };
-                return;
-            }
+        if level >= 2
+            && let Some(slot) = self.soft.find(&designation, is_96)
+        {
+            self.charsets.g[g] = Charset::Soft { slot, is_96 };
+            return;
         }
-        if level >= 5 {
-            if let Some(set) = charset::Vt500Set::from_designator(is_96, intermediate, final_byte) {
-                if !set.is_national() || self.modes.national {
-                    self.charsets.g[g] = Charset::Vt500(set);
-                }
-                return;
+        if level >= 5
+            && let Some(set) = charset::Vt500Set::from_designator(is_96, intermediate, final_byte)
+        {
+            if !set.is_national() || self.modes.national {
+                self.charsets.g[g] = Charset::Vt500(set);
             }
+            return;
         }
         let set = if is_96 {
             match (intermediate, final_byte) {

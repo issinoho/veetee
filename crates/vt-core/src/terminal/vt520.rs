@@ -575,10 +575,10 @@ impl Emulator {
     /// The DECRPSS data for a VT500 selection, without the leading validity digit.
     pub(super) fn vt520_setting(&self, data: &[u8]) -> Option<String> {
         let s = &self.setup;
-        if self.color_terminal() {
-            if let Some(report) = self.color_setting(data) {
-                return Some(report);
-            }
+        if self.color_terminal()
+            && let Some(report) = self.color_setting(data)
+        {
+            return Some(report);
         }
         // DECDLDA exists only on monochrome terminals.
         if (data == b"\"t" && self.config.model != Model::Vt510)
@@ -778,7 +778,7 @@ fn pairs(p: &Params) -> impl Iterator<Item = (u16, u16)> + '_ {
 }
 
 fn hex_pairs(data: &[u8]) -> Option<Vec<u8>> {
-    if data.len() % 2 != 0 {
+    if !data.len().is_multiple_of(2) {
         return None;
     }
     data.chunks(2)

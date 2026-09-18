@@ -482,10 +482,10 @@ impl Emulator {
             clamp(num(3), rows),
             clamp(num(4), cols),
             clamp(num(5), cols),
-        ) {
-            if t < b && l < r {
-                (self.top, self.bottom, self.left, self.right) = (t, b, l, r);
-            }
+        ) && t < b
+            && l < r
+        {
+            (self.top, self.bottom, self.left, self.right) = (t, b, l, r);
         }
         if let Some(lines) = num(8) {
             self.set_screen_lines(lines);
@@ -526,10 +526,9 @@ impl Emulator {
                 };
                 if let Some(set) =
                     crate::charset::Vt500Set::from_designator(is_96, intermediate, *f)
+                    && !set.is_national()
                 {
-                    if !set.is_national() {
-                        self.upss = Charset::Vt500(set);
-                    }
+                    self.upss = Charset::Vt500(set);
                 }
             }
             _ => {}

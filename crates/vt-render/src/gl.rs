@@ -291,10 +291,10 @@ impl Renderer {
         let output = if theme.has_effects() {
             unsafe {
                 let output = gl.get_parameter_framebuffer(glow::FRAMEBUFFER_BINDING);
-                if self.postfx.as_ref().is_some_and(|fx| fx.size() != (w, h)) {
-                    if let Some(fx) = self.postfx.take() {
-                        fx.destroy(gl);
-                    }
+                if self.postfx.as_ref().is_some_and(|fx| fx.size() != (w, h))
+                    && let Some(fx) = self.postfx.take()
+                {
+                    fx.destroy(gl);
                 }
                 if self.postfx.is_none() {
                     match crate::postfx::PostFx::new(gl, self.header, w, h) {

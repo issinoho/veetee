@@ -1150,15 +1150,14 @@ impl Menus {
         let mut shown: Vec<(Menu, Option<usize>)> =
             self.path.iter().map(|&(m, at)| (m, Some(at))).collect();
         let (menu, at) = self.path[self.path.len() - 1];
-        if self.dialog.is_none() {
-            if let Some(Item {
+        if self.dialog.is_none()
+            && let Some(Item {
                 kind: Kind::Sub(child),
                 enabled: true,
                 ..
             }) = self.items(menu).get(at)
-            {
-                shown.push((*child, None));
-            }
+        {
+            shown.push((*child, None));
         }
         let mut boxes: Vec<(Menu, Option<usize>, Frame)> = Vec::new();
         for (menu, cursor) in shown {

@@ -526,10 +526,10 @@ fn draw_line(
     };
     let y = placement.y;
     for (col, cell) in line.cells().iter().enumerate().take(line.width()) {
-        if let Some((left, right, only)) = placement.columns {
-            if (left..=right).contains(&col) != only {
-                continue;
-            }
+        if let Some((left, right, only)) = placement.columns
+            && (left..=right).contains(&col) != only
+        {
+            continue;
         }
         let a = cell.attrs;
         let mut flags = size_flag;
@@ -897,13 +897,13 @@ mod font_coverage {
         for face in fonts.faces() {
             for set in sets {
                 for code in 0x20..=0x7F {
-                    if let Some(ch) = set.map(code) {
-                        if !face.contains(ch) {
-                            missing.push(format!(
-                                "{}x{} {set:?} {code:#04x} U+{:04X}",
-                                face.width, face.height, ch as u32
-                            ));
-                        }
+                    if let Some(ch) = set.map(code)
+                        && !face.contains(ch)
+                    {
+                        missing.push(format!(
+                            "{}x{} {set:?} {code:#04x} U+{:04X}",
+                            face.width, face.height, ch as u32
+                        ));
                     }
                 }
             }

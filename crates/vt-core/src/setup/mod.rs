@@ -657,10 +657,10 @@ impl Features {
                     }
                 }
                 "terminal-id" => {
-                    if let Some(id) = num().map(|n| n as u16) {
-                        if terminal_ids(model).contains(&id) {
-                            f.terminal_id = id;
-                        }
+                    if let Some(id) = num().map(|n| n as u16)
+                        && terminal_ids(model).contains(&id)
+                    {
+                        f.terminal_id = id;
                     }
                 }
                 "update" => f.update = num().unwrap_or(2).clamp(1, 3) as u16,
@@ -800,7 +800,7 @@ fn hex(data: &[u8]) -> String {
 }
 
 fn unhex(text: &str) -> Option<Vec<u8>> {
-    if text.len() % 2 != 0 {
+    if !text.len().is_multiple_of(2) {
         return None;
     }
     (0..text.len())

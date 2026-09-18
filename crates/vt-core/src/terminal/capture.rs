@@ -33,19 +33,21 @@ impl Emulator {
 
     /// A line break unless the current line is empty.
     pub(super) fn capture_line_break(&mut self) {
-        if let Some(text) = &mut self.capture {
-            if !text.is_empty() && !text.ends_with('\n') {
-                text.push('\n');
-            }
+        if let Some(text) = &mut self.capture
+            && !text.is_empty()
+            && !text.ends_with('\n')
+        {
+            text.push('\n');
         }
     }
 
     /// Backspace takes back the last character of the line.
     pub(super) fn capture_backspace(&mut self) {
-        if let Some(text) = &mut self.capture {
-            if !text.is_empty() && !text.ends_with('\n') {
-                text.pop();
-            }
+        if let Some(text) = &mut self.capture
+            && !text.is_empty()
+            && !text.ends_with('\n')
+        {
+            text.pop();
         }
     }
 }

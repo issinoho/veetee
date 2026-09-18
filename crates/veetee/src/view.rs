@@ -137,15 +137,15 @@ impl State {
     fn bell_lit(&self) -> bool {
         self.bell_flash.is_some_and(|start| {
             let ms = start.elapsed().as_millis();
-            ms < BELL_FLASH.as_millis() && (ms * 6 / BELL_FLASH.as_millis()) % 2 == 0
+            ms < BELL_FLASH.as_millis() && (ms * 6 / BELL_FLASH.as_millis()).is_multiple_of(2)
         })
     }
 
     fn phases(&self) -> (bool, bool) {
         let ms = self.epoch.elapsed().as_millis();
         (
-            ms / CURSOR_BLINK.as_millis() % 2 == 0,
-            ms / TEXT_BLINK.as_millis() % 2 == 0,
+            (ms / CURSOR_BLINK.as_millis()).is_multiple_of(2),
+            (ms / TEXT_BLINK.as_millis()).is_multiple_of(2),
         )
     }
 }
@@ -666,10 +666,10 @@ impl TerminalView {
             let st = self.state.borrow();
             (st.drag_anchor, st.drag_head)
         };
-        if let (Some(anchor), Some((x, y))) = (anchor, head) {
-            if let Some(head) = self.point_at(x, y) {
-                self.set_selection(Some(Selection::new(anchor, head)));
-            }
+        if let (Some(anchor), Some((x, y))) = (anchor, head)
+            && let Some(head) = self.point_at(x, y)
+        {
+            self.set_selection(Some(Selection::new(anchor, head)));
         }
     }
 

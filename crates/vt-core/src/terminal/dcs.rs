@@ -258,7 +258,7 @@ fn decode_macro_hex(data: &[u8]) -> Option<Vec<u8>> {
                 .position(|&b| b == b';')
                 .map_or(digits.len(), |e| e + semi + 1);
             let group = &digits[semi + 1..end];
-            if group.len() % 2 != 0 {
+            if !group.len().is_multiple_of(2) {
                 return None;
             }
             let bytes: Vec<u8> = group.chunks(2).map(pair).collect::<Option<_>>()?;

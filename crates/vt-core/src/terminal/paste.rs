@@ -241,13 +241,12 @@ fn compose(text: &str) -> String {
     let mut out = String::with_capacity(text.len());
     let mut chars = text.chars().peekable();
     while let Some(ch) = chars.next() {
-        if let Some(&mark) = chars.peek() {
-            if let Some(&(composed, ..)) = COMPOSED.iter().find(|&&(_, b, m)| b == ch && m == mark)
-            {
-                chars.next();
-                out.push(composed);
-                continue;
-            }
+        if let Some(&mark) = chars.peek()
+            && let Some(&(composed, ..)) = COMPOSED.iter().find(|&&(_, b, m)| b == ch && m == mark)
+        {
+            chars.next();
+            out.push(composed);
+            continue;
         }
         out.push(ch);
     }

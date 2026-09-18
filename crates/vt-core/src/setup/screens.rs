@@ -837,10 +837,10 @@ impl Screens {
             Field::SetTabs8 => self.features.tabs = default_tabs(self.cols()),
             Field::Ruler => {
                 // No tab stop in column 1.
-                if self.tab_col > 0 {
-                    if let Some(t) = self.features.tabs.get_mut(self.tab_col) {
-                        *t = !*t;
-                    }
+                if self.tab_col > 0
+                    && let Some(t) = self.features.tabs.get_mut(self.tab_col)
+                {
+                    *t = !*t;
                 }
             }
             other => {
