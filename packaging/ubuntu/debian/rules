@@ -43,7 +43,7 @@ override_dh_auto_build:
 # builder cannot do; the unit tests are the part that runs here.
 override_dh_auto_test:
 	cargo test --release --locked --offline \
-	    -p vt-parser -p vt-core -p vt-fonts -p vt-keyboard -p vt-transport
+	    -p vt-parser -p vt-core -p vt-fonts -p vt-keyboard -p vt-transport -p vt-lat
 
 override_dh_auto_install:
 	install -Dm755 target/release/veetee \
