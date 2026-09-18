@@ -367,6 +367,14 @@ numbers worth reading first:
 | `rewind` | messages that arrived out of order |
 | `credit=ours/theirs` | what each end has left to spend. `theirs` at nought and staying there is a session about to go quiet |
 | `unacked` | messages sent and not acknowledged. Above one or two, the host has stopped listening |
+| `kernel=in/dropped` | what the kernel took in for the socket, and what it threw away before veetee read it |
+
+`kernel`'s second number is the one that tells a loss veetee inflicted on itself from a loss on
+the wire, which a gap in the far end's numbering cannot: both look identical from here. It rises
+in bursts — a screenful arriving faster than the reader drains it — so a `missed` that climbs
+while `dropped` stays flat is the wire's doing, and one that climbs with it is veetee's. The
+counters come from `getsockopt(SOL_PACKET, PACKET_STATISTICS)`, which clears them as it reads
+them, so they are read every time round the loop and added up.
 
 Slot contents are left out unless `VEETEE_LAT_TRACE_DATA` is set as well. **A trace with data in
 it holds the password typed into the session**, in clear, exactly as the wire carries it.

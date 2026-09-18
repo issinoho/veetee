@@ -109,6 +109,42 @@ impl Listener {
         self.socket.write_all(&frame)
     }
 
+    /// Frames the kernel has taken in for this socket, and frames it has
+    /// dropped for want of room, since the last time it was asked.
+    ///
+    /// A frame the kernel drops is one veetee lost to itself rather than to
+    /// the wire, and until now there was no telling the two apart: a gap in
+    /// the far end's numbering looks the same either way. Bursts are where it
+    /// matters — a screenful of output arriving faster than the reader drains
+    /// it — which is exactly when a terminal is busiest.
+    ///
+    /// Reading these clears them, which is the kernel's doing and not a
+    /// choice here, so the caller keeps the running totals.
+    fn packet_stats(&self) -> (u64, u64) {
+        // SAFETY: a zeroed PacketStats is a valid one.
+        let mut stats: PacketStats = unsafe { std::mem::zeroed() };
+        let mut len = size_of::<PacketStats>() as libc::socklen_t;
+        // SAFETY: the socket is open for the length of the call, and `stats`
+        // is a whole PacketStats whose length is passed by pointer with it.
+        let rc = unsafe {
+            libc::getsockopt(
+                std::os::fd::AsRawFd::as_raw_fd(&self.socket),
+                libc::SOL_PACKET,
+                PACKET_STATISTICS,
+                std::ptr::from_mut(&mut stats).cast(),
+                &mut len,
+            )
+        };
+        if rc == 0 {
+            (u64::from(stats.packets), u64::from(stats.drops))
+        } else {
+            // Nothing to be done and nothing worth failing a session over:
+            // the counts are a diagnostic, and a trace without them still
+            // says everything it said before.
+            (0, 0)
+        }
+    }
+
     /// Reads one frame, giving up after `timeout`. A timeout reads no bytes
     /// rather than failing, since nothing arriving is the ordinary case
     /// between announcements.
@@ -468,6 +504,19 @@ fn bind_to(socket: &Socket, index: u32) -> io::Result<()> {
     Ok(())
 }
 
+/// `PACKET_STATISTICS`, which `libc` does not name.
+const PACKET_STATISTICS: libc::c_int = 6;
+
+/// What `getsockopt(SOL_PACKET, PACKET_STATISTICS)` answers with: frames the
+/// kernel took in for this socket, and frames it threw away for want of room
+/// in the receive buffer.
+#[repr(C)]
+#[derive(Clone, Copy, Default, Debug)]
+struct PacketStats {
+    packets: u32,
+    drops: u32,
+}
+
 /// Asks the card to keep LAT's multicast frames rather than filter them out.
 fn join_group(socket: &Socket, index: u32, interface: &str) -> io::Result<()> {
     // SAFETY: a zeroed packet_mreq is a valid one.
@@ -583,6 +632,11 @@ struct Trace {
     data: bool,
     opened: Instant,
     due: Instant,
+    /// Frames the kernel took in for the socket, and frames it dropped
+    /// before veetee could read them. Accumulated, the kernel's own counters
+    /// being cleared by the reading of them.
+    captured: u64,
+    dropped: u64,
 }
 
 impl Trace {
@@ -601,6 +655,8 @@ impl Trace {
             data,
             opened: now,
             due: now + SUMMARY,
+            captured: 0,
+            dropped: 0,
         };
         let unix = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
@@ -637,13 +693,26 @@ impl Trace {
         );
     }
 
+    /// Adds what the kernel has counted since it was last asked.
+    fn count_packets(&mut self, captured: u64, dropped: u64) {
+        self.captured += captured;
+        self.dropped += dropped;
+    }
+
     /// A line of running totals, at most one a minute unless forced.
     fn totals(&mut self, stats: &Stats, force: bool) {
         if !force && Instant::now() < self.due {
             return;
         }
         self.due = Instant::now() + SUMMARY;
-        let _ = writeln!(self.file, "{:>9} sum {}", self.at(), stats.summary());
+        let _ = writeln!(
+            self.file,
+            "{:>9} sum {} kernel={}/{}",
+            self.at(),
+            stats.summary(),
+            self.captured,
+            self.dropped,
+        );
     }
 }
 
@@ -679,6 +748,9 @@ pub struct Lat {
     at: usize,
     frame: Vec<u8>,
     description: String,
+    /// Whether a trace is running, and so whether the kernel's frame counts
+    /// are worth a syscall each time round the read loop.
+    tracing: bool,
 }
 
 impl Lat {
@@ -761,6 +833,9 @@ impl Lat {
         } else {
             format!("lat {}/{service} on {}", config.node, config.interface)
         };
+        // Asking the kernel for its counts is a syscall on every turn of the
+        // read loop, so it is only worth doing when somebody is reading them.
+        let tracing = shared.trace.is_some();
         Ok(Lat {
             listener,
             shared: Arc::new(Mutex::new(shared)),
@@ -769,6 +844,7 @@ impl Lat {
             at: 0,
             frame,
             description,
+            tracing,
         })
     }
 
@@ -792,9 +868,16 @@ impl Lat {
     /// Keeps an idle circuit open. The far end takes down one that goes quiet,
     /// and a terminal is quiet for as long as the user is reading.
     fn keepalive(&mut self) -> io::Result<()> {
+        // Before the lock: the kernel's counters are cleared by the reading
+        // of them, so they are read every time round and added up rather
+        // than sampled whenever a summary falls due.
+        let counted = self.tracing.then(|| self.listener.packet_stats());
         let mut shared = lock(&self.shared);
         let stats = shared.session.stats();
         if let Some(trace) = shared.trace.as_mut() {
+            if let Some((captured, dropped)) = counted {
+                trace.count_packets(captured, dropped);
+            }
             trace.totals(&stats, false);
         }
 

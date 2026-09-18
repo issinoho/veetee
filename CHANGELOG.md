@@ -6,6 +6,15 @@ saved settings takes the major, new terminal behaviour takes the minor, fixes ta
 Before 1.0 the minor version followed the project milestones (0.3 = M3). The format follows
 [Keep a Changelog](https://keepachangelog.com/).
 
+## [Unreleased]
+
+- **Added: the kernel's own frame counts in a LAT trace**, as `kernel=in/dropped` at the end of
+  each summary line. A frame the kernel drops for want of room in the socket's receive buffer is
+  one veetee lost to itself rather than to the wire, and a gap in the far end's numbering looks
+  identical either way — an ambiguity that cost an afternoon's guessing while the fault behind
+  1.1.1 was being tracked down. `missed` climbing while `dropped` stays flat is the wire; climbing
+  together is veetee not reading fast enough.
+
 ## [1.1.1] - 2026-09-18
 
 **Upgrade if you use LAT.** 1.1.0 made LAT worse rather than better: it counted every one of the
