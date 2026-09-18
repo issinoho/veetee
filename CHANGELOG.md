@@ -5,7 +5,12 @@ All notable changes to veetee are listed here. From 1.0 the version follows
 saved settings takes the major, new terminal behaviour takes the minor, fixes take the patch.
 Before 1.0 the minor version followed the project milestones (0.3 = M3). The format follows
 [Keep a Changelog](https://keepachangelog.com/).
-## [Unreleased]
+
+## [1.1.0] - 2026-09-18
+
+A LAT session survives a wire that loses frames, and a window with two sessions can get back to
+one. The first of those was a real fault found by looking for it: sessions were suspected of
+failing over long periods, and they were, silently, whenever the wire dropped a frame.
 
 - **Added: Close Session**, in the window menu beside Open Second Session. There was no way to
   close one session of two: the window had a way in and no way out.
@@ -552,7 +557,8 @@ The first release: VT100 through VT420 emulation with local, Telnet, SSH and ser
   `cargo deny` licence checks and parser fuzzing.
 - `cargo xtask dist` builds the release tarball and Debian package.
 
-[Unreleased]: https://github.com/issinoho/veetee/compare/v1.0.0...HEAD
+[Unreleased]: https://github.com/issinoho/veetee/compare/v1.1.0...HEAD
+[1.1.0]: https://github.com/issinoho/veetee/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/issinoho/veetee/compare/v0.8.12...v1.0.0
 [0.8.12]: https://github.com/issinoho/veetee/compare/v0.8.11...v0.8.12
 [0.8.11]: https://github.com/issinoho/veetee/compare/v0.8.10...v0.8.11
