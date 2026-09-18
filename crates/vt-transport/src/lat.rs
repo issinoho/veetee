@@ -30,7 +30,7 @@ use std::time::{Duration, Instant};
 
 use socket2::{Domain, Protocol, Socket, Type};
 
-use vt_lat::{ETHERTYPE, Event, GROUP, Message, Session, SessionConfig};
+use vt_lat::{ETHERTYPE, Event, GROUP, Message, Session, SessionConfig, Stats};
 
 /// The Ethernet header a `SOCK_RAW` packet socket keeps on the front.
 pub const HEADER: usize = 14;
@@ -544,6 +544,91 @@ pub struct LatConfig {
     pub cols: u16,
 }
 
+/// How often a trace writes a line of running totals.
+const SUMMARY: Duration = Duration::from_secs(60);
+
+/// Every frame a session sent and received, written to a file, for working
+/// out afterwards why one stopped.
+///
+/// Switched on with `VEETEE_LAT_TRACE=FILE` rather than a command-line
+/// option, because the sessions worth tracing are the long ones and those get
+/// opened from the connection dialog, which no command line reaches.
+/// `VEETEE_LAT_TRACE_DATA` adds what each slot carried; it is off by default
+/// because a LAT session carries the password typed into it in clear.
+///
+/// Nothing here can fail a session. A trace that cannot be written is a
+/// diagnostic lost, not a connection lost, so every write is allowed to fail
+/// quietly.
+#[derive(Debug)]
+struct Trace {
+    file: std::fs::File,
+    data: bool,
+    opened: Instant,
+    due: Instant,
+}
+
+impl Trace {
+    /// Opens the trace the environment names, if it names one.
+    fn open(node: &str, interface: &str) -> Option<Trace> {
+        let path = std::env::var_os("VEETEE_LAT_TRACE")?;
+        let file = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&path)
+            .ok()?;
+        let data = std::env::var_os("VEETEE_LAT_TRACE_DATA").is_some();
+        let now = Instant::now();
+        let mut trace = Trace {
+            file,
+            data,
+            opened: now,
+            due: now + SUMMARY,
+        };
+        let unix = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |since| since.as_secs());
+        trace.note(&format!(
+            "lat {node} on {interface}, unix {unix}, slot data {}",
+            if data {
+                "included, so this file holds the password"
+            } else {
+                "left out"
+            }
+        ));
+        Some(trace)
+    }
+
+    /// Milliseconds since the trace opened, which is what stamps every line.
+    /// A session that dies is read backwards from its end, where the gaps
+    /// between frames say more than the time of day does.
+    fn at(&self) -> u128 {
+        self.opened.elapsed().as_millis()
+    }
+
+    fn note(&mut self, text: &str) {
+        let _ = writeln!(self.file, "{:>9} --  {text}", self.at());
+    }
+
+    fn frame(&mut self, out: bool, payload: &[u8]) {
+        let described = vt_lat::watch::describe(payload, self.data);
+        let _ = writeln!(
+            self.file,
+            "{:>9} {} {described}",
+            self.at(),
+            if out { "out" } else { "in " }
+        );
+    }
+
+    /// A line of running totals, at most one a minute unless forced.
+    fn totals(&mut self, stats: &Stats, force: bool) {
+        if !force && Instant::now() < self.due {
+            return;
+        }
+        self.due = Instant::now() + SUMMARY;
+        let _ = writeln!(self.file, "{:>9} sum {}", self.at(), stats.summary());
+    }
+}
+
 /// The session, and when anything was last sent on it.
 ///
 /// Both sides hold this: reading answers what arrives, writing sends what is
@@ -553,6 +638,8 @@ pub struct LatConfig {
 struct Shared {
     session: Session,
     sent: Instant,
+    /// Where every frame is written, if the environment asked for that.
+    trace: Option<Trace>,
 }
 
 /// A LAT session on an interface: one circuit to a node, and a terminal on a
@@ -602,6 +689,7 @@ impl Lat {
         let mut shared = Shared {
             session,
             sent: Instant::now(),
+            trace: Trace::open(&config.node, &config.interface),
         };
         flush(&mut listener, peer, &mut shared)?;
 
@@ -628,6 +716,11 @@ impl Lat {
                 continue;
             };
             let event = shared.session.receive(payload, &mut pending);
+            if event != Event::Ignored
+                && let Some(trace) = shared.trace.as_mut()
+            {
+                trace.frame(false, payload);
+            }
             flush(&mut listener, peer, &mut shared)?;
             if event == Event::Closed {
                 return Err(io::Error::new(
@@ -674,6 +767,10 @@ impl Lat {
     /// and a terminal is quiet for as long as the user is reading.
     fn keepalive(&mut self) -> io::Result<()> {
         let mut shared = lock(&self.shared);
+        let stats = shared.session.stats();
+        if let Some(trace) = shared.trace.as_mut() {
+            trace.totals(&stats, false);
+        }
         if shared.sent.elapsed() < KEEPALIVE {
             return Ok(());
         }
@@ -712,7 +809,15 @@ impl crate::Transport for Lat {
                 // circuit or not, so most of what arrives is ignored here.
                 let mut shared = lock(&self.shared);
                 if let Some((_, payload)) = split(&self.frame[..n]) {
-                    shared.session.receive(payload, &mut self.pending);
+                    let event = shared.session.receive(payload, &mut self.pending);
+                    // Most of what a packet socket hears belongs to another
+                    // circuit, so tracing all of it would bury the session in
+                    // its neighbours. The count of them is in the totals.
+                    if event != Event::Ignored
+                        && let Some(trace) = shared.trace.as_mut()
+                    {
+                        trace.frame(false, payload);
+                    }
                     flush(&mut self.listener, self.peer, &mut shared)?;
                 }
                 let closed = shared.session.is_closed();
@@ -757,6 +862,12 @@ impl Drop for Lat {
         // created rather than waiting out its own timer. Nothing can be done
         // if it fails, and the timer is there for exactly that case.
         let mut shared = lock(&self.shared);
+        let stats = shared.session.stats();
+        let ending = shared.session.ending();
+        if let Some(trace) = shared.trace.as_mut() {
+            trace.note(ending);
+            trace.totals(&stats, true);
+        }
         shared.session.close();
         let _ = flush(&mut self.listener, self.peer, &mut shared);
     }
@@ -808,6 +919,9 @@ fn flush(listener: &mut Listener, peer: [u8; 6], shared: &mut Shared) -> io::Res
     for frame in shared.session.take_outgoing() {
         listener.send(peer, &frame)?;
         shared.sent = Instant::now();
+        if let Some(trace) = shared.trace.as_mut() {
+            trace.frame(true, &frame);
+        }
     }
     Ok(())
 }

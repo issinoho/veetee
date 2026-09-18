@@ -13,8 +13,10 @@
 //! [`Session`] drives a circuit made of them, which is what a terminal needs.
 
 mod session;
+pub mod watch;
 
 pub use session::{Event, Session, SessionConfig};
+pub use watch::Stats;
 
 /// LAT rides directly on Ethernet under this type. There is no IP, so nothing
 /// routes: both ends share a segment.

@@ -333,6 +333,44 @@ This reading parses every one of the 137 run messages in a session capture — l
 listing, idle keepalives and logout — with nothing left over, which is the strongest evidence in
 this document.
 
+## Watching a session
+
+A session that fails after an hour leaves nothing behind unless it was asked to. Name a file in
+`VEETEE_LAT_TRACE` and every frame of every session goes into it:
+
+```sh
+VEETEE_LAT_TRACE=$HOME/lat.log veetee --lat MYI64
+```
+
+An environment variable rather than an option, because the long sessions worth watching are the
+ones opened from the connection dialog, which no command line reaches.
+
+Each line is milliseconds since the trace opened, a direction, and the frame:
+
+```
+        0 --  lat MYI64 on eth0, unix 1789430400, slot data left out
+       12 out call ours=1a3f theirs=0000 to=MYI64 from=VEETEE keepalive=20s frame=1500
+       47 in  agree ours=e001 theirs=1a3f to=VEETEE from=MYI64 keepalive=20s frame=1500
+       48 out run seq=1 ack=3 ours=1a3f theirs=e001 [1->0 start credit=15 len=12]
+      210 in  run seq=4 ack=1 ours=e001 theirs=1a3f [1->1 data credit=0 len=61]
+      211 out ack seq=2 ack=4 ours=1a3f theirs=e001
+    60048 sum in=412 out=196 acks=18/94 slots=102/3 bytes=8841/17 dup=0 rewind=0 missed=0 ...
+```
+
+`sum` is a line of running totals, written once a minute and once more as the session ends. The
+numbers worth reading first:
+
+| Number | Means |
+|---|---|
+| `missed` | messages the host sent that never arrived, counted from the gaps in its numbering |
+| `dup` | messages that arrived twice, which is the host repeating itself for want of an acknowledgement |
+| `rewind` | messages that arrived out of order |
+| `credit=ours/theirs` | what each end has left to spend. `theirs` at nought and staying there is a session about to go quiet |
+| `unacked` | messages sent and not acknowledged. Above one or two, the host has stopped listening |
+
+Slot contents are left out unless `VEETEE_LAT_TRACE_DATA` is set as well. **A trace with data in
+it holds the password typed into the session**, in clear, exactly as the wire carries it.
+
 ## Not yet observed
 
 - **What a slot of type 10 says.** Thirty-five bytes of terminal parameters, of which only the
@@ -350,4 +388,12 @@ this document.
 - **`0x3c`**, sent by both nodes, carrying a node address and the same version and frame size as an
   announcement. It answers a solicit, on position alone.
 - **Much of the start message**, including fourteen bytes before the address.
-- **The 80 ms circuit timer**: retransmission was never provoked, because nothing was ever lost.
+- **The 80 ms circuit timer, and retransmission.** Nothing was ever lost in a captured session,
+  so no retransmission was ever seen, and veetee does none of its own: it keeps no copy of what it
+  has sent and does not read the number the host acknowledges, so typing lost on the wire is lost.
+  What it does do is survive the host's losses. A gap in the host's numbering is counted as credit
+  the host spent on a message that never arrived — without that, every loss leaves veetee's
+  reckoning of the host's allowance one too high for good, and after eight or so the host runs out
+  of credit and goes quiet with nothing said by either end. The allowance is also worked out from
+  scratch every thirty-two messages, so any other way of losing count rights itself. All of this
+  is reproduced in `crates/vt-lat/tests/soak.rs`, against a host that is not there.

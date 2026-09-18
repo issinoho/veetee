@@ -5,9 +5,32 @@ All notable changes to veetee are listed here. From 1.0 the version follows
 saved settings takes the major, new terminal behaviour takes the minor, fixes take the patch.
 Before 1.0 the minor version followed the project milestones (0.3 = M3). The format follows
 [Keep a Changelog](https://keepachangelog.com/).
-
 ## [Unreleased]
 
+- **Fixed: a LAT session stopped dead after a while on a lossy wire.** Credit is how a LAT node is
+  told it may keep sending, and veetee worked out what the host had spent by counting the slots
+  that arrived. A frame that never arrived spent the host's credit all the same, so every loss
+  left veetee's reckoning one too high for the rest of the session; once the drift passed what it
+  holds back before granting, the host ran out of credit and went quiet for good — no error, no
+  circuit taken down, output simply stopping. Gaps in the host's numbering are now counted as
+  credit spent, and the allowance is worked out from scratch every thirty-two messages so that any
+  other way of losing count rights itself. A soak with a seventh of the frames dropped now runs
+  100,000 messages without stalling; it used to stop at message 7,503 with a thousandth of that
+  loss rate.
+- **Fixed: a repeated message was read twice**, so text the host resent — which it does whenever an
+  acknowledgement goes missing — was painted on the terminal a second time. A message no newer than
+  the last one heard is now acknowledged again, which is what the host is waiting for, and its
+  slots are dropped.
+- **Fixed: a message arriving out of order dragged the acknowledgement backwards**, asking the host
+  to send everything since all over again. Sequence numbers are one byte and run out about every
+  three quarters of an hour, so "newer" now counts the wrap instead of asking whether the number
+  differs.
+- **Added: `VEETEE_LAT_TRACE`**, naming a file to write every frame of a LAT session to, with a
+  line of running totals every minute — missed messages, duplicates, out-of-order arrivals, credit
+  at each end, and messages sent but not acknowledged. An environment variable rather than an
+  option because the sessions worth watching are opened from the connection dialog.
+  `VEETEE_LAT_TRACE_DATA` adds what each slot carried, and is off by default because a LAT session
+  carries its password in clear. See `docs/lat-protocol.md`.
 - **Added: an Ubuntu PPA**, `ppa:issinoho/veetee`, for resolute (26.04 LTS). Launchpad builds from
   a source package in a chroot with no network, so `packaging/ubuntu` vendors every crate in
   `Cargo.lock` into the orig tarball and points `.cargo/config.toml` at it. `build-source.sh`
