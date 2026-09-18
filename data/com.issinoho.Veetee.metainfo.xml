@@ -67,6 +67,11 @@
   </supports>
   <content_rating type="oars-1.1"/>
   <releases>
+    <release version="1.1.2" date="2026-09-18">
+      <description>
+        <p>A LAT terminal no longer goes dead a few minutes into every session.</p>
+      </description>
+    </release>
     <release version="1.1.1" date="2026-09-18">
       <description>
         <p>A LAT session no longer freezes with the screen stopped and the keys still clicking.</p>

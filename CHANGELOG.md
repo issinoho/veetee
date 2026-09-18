@@ -6,7 +6,12 @@ saved settings takes the major, new terminal behaviour takes the minor, fixes ta
 Before 1.0 the minor version followed the project milestones (0.3 = M3). The format follows
 [Keep a Changelog](https://keepachangelog.com/).
 
-## [Unreleased]
+## [1.1.2] - 2026-09-18
+
+**Upgrade if you use LAT.** 1.1.1 kills a LAT session within minutes of any login: the terminal
+stops echoing, `SET TERM/INQUIRE` reports an unknown terminal type and the screen freezes, on a
+circuit that is perfectly healthy. Confirmed fixed against the same OpenVMS node — half an hour of
+`MONITOR SYSTEM`, typing echoed, `SET TERM/INQUIRE` answering, and not one frame lost.
 
 - **Fixed: a LAT terminal went dead a few minutes into every session.** Typing stopped being
   echoed, `SET TERM/INQUIRE` reported an unknown terminal type, and the screen froze — on a
@@ -622,7 +627,8 @@ The first release: VT100 through VT420 emulation with local, Telnet, SSH and ser
   `cargo deny` licence checks and parser fuzzing.
 - `cargo xtask dist` builds the release tarball and Debian package.
 
-[Unreleased]: https://github.com/issinoho/veetee/compare/v1.1.1...HEAD
+[Unreleased]: https://github.com/issinoho/veetee/compare/v1.1.2...HEAD
+[1.1.2]: https://github.com/issinoho/veetee/compare/v1.1.1...v1.1.2
 [1.1.1]: https://github.com/issinoho/veetee/compare/v1.1.0...v1.1.1
 [1.1.0]: https://github.com/issinoho/veetee/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/issinoho/veetee/compare/v0.8.12...v1.0.0
