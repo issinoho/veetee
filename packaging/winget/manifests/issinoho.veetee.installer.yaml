@@ -20,6 +20,6 @@ ReleaseDate: 2026-09-17
 Installers:
   - Architecture: x64
     InstallerUrl: https://github.com/issinoho/veetee/releases/download/v1.0.0/veetee-1.0.0-x86_64-windows.zip
-    InstallerSha256: 8459B61DBBDB9EEF649066786433ABEDF0FDFBA7311A7BD3D7BAC457436DD454
+    InstallerSha256: 28730792D6C4A420A0ADF6BC45AC8F3438B4FFEE1F6CD125DD5FBEF56CBA28D3
 ManifestType: installer
 ManifestVersion: 1.6.0
