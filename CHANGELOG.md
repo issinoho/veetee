@@ -7,6 +7,14 @@ Before 1.0 the minor version followed the project milestones (0.3 = M3). The for
 [Keep a Changelog](https://keepachangelog.com/).
 ## [Unreleased]
 
+- **Added: Close Session**, in the window menu beside Open Second Session. There was no way to
+  close one session of two: the window had a way in and no way out.
+- **Fixed: a second session that ended left half the window dead.** A connection that drops keeps
+  its screen up on purpose, so what was on it can still be read and copied — but that only makes
+  sense for the last session, where the alternative is the window vanishing. With the window split,
+  logging out of one session now gives the whole window back to the other, and says why in a toast
+  rather than on a dead screen. Serial, Telnet, SSH and LAT were all affected, those being the
+  connections whose screens are kept.
 - **Fixed: a LAT session stopped dead after a while on a lossy wire.** Credit is how a LAT node is
   told it may keep sending, and veetee worked out what the host had spent by counting the slots
   that arrived. A frame that never arrived spent the host's credit all the same, so every loss

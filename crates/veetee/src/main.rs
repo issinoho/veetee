@@ -106,6 +106,7 @@ fn build_window(app: &adw::Application, config: Config, options: Options) {
     let session_section = gio::Menu::new();
     session_section.append(Some("Set-Up"), Some("win.setup"));
     session_section.append(Some("Open Second Session"), Some("win.new-session"));
+    session_section.append(Some("Close Session"), Some("win.close-session"));
     session_section.append(Some("Find…"), Some("win.search"));
     session_section.append(Some("Mark Checkpoint"), Some("win.mark-checkpoint"));
     session_section.append(Some("Log to File…"), Some("win.log"));
@@ -268,6 +269,17 @@ fn add_session_actions(window: &adw::ApplicationWindow, workspace: &Rc<workspace
         }
     });
     window.add_action(&new_session);
+
+    let close_session = gio::SimpleAction::new("close-session", None);
+    close_session.connect_activate({
+        let workspace = Rc::downgrade(workspace);
+        move |_, _| {
+            if let Some(ws) = workspace.upgrade() {
+                ws.close_active_session();
+            }
+        }
+    });
+    window.add_action(&close_session);
 
     let setup = gio::SimpleAction::new("setup", None);
     setup.connect_activate({

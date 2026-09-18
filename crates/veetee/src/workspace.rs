@@ -317,20 +317,34 @@ impl Workspace {
         };
         let pane = self.panes.borrow()[index].clone();
         pane.view.session().close();
-        if self.options.connection.keep_open_on_close() {
+        let label = self.options.connection.label();
+        let msg = match reason {
+            Some(r) => format!("Connection closed: {r}"),
+            None => format!("Connection to {label} closed"),
+        };
+        eprintln!("veetee: {msg}");
+        let split = self.panes.borrow().len() > 1;
+        if !split && self.options.connection.keep_open_on_close() {
             // Keep the screen readable (and copyable) after the line drops.
-            let label = self.options.connection.label();
-            let msg = match reason {
-                Some(r) => format!("Connection closed: {r}"),
-                None => format!("Connection to {label} closed"),
-            };
-            eprintln!("veetee: {msg}");
+            // Only worth it for the last session: it is the only thing left
+            // to look at, and closing the window is the only alternative.
             *pane.status.borrow_mut() = "Disconnected".into();
             self.toasts
                 .add_toast(adw::Toast::builder().title(msg).timeout(0).build());
             self.refresh();
             return;
         }
+        // With the window split, a session that has ended is half a window
+        // doing nothing: the other session gets it back, and the reason for
+        // the ending is in the toast rather than on the dead screen.
+        if split {
+            self.notify(&msg);
+        }
+        self.remove_pane(index);
+    }
+
+    /// Takes a pane out and gives the window to whatever is left of it.
+    fn remove_pane(&self, index: usize) {
         self.panes.borrow_mut().remove(index);
         if self.panes.borrow().is_empty() {
             self.window.close();
@@ -341,6 +355,25 @@ impl Workspace {
         first.view.widget().grab_focus();
         self.active.set(first.id);
         self.refresh();
+    }
+
+    /// Closes the session the keyboard is in, leaving the other one the whole
+    /// window.
+    ///
+    /// Nothing to do with one session: that session *is* the window, and the
+    /// window has its own close button. Said rather than done quietly, as F4
+    /// says it when there is nothing to switch to.
+    pub fn close_active_session(&self) {
+        if self.panes.borrow().len() < 2 {
+            self.notify("Only one session is open; close the window instead");
+            return;
+        }
+        let Some(index) = self.index_of(self.active.get()) else {
+            return;
+        };
+        let pane = self.panes.borrow()[index].clone();
+        pane.view.session().close();
+        self.remove_pane(index);
     }
 
     /// Updates session headers and the window title for the active session.
