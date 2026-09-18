@@ -6,7 +6,14 @@ saved settings takes the major, new terminal behaviour takes the minor, fixes ta
 Before 1.0 the minor version followed the project milestones (0.3 = M3). The format follows
 [Keep a Changelog](https://keepachangelog.com/).
 
-## [Unreleased]
+## [1.1.1] - 2026-09-18
+
+**Upgrade if you use LAT.** 1.1.0 made LAT worse rather than better: it counted every one of the
+host's acknowledgements as a lost message, and granted the host credit to make up for traffic that
+had never existed. The three faults that came out of that are fixed here, all of them found from a
+trace of a real session, and the fix is confirmed against the same OpenVMS node — sixteen minutes
+with no phantom losses and an allowance that does not drift, where 1.1.0 degraded from the first
+minute.
 
 - **Fixed: a LAT session froze with the screen stopped and the keys still clicking.** Three faults
   in a row, found from a trace of a real session that failed this way on 1.1.0.
@@ -588,7 +595,8 @@ The first release: VT100 through VT420 emulation with local, Telnet, SSH and ser
   `cargo deny` licence checks and parser fuzzing.
 - `cargo xtask dist` builds the release tarball and Debian package.
 
-[Unreleased]: https://github.com/issinoho/veetee/compare/v1.1.0...HEAD
+[Unreleased]: https://github.com/issinoho/veetee/compare/v1.1.1...HEAD
+[1.1.1]: https://github.com/issinoho/veetee/compare/v1.1.0...v1.1.1
 [1.1.0]: https://github.com/issinoho/veetee/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/issinoho/veetee/compare/v0.8.12...v1.0.0
 [0.8.12]: https://github.com/issinoho/veetee/compare/v0.8.11...v0.8.12

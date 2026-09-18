@@ -67,6 +67,11 @@
   </supports>
   <content_rating type="oars-1.1"/>
   <releases>
+    <release version="1.1.1" date="2026-09-18">
+      <description>
+        <p>A LAT session no longer freezes with the screen stopped and the keys still clicking.</p>
+      </description>
+    </release>
     <release version="1.1.0" date="2026-09-18">
       <description>
         <p>A LAT session survives a wire that loses frames, and a window with two sessions can get back to one.</p>
