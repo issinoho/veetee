@@ -29,6 +29,12 @@ struct Host {
     heard: u8,
     /// What veetee has granted and this end has not spent. A slot costs one.
     credit: i32,
+    /// What this end has granted veetee and veetee has not spent. A node that
+    /// sends past its allowance has its messages dropped by a real host, so
+    /// this one refuses to let it happen quietly.
+    granted: i32,
+    /// What veetee has sent, to compare with what was typed.
+    typed: Vec<u8>,
 }
 
 impl Host {
@@ -44,6 +50,8 @@ impl Host {
             sequence: 0,
             heard: 0,
             credit: 0,
+            granted: 0,
+            typed: Vec::new(),
         };
         let reply = Start {
             calling: false,
@@ -70,6 +78,18 @@ impl Host {
                 }
                 for slot in &run.slots {
                     self.credit += i32::from(slot.control & 0x0f);
+                    // Only session data with something in it spends an
+                    // allowance: the slot asking for a service goes before
+                    // there is one, and an empty slot is how credit is
+                    // granted, which must not itself need credit.
+                    if slot.control & 0xf0 == 0x00 && !slot.data.is_empty() {
+                        self.granted -= 1;
+                        assert!(
+                            self.granted >= 0,
+                            "veetee sent past the allowance it was granted"
+                        );
+                        self.typed.extend_from_slice(slot.data);
+                    }
                 }
                 // A nibble limits what one grant carries, not what an end can
                 // be holding: granting is read as adding to the allowance
@@ -83,12 +103,30 @@ impl Host {
         }
     }
 
-    /// Says something, if there is credit left to say it with.
-    fn speak(&mut self, text: &[u8]) -> Option<Vec<u8>> {
+    /// An acknowledgement: no slots, and a sequence number like any other
+    /// message. A session that does not follow the numbering of these reads
+    /// every one as a message lost.
+    fn ack(&mut self) -> Vec<u8> {
+        self.sequence = self.sequence.wrapping_add(1);
+        Run {
+            flags: 0,
+            theirs: self.theirs,
+            ours: self.ours,
+            sequence: self.sequence,
+            acknowledged: self.heard,
+            slots: Vec::new(),
+        }
+        .build()
+    }
+
+    /// Says something, if there is credit left to say it with, granting
+    /// `grant` slots back to veetee as it goes.
+    fn speak(&mut self, text: &[u8], grant: u8) -> Option<Vec<u8>> {
         if self.credit < 1 {
             return None;
         }
         self.credit -= 1;
+        self.granted += i32::from(grant);
         self.sequence = self.sequence.wrapping_add(1);
         Some(
             Run {
@@ -102,7 +140,7 @@ impl Host {
                 slots: vec![Slot {
                     to: 1,
                     from: 1,
-                    control: 0x00,
+                    control: grant,
                     data: text,
                 }],
             }
@@ -155,7 +193,7 @@ fn a_long_session_in_order() {
     for i in 0..MESSAGES {
         let line = format!("line {i}\r\n");
         let frame = host
-            .speak(line.as_bytes())
+            .speak(line.as_bytes(), 0)
             .unwrap_or_else(|| panic!("the host ran out of credit at message {i}"));
         assert_eq!(session.receive(&frame, &mut data), Event::Data);
         flush(&mut session, &mut host);
@@ -190,6 +228,82 @@ fn a_long_session_in_order() {
 }
 
 #[test]
+fn the_far_ends_acknowledgements_are_not_read_as_losses() {
+    let (mut session, mut host, mut data) = opened();
+
+    // A real host acknowledges as it goes, and every acknowledgement carries
+    // a sequence number like any other message. A session that follows the
+    // numbering of only the messages with slots in them reads each of these
+    // as a message lost -- and a loss believed is credit granted to make up
+    // for it, which is an empty slot sent for every phantom. On a real
+    // session that came to 165 phantom losses and 1361 credits granted
+    // against 107 received.
+    for i in 0..MESSAGES {
+        let line = format!("line {i}");
+        if let Some(frame) = host.speak(line.as_bytes(), 0) {
+            session.receive(&frame, &mut data);
+            flush(&mut session, &mut host);
+        }
+        let ack = host.ack();
+        assert_eq!(
+            session.receive(&ack, &mut data),
+            Event::Housekeeping,
+            "an acknowledgement carries nothing for the terminal"
+        );
+        flush(&mut session, &mut host);
+    }
+
+    let stats = session.stats();
+    assert_eq!(
+        stats.missed,
+        0,
+        "nothing was lost here at all: {}",
+        stats.summary()
+    );
+    assert!(
+        stats.acks_in > MESSAGES as u64 / 2,
+        "the acknowledgements were seen: {}",
+        stats.summary()
+    );
+}
+
+#[test]
+fn typing_stays_within_the_allowance() {
+    let (mut session, mut host, mut data) = opened();
+    let mut typed = Vec::new();
+
+    // The host asserts, on every slot it receives, that veetee has not sent
+    // past what it was granted: a node that does has its messages dropped,
+    // and the far end then stops acknowledging and takes the circuit down
+    // without a word. This is what that looked like in the field.
+    for i in 0..20_000usize {
+        let line = format!("line {i}");
+        if let Some(frame) = host.speak(line.as_bytes(), 2) {
+            session.receive(&frame, &mut data);
+            flush(&mut session, &mut host);
+        }
+        let key = [b'a' + u8::try_from(i % 26).unwrap()];
+        session.write(&key);
+        typed.extend_from_slice(&key);
+        flush(&mut session, &mut host);
+    }
+
+    assert!(
+        !session.holding(),
+        "the allowance kept up: {}",
+        session.stats().summary()
+    );
+    assert_eq!(
+        host.typed.len(),
+        typed.len(),
+        "every keystroke arrived: {} of {}",
+        host.typed.len(),
+        typed.len()
+    );
+    assert!(host.typed == typed, "and in the order they were typed");
+}
+
+#[test]
 fn a_repeated_message_is_not_read_twice() {
     let (mut session, mut host, mut data) = opened();
     let mut expected = Vec::new();
@@ -200,7 +314,7 @@ fn a_repeated_message_is_not_read_twice() {
     for i in 0..MESSAGES {
         let line = format!("line {i}\r\n");
         let frame = host
-            .speak(line.as_bytes())
+            .speak(line.as_bytes(), 0)
             .unwrap_or_else(|| panic!("the host ran out of credit at message {i}"));
         session.receive(&frame, &mut data);
         if i % 100 == 0 {
@@ -230,8 +344,8 @@ fn a_message_arriving_late_does_not_rewind_the_acknowledgement() {
 
     // Two messages swapped on the wire. The second is read first, so the
     // first arrives older than what has already been heard.
-    let first = host.speak(b"first ").expect("credit at the start");
-    let second = host.speak(b"second ").expect("credit at the start");
+    let first = host.speak(b"first ", 0).expect("credit at the start");
+    let second = host.speak(b"second ", 0).expect("credit at the start");
     session.receive(&second, &mut data);
     flush(&mut session, &mut host);
     let acknowledged = host.heard;
@@ -265,7 +379,7 @@ fn a_lost_message_does_not_wedge_the_session() {
     for i in 0..MESSAGES {
         let line = format!("line {i}\r\n");
         let frame = host
-            .speak(line.as_bytes())
+            .speak(line.as_bytes(), 0)
             .unwrap_or_else(|| panic!("the host ran out of credit at message {i}"));
         if i % 7 == 3 {
             dropped += 1;

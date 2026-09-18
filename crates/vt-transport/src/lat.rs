@@ -547,6 +547,24 @@ pub struct LatConfig {
 /// How often a trace writes a line of running totals.
 const SUMMARY: Duration = Duration::from_secs(60);
 
+/// Silence from the far end that means it has gone.
+///
+/// Three of the twenty seconds OpenVMS keeps between its own keepalives, so a
+/// node that is merely quiet is never mistaken for one that has stopped. LAT
+/// gives both ends this timer and a retransmit limit precisely so that either
+/// can decide the other has gone; veetee sent the keepalives from the first
+/// and did none of the deciding, which is why a host that took the circuit
+/// down left a terminal that went quiet and never said why.
+const DEAD: Duration = Duration::from_secs(60);
+
+/// How long typing waits for an allowance before it is sent regardless.
+///
+/// Holding strictly would be the correct reading of the protocol and the
+/// wrong thing to do: a far end that stopped granting would take the keyboard
+/// with it, and a terminal that ignores the keyboard is worse than one that
+/// sends a slot too many.
+const HOLD: Duration = Duration::from_secs(3);
+
 /// Every frame a session sent and received, written to a file, for working
 /// out afterwards why one stopped.
 ///
@@ -638,6 +656,11 @@ impl Trace {
 struct Shared {
     session: Session,
     sent: Instant,
+    /// When a frame of this session's was last *heard*, against `sent`. The
+    /// two are quite different questions and only one of them was ever asked.
+    heard: Instant,
+    /// Since when typing has been waiting on an allowance.
+    held: Option<Instant>,
     /// Where every frame is written, if the environment asked for that.
     trace: Option<Trace>,
 }
@@ -689,6 +712,8 @@ impl Lat {
         let mut shared = Shared {
             session,
             sent: Instant::now(),
+            heard: Instant::now(),
+            held: None,
             trace: Trace::open(&config.node, &config.interface),
         };
         flush(&mut listener, peer, &mut shared)?;
@@ -716,10 +741,11 @@ impl Lat {
                 continue;
             };
             let event = shared.session.receive(payload, &mut pending);
-            if event != Event::Ignored
-                && let Some(trace) = shared.trace.as_mut()
-            {
-                trace.frame(false, payload);
+            if event != Event::Ignored {
+                shared.heard = Instant::now();
+                if let Some(trace) = shared.trace.as_mut() {
+                    trace.frame(false, payload);
+                }
             }
             flush(&mut listener, peer, &mut shared)?;
             if event == Event::Closed {
@@ -771,6 +797,34 @@ impl Lat {
         if let Some(trace) = shared.trace.as_mut() {
             trace.totals(&stats, false);
         }
+
+        // Typing waits on an allowance, but not for ever.
+        if shared.session.holding() {
+            let since = *shared.held.get_or_insert_with(Instant::now);
+            if since.elapsed() >= HOLD {
+                if let Some(trace) = shared.trace.as_mut() {
+                    trace.note("sending held typing without an allowance");
+                }
+                shared.session.release_typing();
+                shared.held = None;
+                flush(&mut self.listener, self.peer, &mut shared)?;
+            }
+        } else {
+            shared.held = None;
+        }
+
+        // Nothing heard for long enough is a circuit that is no longer there.
+        // Without this veetee keepalives into it for ever: the screen stops,
+        // the keys still click, and the host released the terminal minutes
+        // ago.
+        if shared.heard.elapsed() >= DEAD && !shared.session.is_closed() {
+            if let Some(trace) = shared.trace.as_mut() {
+                trace.note("nothing heard for a minute; the circuit has gone");
+            }
+            shared.session.peer_gone();
+            return Ok(());
+        }
+
         if shared.sent.elapsed() < KEEPALIVE {
             return Ok(());
         }
@@ -813,10 +867,11 @@ impl crate::Transport for Lat {
                     // Most of what a packet socket hears belongs to another
                     // circuit, so tracing all of it would bury the session in
                     // its neighbours. The count of them is in the totals.
-                    if event != Event::Ignored
-                        && let Some(trace) = shared.trace.as_mut()
-                    {
-                        trace.frame(false, payload);
+                    if event != Event::Ignored {
+                        shared.heard = Instant::now();
+                        if let Some(trace) = shared.trace.as_mut() {
+                            trace.frame(false, payload);
+                        }
                     }
                     flush(&mut self.listener, self.peer, &mut shared)?;
                 }

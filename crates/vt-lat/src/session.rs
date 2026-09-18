@@ -184,9 +184,22 @@ pub struct Session {
     circuit: bool,
     /// Frames waiting to be sent.
     outgoing: Vec<Vec<u8>>,
-    /// Typing that arrived before the far end had prompted, which it would
-    /// have ignored. Held back rather than dropped, and sent once it speaks.
-    early: Vec<u8>,
+    /// Typing not yet sent: because the far end has not prompted and would
+    /// ignore it, or because there is no allowance left to send it with.
+    /// Held back rather than dropped.
+    typed: Vec<u8>,
+    /// Slots this end may still send, by the far end's grant.
+    ///
+    /// Signed because it has been known to go negative, which is the fault
+    /// worth seeing: a node that sends past its allowance has its messages
+    /// dropped, and the far end then stops acknowledging and takes the
+    /// circuit down without a word.
+    allowance: i32,
+    /// The newest sequence number seen from the far end on *any* message,
+    /// against [`Session::heard`], which counts only the ones carrying slots
+    /// because only those are acknowledged.
+    seen: u8,
+    seen_any: bool,
     /// How the session ended, for the terminal to say. The two are worth
     /// telling apart: a logout ends a session and leaves the circuit up.
     ended: Option<&'static str>,
@@ -217,7 +230,10 @@ impl Session {
             credit: 0,
             circuit: false,
             outgoing: Vec::new(),
-            early: Vec::new(),
+            typed: Vec::new(),
+            allowance: 0,
+            seen: 0,
+            seen_any: false,
             ended: None,
             heard_any: false,
             since_grant: 0,
@@ -279,15 +295,63 @@ impl Session {
     /// Held back until the far end has said something: it will not read before
     /// it has prompted, and a slot sent earlier is ignored rather than queued.
     pub fn write(&mut self, data: &[u8]) {
-        match self.state {
-            State::Open => {
-                for chunk in data.chunks(MAX_SLOT) {
-                    let frame = self.data_frame(chunk);
-                    self.outgoing.push(frame);
-                }
+        if self.state == State::Closed {
+            return;
+        }
+        self.typed.extend_from_slice(data);
+        self.send_typed(false);
+    }
+
+    /// Sends what has been typed, as far as the allowance goes.
+    ///
+    /// Everything waiting goes in as few slots as it takes rather than one
+    /// slot for every time [`Session::write`] was called: a slot costs a
+    /// credit whether it carries one byte or two hundred and fifty-five, and
+    /// a keystroke is one byte.
+    ///
+    /// `force` sends whatever the allowance says, for a caller that has
+    /// waited long enough. Holding strictly would be the correct reading of
+    /// the protocol and the wrong thing to do: a far end that stops granting
+    /// would silently take the keyboard with it.
+    fn send_typed(&mut self, force: bool) {
+        if self.state != State::Open {
+            return;
+        }
+        while !self.typed.is_empty() {
+            if self.allowance < 1 && !force {
+                return;
             }
-            State::New | State::Calling | State::Asked => self.early.extend_from_slice(data),
-            State::Closed => {}
+            let take = self.typed.len().min(MAX_SLOT);
+            let chunk: Vec<u8> = self.typed.drain(..take).collect();
+            let frame = self.data_frame(&chunk);
+            self.outgoing.push(frame);
+        }
+    }
+
+    /// Sends what is held whatever the allowance says.
+    pub fn release_typing(&mut self) {
+        self.send_typed(true);
+    }
+
+    /// Whether anything typed is waiting on the far end's allowance.
+    #[must_use]
+    pub fn holding(&self) -> bool {
+        !self.typed.is_empty() && self.state == State::Open
+    }
+
+    /// Nothing has been heard from the far end for long enough to call it
+    /// gone.
+    ///
+    /// LAT gives each end a keepalive timer and a retransmit limit so that
+    /// either can decide the other has stopped; veetee sent the keepalives
+    /// from the first and did none of the deciding, so a host that dropped
+    /// the circuit left a terminal that went quiet and never said why. No
+    /// stop is sent: there is nothing at the far end to take down.
+    pub fn peer_gone(&mut self) {
+        if self.is_open() {
+            self.ended = Some("the host stopped answering");
+            self.state = State::Closed;
+            self.circuit = false;
         }
     }
 
@@ -406,13 +470,36 @@ impl Session {
         self.stats.unacked = self.sequence.wrapping_sub(run.acknowledged);
         self.stats.max_unacked = self.stats.max_unacked.max(self.stats.unacked);
         self.stats.slots_in += run.slots.len() as u64;
-        if run.slots.is_empty() {
-            self.stats.acks_in += 1;
+
+        // Follow the far end's numbering across *everything* it sends, its
+        // own acknowledgements included: they carry a sequence number like
+        // any other message. Counting only the ones with slots reads every
+        // acknowledgement as a message lost, and a message believed lost is
+        // credit believed spent, so the far end is granted more to make up
+        // for traffic that never existed — and each of those grants costs a
+        // slot of this end's own allowance. Measured on a real session it was
+        // 165 phantom losses and 1361 credits granted against 107 received,
+        // which is how an allowance of fifteen ends up seventy-four in debt.
+        let ahead = !self.seen_any || watch::newer(run.sequence, self.seen);
+        let missed = if self.seen_any && ahead {
+            usize::from(run.sequence.wrapping_sub(self.seen)) - 1
+        } else {
+            0
+        };
+        if ahead {
+            if self.seen_any && run.sequence < self.seen {
+                self.stats.wraps_in += 1;
+            }
+            self.stats.missed += missed as u64;
+            self.seen = run.sequence;
+            self.seen_any = true;
         }
+
         // Answer only what carries slots. Acknowledging an acknowledgement
         // draws another back, and the two ends then answer each other for
         // ever.
         if run.slots.is_empty() {
+            self.stats.acks_in += 1;
             return Event::Housekeeping;
         }
         // Whether this is something new, counting the wrap: sequence numbers
@@ -437,21 +524,6 @@ impl Session {
             self.outgoing.push(frame);
             return Event::Housekeeping;
         }
-        // What never arrived spent the far end's credit all the same, and a
-        // gap in the numbering is the only sign of it. Without this, every
-        // loss leaves this end's reckoning of the far end's allowance one
-        // too high for the rest of the session, and once the drift passes
-        // what is held back before granting, the far end runs out of credit
-        // and goes quiet for good with nothing said by either side.
-        let missed = if self.heard_any {
-            usize::from(run.sequence.wrapping_sub(self.heard)) - 1
-        } else {
-            0
-        };
-        if self.heard_any && run.sequence < self.heard {
-            self.stats.wraps_in += 1;
-        }
-        self.stats.missed += missed as u64;
         self.heard = run.sequence;
         self.heard_any = true;
         let frame = self.acknowledge();
@@ -476,9 +548,12 @@ impl Session {
             // it — what is typed goes out when it is typed, without asking
             // what allowance there is for it — so this count measures a
             // fault that has been reasoned about and never yet seen.
+            // The low nibble is credit granted to this end, and it is now
+            // spent against rather than ignored.
             let granted = u32::from(slot.control & 0x0f);
             self.stats.granted_in += u64::from(granted);
-            self.stats.credit_ours += i32::try_from(granted).unwrap_or(i32::MAX);
+            self.allowance += i32::try_from(granted).unwrap_or(0);
+            self.stats.credit_ours = self.allowance;
             match slot.control & SLOT_KIND {
                 SLOT_DATA => {
                     self.stats.bytes_in += slot.data.len() as u64;
@@ -507,9 +582,8 @@ impl Session {
         // It has spoken, so it is reading: anything typed early can go now.
         if self.state == State::Asked {
             self.state = State::Open;
-            let early = std::mem::take(&mut self.early);
-            self.write(&early);
         }
+        self.send_typed(false);
         Event::Data
     }
 
@@ -606,7 +680,22 @@ impl Session {
             self.stats.acks_out += 1;
         }
         self.stats.slots_out += slots.len() as u64;
-        self.stats.credit_ours -= i32::try_from(slots.len()).unwrap_or(i32::MAX);
+        // Only session data with something in it spends the allowance, and
+        // both halves of that matter. The slot asking for a service goes
+        // before the far end has granted anything, so a session could never
+        // be opened otherwise; and an empty slot is how credit is granted, so
+        // if those spent too, two ends that had both run out could never
+        // grant each other any and the circuit would stand there deadlocked.
+        //
+        // 🔎 How a real node reckons it is unread. This is the reading under
+        // which a session can start and cannot wedge itself, which is the
+        // most that can be said for it.
+        let spending = slots
+            .iter()
+            .filter(|slot| slot.control & SLOT_KIND == SLOT_DATA && !slot.data.is_empty())
+            .count();
+        self.allowance -= i32::try_from(spending).unwrap_or(0);
+        self.stats.credit_ours = self.allowance;
         for slot in slots {
             self.stats.bytes_out += slot.data.len() as u64;
             self.stats.granted_out += u64::from(slot.control & 0x0f);
@@ -1006,6 +1095,11 @@ mod tests {
         session.take_outgoing();
 
         session.write(&[b'x'; MAX_SLOT + 10]);
+        // The prompt grants one slot's worth, so the first slot goes and the
+        // rest waits on an allowance; releasing is what the caller does once
+        // it has waited long enough for a grant that is not coming.
+        assert!(session.holding(), "the rest of it is waiting on credit");
+        session.release_typing();
         let out = session.take_outgoing();
         assert_eq!(out.len(), 2, "one length byte counts a slot of data");
         let lengths: Vec<usize> = out
@@ -1016,6 +1110,112 @@ mod tests {
             })
             .collect();
         assert_eq!(lengths, vec![MAX_SLOT, 10]);
+    }
+
+    #[test]
+    fn typing_waits_on_the_allowance_and_is_let_go_when_it_has_to_be() {
+        let (mut session, mut data) = agreed();
+        session.receive(PROMPT, &mut data);
+        session.take_outgoing();
+
+        // The prompt granted one slot, and the first keystroke spends it.
+        session.write(b"a");
+        assert_eq!(session.take_outgoing().len(), 1, "the allowance covers it");
+        assert!(!session.holding());
+
+        session.write(b"b");
+        assert!(
+            session.take_outgoing().is_empty(),
+            "nothing left to send it with"
+        );
+        assert!(session.holding(), "held rather than dropped");
+
+        // A far end that never grants again would otherwise take the keyboard
+        // with it, so waiting has a limit and the caller decides when.
+        session.release_typing();
+        let out = session.take_outgoing();
+        assert_eq!(out.len(), 1);
+        let Ok(Message::Run(sent)) = crate::parse(&out[0]) else {
+            panic!("not a run")
+        };
+        assert_eq!(sent.slots[0].data, b"b");
+        assert!(!session.holding());
+    }
+
+    #[test]
+    fn everything_waiting_goes_in_one_slot() {
+        let (mut session, mut data) = agreed();
+        session.receive(PROMPT, &mut data);
+        session.take_outgoing();
+
+        // Three keystrokes with one slot's worth of credit between them. A
+        // slot costs a credit whether it carries one byte or two hundred, so
+        // what is waiting goes together rather than one slot each.
+        session.write(b"S");
+        session.take_outgoing();
+        session.write(b"Y");
+        session.write(b"S");
+        session.release_typing();
+        let out = session.take_outgoing();
+        assert_eq!(out.len(), 1, "one slot, not two");
+        let Ok(Message::Run(sent)) = crate::parse(&out[0]) else {
+            panic!("not a run")
+        };
+        assert_eq!(sent.slots[0].data, b"YS");
+    }
+
+    #[test]
+    fn a_far_end_that_stops_answering_ends_the_session() {
+        let (mut session, mut data) = agreed();
+        session.receive(PROMPT, &mut data);
+        session.take_outgoing();
+        assert!(!session.is_closed());
+
+        session.peer_gone();
+        assert!(session.is_closed());
+        assert_eq!(session.ending(), "the host stopped answering");
+        assert!(
+            session.take_outgoing().is_empty(),
+            "no stop: there is nothing at the far end to take down"
+        );
+        let _ = data;
+    }
+
+    #[test]
+    fn the_far_ends_own_acknowledgements_are_not_read_as_losses() {
+        let (mut session, mut data) = agreed();
+        session.receive(PROMPT, &mut data);
+        session.take_outgoing();
+        let numbered = session.stats().missed;
+
+        // An acknowledgement carries a sequence number like anything else.
+        // Counting only the messages with slots in them reads each of these
+        // as a message lost, and then grants credit to make up for it.
+        for sequence in 4..=8 {
+            let ack = Run {
+                flags: 0,
+                theirs: 0x7001,
+                ours: 0xe001,
+                sequence,
+                acknowledged: 2,
+                slots: Vec::new(),
+            }
+            .build();
+            assert_eq!(
+                session.receive(&ack, &mut data),
+                Event::Housekeeping,
+                "an acknowledgement is not answered"
+            );
+        }
+        assert!(
+            session.take_outgoing().is_empty(),
+            "and draws nothing back, or the two ends answer each other for ever"
+        );
+        assert_eq!(
+            session.stats().missed,
+            numbered,
+            "five acknowledgements are not five lost messages"
+        );
     }
 
     #[test]

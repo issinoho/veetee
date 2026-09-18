@@ -6,6 +6,37 @@ saved settings takes the major, new terminal behaviour takes the minor, fixes ta
 Before 1.0 the minor version followed the project milestones (0.3 = M3). The format follows
 [Keep a Changelog](https://keepachangelog.com/).
 
+## [Unreleased]
+
+- **Fixed: a LAT session froze with the screen stopped and the keys still clicking.** Three faults
+  in a row, found from a trace of a real session that failed this way on 1.1.0.
+
+  The first: a host's own acknowledgements carry a sequence number like any other message, and
+  1.1.0 followed the numbering of only the messages carrying slots — so it read every
+  acknowledgement as a message lost. A loss believed is credit believed spent, so veetee granted
+  the host credit to make up for traffic that had never existed, and sent an empty slot for every
+  phantom. On the session that failed: 165 phantom losses, 1361 credits granted against 107
+  received, about 170 empty slots to carry 138 bytes of typing.
+
+  The second: veetee never read the credit the host granted *it*, and sent whenever there was
+  something to send. With all those empty slots going out it ran 74 slots past its allowance.
+  It now spends against what it has been granted, holds typing when there is none, and coalesces
+  what is waiting into one slot rather than one slot for every keystroke. It holds for three
+  seconds and then sends regardless: holding strictly is the correct reading of the protocol and
+  the wrong behaviour, because a host that stopped granting would take the keyboard with it.
+
+  The third is why it looked frozen rather than disconnected. LAT gives both ends a keepalive
+  timer and a retransmit limit so either can decide the other has gone. veetee sent the keepalives
+  from the first and did none of the deciding, so when OpenVMS gave up — eight retransmissions at
+  an 80 ms circuit timer, about two thirds of a second — and released the `LTA` device, veetee
+  kept acknowledging into a circuit that no longer existed. The session that prompted this was
+  still doing so an hour later. A minute of silence, three of the host's own keepalive intervals,
+  now ends the session and says so.
+
+  The soak in `crates/vt-lat/tests/soak.rs` missed all three because its host never acknowledged
+  and never checked what it had granted. It does both now.
+
+
 ## [1.1.0] - 2026-09-18
 
 A LAT session survives a wire that loses frames, and a window with two sessions can get back to

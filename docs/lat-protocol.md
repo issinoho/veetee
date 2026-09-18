@@ -390,10 +390,40 @@ it holds the password typed into the session**, in clear, exactly as the wire ca
 - **Much of the start message**, including fourteen bytes before the address.
 - **The 80 ms circuit timer, and retransmission.** Nothing was ever lost in a captured session,
   so no retransmission was ever seen, and veetee does none of its own: it keeps no copy of what it
-  has sent and does not read the number the host acknowledges, so typing lost on the wire is lost.
-  What it does do is survive the host's losses. A gap in the host's numbering is counted as credit
-  the host spent on a message that never arrived — without that, every loss leaves veetee's
-  reckoning of the host's allowance one too high for good, and after eight or so the host runs out
-  of credit and goes quiet with nothing said by either end. The allowance is also worked out from
-  scratch every thirty-two messages, so any other way of losing count rights itself. All of this
-  is reproduced in `crates/vt-lat/tests/soak.rs`, against a host that is not there.
+  has sent, so typing lost on the wire is lost. What it does do is survive the host's losses. A
+  gap in the host's numbering is counted as credit the host spent on a message that never arrived
+  — without that, every loss leaves veetee's reckoning of the host's allowance one too high for
+  good, and after eight or so the host runs out of credit and goes quiet with nothing said by
+  either end. The allowance is also worked out from scratch every thirty-two messages, so any
+  other way of losing count rights itself.
+
+  **The gap has to be measured across everything the host sends, its own acknowledgements
+  included.** They carry a sequence number like any other message, and 1.1.0 followed the
+  numbering of only the messages with slots in them — so it read every acknowledgement as a
+  message lost. On a real session that came to 165 phantom losses, and each one bought the host
+  credit it had never spent: 1361 granted against 107 received, sent as about 170 empty slots to
+  carry 138 bytes of typing.
+
+- **What credit costs, and what spends it.** That a slot spends one and that running out stops a
+  sender are settled. Beyond that veetee assumes only session data with something in it spends an
+  allowance, and it has to assume something: the slot asking for a service goes before the far end
+  has granted anything, so a session could never open otherwise, and an empty slot is how credit
+  itself is granted, so if those spent too then two ends that had both run out could never grant
+  each other any. 🔎 Whether a real node reckons it the same way is unread.
+
+  veetee now spends against what it has been granted rather than sending regardless, and holds
+  typing when there is nothing left — but only for three seconds, after which it sends anyway.
+  Holding strictly is the correct reading and the wrong behaviour: a host that stops granting
+  would otherwise take the keyboard with it.
+
+- **Deciding the far end has gone.** Each end has a keepalive timer and a retransmit limit so it
+  can tell. OpenVMS gives up after eight retransmissions at an 80 ms circuit timer — about two
+  thirds of a second — and releases the `LTA` device. veetee sent keepalives from the first and
+  did none of the deciding, so a host that dropped the circuit left a terminal that stopped
+  updating, kept clicking its keys, and never said why; one such session was still sending
+  keepalives into nothing an hour later. Silence for a minute, three of the host's own keepalive
+  intervals, now ends the session.
+
+  All of this is reproduced in `crates/vt-lat/tests/soak.rs`, against a host that is not there —
+  one that acknowledges as it goes and refuses to accept more than it granted, both of which an
+  earlier version of that host did not do, which is why it missed all of the above.
