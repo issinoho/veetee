@@ -19,8 +19,10 @@
 //! as counterparties to test against over a pipe, never as a reference to
 //! copy, gkermit being GPL.
 
+mod data;
 mod init;
 
+pub use data::{decode, encode};
 pub use init::{Params, ours};
 
 /// A value carried as a printable character, which is how Kermit passes
