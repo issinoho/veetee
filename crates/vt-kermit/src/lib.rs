@@ -19,6 +19,10 @@
 //! as counterparties to test against over a pipe, never as a reference to
 //! copy, gkermit being GPL.
 
+mod init;
+
+pub use init::{Params, ours};
+
 /// A value carried as a printable character, which is how Kermit passes
 /// numbers through a line that may not be eight bits clean.
 ///
