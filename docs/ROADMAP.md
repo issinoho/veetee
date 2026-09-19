@@ -253,3 +253,5 @@ is unit-tested and has never run in anger, no host having dropped a circuit sinc
 VT340 Sixel and ReGIS graphics, Tektronix 4010/4014, printer controller output to CUPS or PDF,
 Kermit and X/Y/ZMODEM file transfer, scripting and macros. The parser already accepts and safely
 ignores their sequences.
+
+An Android port is planned in outline in [`android.md`](android.md).
