@@ -150,8 +150,12 @@ rather than fixes; none of it was judged a reason to hold the release.
   are pointed at each release afterwards with `cargo xtask winget VERSION`.
 - **Windows: winget alone** (17 September 2026). No Inno Setup or WiX installer. A release ships
   a zip holding the GTK runtime, and winget takes that zip as a portable package:
-  [winget-pkgs#436670](https://github.com/microsoft/winget-pkgs/pull/436670) offers 0.8.12, is
-  past URL validation and waiting on a moderator. It was installed from the local manifests first
+  [winget-pkgs#436670](https://github.com/microsoft/winget-pkgs/pull/436670) opened with 0.8.12
+  and was superseded in place with 1.1.2 on 18 September 2026, keeping its number and its place in
+  the queue: 0.8.12 predates the LAT work below, and 1.1.0 and 1.1.1 each kill a LAT session
+  within minutes, so publishing any of the three first would have put a known-bad version in front
+  of first-time installers. It is revalidating and waiting on a moderator; the new-package queue
+  has been running at about a fortnight. It was installed from the local manifests first
   and does work — winget verifies the checksum, unpacks it, and both `veetee` and `vt-headless`
   run from an unrelated directory with GTK resolving beside them. `winget uninstall` removes it
   and it registers an Add/Remove Programs entry, so uninstall and upgrade are answered.
@@ -192,10 +196,14 @@ rather than fixes; none of it was judged a reason to hold the release.
 - **Printing**: printer controller and print screen data are swallowed; printing is post-1.0.
 - **Hardware nobody here has.** RFC 2217 is proved against `ser2net`, and whether a DECserver,
   Lantronix or Moxa answers the option at all is unknown —
-  [`rfc2217-testing.md`](rfc2217-testing.md) is written for whoever has one. Three details of LAT
-  are read no further than their shape, and are marked in
+  [`rfc2217-testing.md`](rfc2217-testing.md) is written for whoever has one. Several details of
+  LAT are read no further than their shape and are marked in
   [`lat-protocol.md`](lat-protocol.md): what a stop message does, what a type-10 slot says beyond
-  the page size, and the run-message flag bits.
+  the page size, and the run-message flag bits. Three of veetee's own rules are a *reading* of
+  unread protocol rather than a documented fact — what spends an allowance, whether to advance an
+  acknowledgement past a gap, and which messages take a sequence number. Each is chosen so that
+  the session cannot wedge, which is the failure worth avoiding, and each is argued where it is
+  made.
 - **Protected fields have no acceptance coverage**, as the OpenVMS section above records: nothing
   on OpenVMS appears to drive DECSCA, DECSED, DECSEL or DECSERA, so they are tested against vttest
   and esctest and never against an application.
@@ -205,7 +213,40 @@ rather than fixes; none of it was judged a reason to hold the release.
 - **Windows signing**: each release's zip is signed after publishing with
   `pwsh -File packaging\windows\sign-release.ps1 -Version X.Y.Z` on Windows with Certum SimplySign
   Desktop signed in (see `packaging/windows/SIGNING.md`).
+- **winget, after signing and not before**: `cargo xtask winget VERSION`. Signing replaces both
+  the zip and `SHA256SUMS`, so manifests pointed at a release first pin a file that is no longer
+  there. Got wrong on 1.0.0, and the asset timestamps are worth a glance first.
 - **The wiki** (`issinoho/veetee.wiki`, a separate repository) is updated alongside a release.
+
+## Since 1.0
+
+**1.1.0, 1.1.1 and 1.1.2 are all LAT** (18 September 2026), and 1.1.2 is the one to have: the
+other two are worse than 1.0.0 was. Four faults, found from traces of a real session rather than
+from the captures — a session that goes quiet on a wire that loses frames, credit granted for
+traffic that never existed, a deadlock over which numbers get acknowledged, and underneath them
+all a sequence number taken for every message sent, which ran veetee past the host's queue limit
+of 24 and killed every session within minutes of a login. `CHANGELOG.md` has each in full.
+
+Away from LAT, 1.1.0 gave a split window a way back out of itself: **Close Session** in the
+window menu, and a second session that ends now gives the whole window to the other rather
+than leaving half of it dead. Neither has been seen working by anything but a compiler — a
+GTK dialog cannot be driven from the machine this was written on.
+
+1.1.0 also added **`VEETEE_LAT_TRACE`**, which is what found the rest: every frame to a file with
+a line of running totals each minute, and from 1.1.2 the kernel's own `PACKET_STATISTICS` beside
+them, so a frame veetee lost to itself can be told from one the wire lost. The soak in
+`crates/vt-lat/tests/soak.rs` now models a host that acknowledges as it goes, refuses more credit
+than it granted, waits to hear its own numbers back and enforces a queue limit — all four being
+things it did not do, each of which let a fault through to a release.
+
+**A LAT change is not proved by the soak.** Three releases in a row passed it and were disproved
+by MYI64 within minutes. What proves one is `VEETEE_LAT_TRACE` on a session running
+`MONITOR SYSTEM` for an hour or more: 1.1.2 was held until a run of two hours thirty-eight minutes
+showed `unacked` flat at nought, two lost messages both attributable to the wire, and nothing
+dropped in veetee's own receive buffer across 1.35 MB.
+
+**Still to be seen fire**: the dead-peer timer, which ends a session after a minute of silence. It
+is unit-tested and has never run in anger, no host having dropped a circuit since it was written.
 
 ## After 1.0
 
