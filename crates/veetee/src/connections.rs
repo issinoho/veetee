@@ -150,7 +150,7 @@ pub fn save_as(parent: &adw::ApplicationWindow, profile: Profile) {
     let names: Vec<String> = existing.iter().map(|p| p.name.clone()).collect();
     editor(parent, Some(profile), None, names, move |profile| {
         let mut all = existing.clone();
-        all.push(profile);
+        profiles::put(&mut all, None, profile);
         profiles::save(&all).map_err(|e| e.to_string())
     });
 }
@@ -212,6 +212,23 @@ impl ListUi {
             .valign(gtk::Align::Center)
             .css_classes(["flat"])
             .build();
+        // The star is the default connection: what veetee opens when it is
+        // started without one. Filled where it is, and it takes it away again.
+        let star = gtk::Button::builder()
+            .icon_name(if p.default {
+                "starred-symbolic"
+            } else {
+                "non-starred-symbolic"
+            })
+            .tooltip_text(if p.default {
+                "The default connection: opened when veetee starts without one. Click to stop"
+            } else {
+                "Make this the default connection, opened when veetee starts without one"
+            })
+            .valign(gtk::Align::Center)
+            .css_classes(["flat"])
+            .build();
+        row.add_suffix(&star);
         row.add_suffix(&edit);
         row.add_suffix(&delete);
         let connect = gtk::Button::builder()
@@ -232,6 +249,18 @@ impl ListUi {
                     ui.dialog.close();
                     crate::open_profile(&app.downcast().expect("an adw application"), &profile);
                 }
+            }
+        });
+        star.connect_clicked({
+            let ui = Rc::downgrade(self);
+            move |_| {
+                let Some(ui) = ui.upgrade() else { return };
+                let mut all = ui.profiles.borrow().clone();
+                profiles::toggle_default(&mut all, index);
+                if let Err(e) = profiles::save(&all) {
+                    eprintln!("veetee: cannot save connections: {e}");
+                }
+                ui.reload();
             }
         });
         edit.connect_clicked({
@@ -265,10 +294,7 @@ impl ListUi {
         let ui = self.clone();
         editor(&self.dialog, profile, index, names, move |profile| {
             let mut all = ui.profiles.borrow().clone();
-            match index {
-                Some(i) if i < all.len() => all[i] = profile,
-                _ => all.push(profile),
-            }
+            profiles::put(&mut all, index, profile);
             profiles::save(&all).map_err(|e| e.to_string())?;
             ui.reload();
             Ok(())
@@ -340,6 +366,7 @@ fn editor(
         log: None,
         log_timestamps: false,
         log_raw: false,
+        default: false,
     });
     // The dialog has no control for 8-bit Telnet, so an edited connection
     // keeps what it was saved with.
@@ -444,6 +471,11 @@ fn editor(
         .subtitle("Split the window; F4 switches")
         .active(p.sessions == 2)
         .build();
+    let default = adw::SwitchRow::builder()
+        .title("Default connection")
+        .subtitle("Opened when veetee starts without being told a connection")
+        .active(p.default)
+        .build();
 
     // Fill in the connection.
     let mut serial = SerialConfig::new(if cfg!(windows) {
@@ -508,6 +540,7 @@ fn editor(
     ] {
         connection_group.add(row);
     }
+    connection_group.add(&default);
     let line_group = adw::PreferencesGroup::builder()
         .title("Serial Line")
         .description("DEC factory settings are 9600 baud, 8 bits, no parity, 1 stop bit, XON/XOFF")
@@ -702,6 +735,7 @@ fn editor(
                 log: Some(log_file.text().trim().to_string()).filter(|l| !l.is_empty()),
                 log_timestamps: log_stamps.is_active(),
                 log_raw: p.log_raw,
+                default: default.is_active(),
             };
             match save(profile) {
                 Ok(()) => {

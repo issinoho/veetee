@@ -52,7 +52,8 @@ fn main() -> glib::ExitCode {
             return match profiles::load() {
                 Ok(list) => {
                     for p in &list {
-                        println!("{:<20} {}", p.name, p.summary());
+                        let default = if p.default { "  (default)" } else { "" };
+                        println!("{:<20} {}{default}", p.name, p.summary());
                     }
                     if list.is_empty() {
                         println!("No saved connections ({}).", profiles::path().display());

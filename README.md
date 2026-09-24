@@ -144,6 +144,12 @@ phosphor = "green"
 `veetee --profile vms1` opens one from the command line (other options override it, e.g.
 `--profile vms1 --model vt520`), and `veetee --list-profiles` lists them.
 
+The star beside a connection in the *Connections…* window makes it the **default**: what veetee
+opens when it is started without a connection, such as from the application launcher, instead of
+your login shell. Click it again to go back to the shell. It is `default-profile = "vms1"` at the
+top of `profiles.toml`. Options that name a connection (`--telnet`, `--ssh`, `--profile` and the
+rest) override it, and `veetee --shell` opens the login shell whatever the default is.
+
 ### History and search
 
 Lines that scroll off the top of the page are kept (10,000 of them). The mouse wheel or

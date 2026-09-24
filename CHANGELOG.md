@@ -6,6 +6,20 @@ saved settings takes the major, new terminal behaviour takes the minor, fixes ta
 Before 1.0 the minor version followed the project milestones (0.3 = M3). The format follows
 [Keep a Changelog](https://keepachangelog.com/).
 
+## [Unreleased]
+
+- **Added: a default connection.** A star beside each saved connection in the Connections window
+  makes it the one veetee opens when it is started without being told where to connect — a click on
+  the launcher, or `veetee` with no connection option — instead of your login shell. Click the star
+  again and it goes back to the login shell. The connection editor has the same choice as a
+  *Default connection* switch. `--model`, `--phosphor` and the like still apply to it as they do to
+  `--profile`, while any of `--profile`, `--telnet`, `--ssh`, `--serial`, `--lat` or `--command` is
+  taken at its word, and the new `--shell` opens your login shell whatever is set. It is saved as
+  `default-profile = "NAME"` at the top of `profiles.toml`, and `--list-profiles` marks it. A name
+  there that is not a saved connection is reported rather than ignored; started that way, veetee
+  says so on stderr and opens the login shell, so a mistake in the file never keeps the terminal
+  from opening.
+
 ## [1.1.2] - 2026-09-18
 
 **Upgrade if you use LAT.** 1.1.1 kills a LAT session within minutes of any login: the terminal

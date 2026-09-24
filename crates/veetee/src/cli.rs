@@ -12,9 +12,10 @@ use vt_transport::telnet::{ComPort, Telnet, TelnetConfig};
 pub const USAGE: &str = "\
 usage: veetee [--profile NAME] [--model MODEL] [--record FILE] [CONNECTION]
 
-connections (default: your login shell):
+connections (default: the saved connection marked as the default, else your login shell):
   --profile NAME         a saved connection (options given with it override it)
-  --list-profiles        list the saved connections
+  --list-profiles        list the saved connections (the default is marked)
+  --shell                your login shell, even where a default connection is set
   --telnet HOST[:PORT]   Telnet, e.g. --telnet vms1 or telnet://vms1:2323
   --ssh [USER@]HOST      SSH via OpenSSH (uses ~/.ssh/config), e.g. ssh://system@vms1
   --serial DEVICE        serial line, e.g. --serial /dev/ttyUSB0 or --serial COM3
@@ -136,13 +137,43 @@ pub enum Parsed {
 }
 
 pub fn parse_args(args: impl Iterator<Item = String>) -> Result<Parsed, String> {
-    parse_args_with(args, crate::profiles::find)
+    parse_args_with(args, crate::profiles::find, || {
+        // A file that cannot be read must not keep a terminal from opening, but
+        // it should not go unremarked either: the default is not being used.
+        crate::profiles::default_name().unwrap_or_else(|e| {
+            eprintln!("veetee: {e}\nveetee: opening your login shell instead");
+            None
+        })
+    })
 }
 
-/// Parses the arguments, looking up `--profile` with `find`.
+/// Whether the arguments say what to connect to, or ask for something that
+/// needs no connection. Where they do not, the default connection applies.
+fn names_a_connection(args: &[String]) -> bool {
+    args.iter().any(|a| {
+        matches!(
+            a.as_str(),
+            "--profile"
+                | "--shell"
+                | "--command"
+                | "--serial"
+                | "--telnet"
+                | "--ssh"
+                | "--lat"
+                | "-h"
+                | "--help"
+                | "--list-profiles"
+        ) || a.starts_with("telnet://")
+            || a.starts_with("ssh://")
+    })
+}
+
+/// Parses the arguments, looking up `--profile` with `find`. Where they name no
+/// connection, `default` gives the saved connection to start from instead.
 pub fn parse_args_with(
     args: impl Iterator<Item = String>,
     find: impl Fn(&str) -> Result<crate::profiles::Profile, String>,
+    default: impl Fn() -> Option<String>,
 ) -> Result<Parsed, String> {
     let mut config = Config::default();
     let mut options = Options {
@@ -150,8 +181,15 @@ pub fn parse_args_with(
         phosphor: "white".into(),
         ..Options::default()
     };
-    // A profile sets the starting point; the other options change it.
-    let args: Vec<String> = args.collect();
+    // A profile sets the starting point; the other options change it. The
+    // default connection is one, chosen when nothing else says where to go, so
+    // `--model` or `--phosphor` alone still change what it opens.
+    let mut args: Vec<String> = args.collect();
+    if !names_a_connection(&args)
+        && let Some(name) = default()
+    {
+        args.splice(0..0, ["--profile".to_string(), name]);
+    }
     let mut rest = Vec::new();
     let mut iter = args.into_iter();
     while let Some(arg) = iter.next() {
@@ -244,6 +282,7 @@ pub fn parse_args_with(
                 );
                 None
             }
+            "--shell" => Some(Connection::Shell),
             "--command" => Some(Connection::Command(value()?)),
             "--serial" => Some(Connection::Serial(SerialConfig::new(value()?))),
             "--telnet" => Some(telnet(&value()?)?),
@@ -618,6 +657,13 @@ mod tests {
     }
 
     fn parse_with_model(args: &[&str]) -> Result<(Model, Options), String> {
+        parse_with_default(args, None)
+    }
+
+    fn parse_with_default(
+        args: &[&str],
+        default: Option<&str>,
+    ) -> Result<(Model, Options), String> {
         let profiles = crate::profiles::parse(
             "[[profile]]\nname = \"vms1\"\nconnection = \"telnet\"\nhost = \"vms1\"\nmodel = \"vt520\"\nphosphor = \"amber\"\n",
         )
@@ -629,7 +675,8 @@ mod tests {
                 .cloned()
                 .ok_or_else(|| format!("no profile {name:?}"))
         };
-        match parse_args_with(args.iter().map(|a| a.to_string()), find)? {
+        let default = || default.map(str::to_owned);
+        match parse_args_with(args.iter().map(|a| a.to_string()), find, default)? {
             Parsed::Run(c, o) => Ok((c.model, o)),
             _ => Err("not run".into()),
         }
@@ -647,6 +694,62 @@ mod tests {
         let o = parse(&["--profile", "vms1", "--ssh", "alpha"]).unwrap();
         assert_eq!(o.connection.label(), "ssh alpha");
         assert!(parse(&["--profile", "nope"]).is_err());
+    }
+
+    #[test]
+    fn the_default_connection_is_where_nothing_else_says_to_go() {
+        let vms1 = Some("vms1");
+        // Nothing named: the default, with the rest of the arguments changing it.
+        let (model, o) = parse_with_default(&[], vms1).unwrap();
+        assert_eq!(
+            (model, o.connection.label()),
+            (Model::Vt520, "telnet vms1".into())
+        );
+        assert_eq!(o.profile.as_deref(), Some("vms1"));
+        let (model, o) =
+            parse_with_default(&["--model", "vt420", "--phosphor", "green"], vms1).unwrap();
+        assert_eq!((model, o.phosphor.as_str()), (Model::Vt420, "green"));
+        assert_eq!(o.connection.label(), "telnet vms1");
+        let o = parse_with_default(&["--port", "2323"], vms1).unwrap().1;
+        assert_eq!(o.connection.label(), "telnet vms1:2323");
+
+        // Anything that names a connection is taken at its word.
+        for args in [
+            &["--ssh", "alpha"][..],
+            &["--telnet", "other"],
+            &["telnet://other"],
+            &["ssh://system@alpha"],
+            &["--serial", "/dev/ttyUSB0"],
+            &["--lat", "MYI64"],
+            &["--command", "top"],
+            &["--profile", "vms1", "--model", "vt420"],
+        ] {
+            let o = parse_with_default(args, vms1).unwrap().1;
+            assert!(
+                !(o.profile.is_none() && o.connection.label() == "telnet vms1"),
+                "{args:?}"
+            );
+        }
+        let o = parse_with_default(&["--ssh", "alpha"], vms1).unwrap().1;
+        assert_eq!(o.connection.label(), "ssh alpha");
+        assert_eq!(o.profile, None);
+
+        // --shell is the way back, and is a shell whatever is saved.
+        let o = parse_with_default(&["--shell"], vms1).unwrap().1;
+        assert_eq!((o.connection, o.profile), (Connection::Shell, None));
+
+        // No default, or one that cannot be found, is the login shell as ever.
+        let o = parse_with_default(&[], None).unwrap().1;
+        assert_eq!(o.connection, Connection::Shell);
+        assert!(parse_with_default(&[], Some("nope")).is_err());
+        assert!(matches!(
+            parse_args_with(
+                ["--help".to_string()].into_iter(),
+                |_| Err(String::new()),
+                || Some("x".into())
+            ),
+            Ok(Parsed::Help)
+        ));
     }
 
     #[test]

@@ -30,6 +30,9 @@ pub struct Profile {
     pub log: Option<String>,
     pub log_timestamps: bool,
     pub log_raw: bool,
+    /// Opened when veetee starts without being told a connection. At most one
+    /// saved connection has it; [`put`] and [`toggle_default`] keep it so.
+    pub default: bool,
 }
 
 impl Profile {
@@ -45,6 +48,7 @@ impl Profile {
             log: None,
             log_timestamps: false,
             log_raw: false,
+            default: false,
         }
     }
 
@@ -75,8 +79,16 @@ impl Profile {
 }
 
 /// The file layout: one `[[profile]]` table per connection.
+///
+/// The default is named at the top of the file rather than marked in its
+/// profile, so that an older veetee, which refuses a profile with a key it
+/// does not know, still reads a file that has one.
 #[derive(Serialize, Deserialize, Default)]
+#[serde(rename_all = "kebab-case")]
 struct File {
+    /// The connection opened when veetee starts without one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    default_profile: Option<String>,
     #[serde(default)]
     profile: Vec<Entry>,
 }
@@ -216,6 +228,7 @@ impl Entry {
             log: self.log.clone().filter(|l| !l.trim().is_empty()),
             log_timestamps: self.log_timestamps,
             log_raw: self.log_raw,
+            default: false,
         })
     }
 
@@ -343,7 +356,7 @@ fn flow_name(flow: FlowControl) -> &'static str {
 /// Reads profiles from TOML text.
 pub fn parse(text: &str) -> Result<Vec<Profile>, String> {
     let file: File = toml::from_str(text).map_err(|e| e.to_string())?;
-    let profiles = file
+    let mut profiles = file
         .profile
         .iter()
         .map(Entry::to_profile)
@@ -353,18 +366,54 @@ pub fn parse(text: &str) -> Result<Vec<Profile>, String> {
             return Err(format!("two profiles are named {:?}", p.name));
         }
     }
+    // A name that matches nothing is a mistake to report, not a default to
+    // lose quietly: the terminal would open something else and say nothing.
+    if let Some(name) = file.default_profile.as_deref().map(str::trim) {
+        match profiles.iter_mut().find(|p| p.name == name) {
+            Some(p) => p.default = true,
+            None => {
+                return Err(format!(
+                    "default-profile is {name:?}, which is not a saved connection"
+                ));
+            }
+        }
+    }
     Ok(profiles)
+}
+
+/// Stores `profile` at `index`, or at the end, and leaves at most one
+/// default: a profile that is the default takes it from the others.
+pub fn put(all: &mut Vec<Profile>, index: Option<usize>, profile: Profile) {
+    if profile.default {
+        all.iter_mut().for_each(|p| p.default = false);
+    }
+    match index {
+        Some(i) if i < all.len() => all[i] = profile,
+        _ => all.push(profile),
+    }
+}
+
+/// Makes the profile at `index` the default, or, if it already is, leaves
+/// there being none, so veetee goes back to opening the login shell.
+pub fn toggle_default(all: &mut [Profile], index: usize) {
+    let was = all.get(index).is_some_and(|p| p.default);
+    all.iter_mut().for_each(|p| p.default = false);
+    if let Some(p) = all.get_mut(index) {
+        p.default = !was;
+    }
 }
 
 /// The profiles as TOML text.
 pub fn to_toml(profiles: &[Profile]) -> String {
     let file = File {
+        default_profile: profiles.iter().find(|p| p.default).map(|p| p.name.clone()),
         profile: profiles.iter().map(Entry::from_profile).collect(),
     };
     let body = toml::to_string_pretty(&file).unwrap_or_default();
     format!(
         "# veetee saved connections. Edit here or in the Connections window.\n\
-         # connection: shell, command, telnet, ssh or serial.\n\n{body}"
+         # connection: shell, command, telnet, ssh, serial or lat.\n\
+         # default-profile: the one opened when veetee starts without a connection.\n\n{body}"
     )
 }
 
@@ -387,6 +436,11 @@ pub fn save(profiles: &[Profile]) -> io::Result<()> {
         std::fs::create_dir_all(dir)?;
     }
     std::fs::write(path, to_toml(profiles))
+}
+
+/// The name of the connection to open when none is asked for, if one is set.
+pub fn default_name() -> Result<Option<String>, String> {
+    Ok(load()?.into_iter().find(|p| p.default).map(|p| p.name))
 }
 
 /// The saved profile called `name`.
@@ -491,5 +545,81 @@ service = "TERMINALS"
         assert!(parse("[[profile]]\nname = \"x\"\nconnection = \"shell\"\ncolour = 1\n").is_err());
         let twice = "[[profile]]\nname = \"x\"\nconnection = \"shell\"\n".repeat(2);
         assert!(parse(&twice).unwrap_err().contains("two profiles"));
+    }
+
+    #[test]
+    fn the_default_is_named_at_the_top_of_the_file() {
+        let text = format!("default-profile = \"alpha\"\n{SAMPLE}");
+        let p = parse(&text).unwrap();
+        assert_eq!(
+            p.iter().map(|p| p.default).collect::<Vec<_>>(),
+            [false, false, true, false]
+        );
+        let saved = to_toml(&p);
+        assert!(saved.contains("\ndefault-profile = \"alpha\"\n"), "{saved}");
+        assert_eq!(parse(&saved).unwrap(), p);
+        // Nothing is the default until something is made so.
+        assert!(!to_toml(&parse(SAMPLE).unwrap()).contains("\ndefault-profile ="));
+        assert!(parse(SAMPLE).unwrap().iter().all(|p| !p.default));
+        // The file is TOML with the key before the first table, so it is
+        // still one an older veetee reads: it ignores keys it does not know
+        // at the top, and there is nothing new inside a profile.
+        assert!(!saved.contains("default = "));
+    }
+
+    #[test]
+    fn a_default_that_names_nothing_is_reported() {
+        let text = format!("default-profile = \"nope\"\n{SAMPLE}");
+        let e = parse(&text).unwrap_err();
+        assert!(
+            e.contains("\"nope\"") && e.contains("not a saved connection"),
+            "{e}"
+        );
+    }
+
+    #[test]
+    fn one_default_at_most() {
+        let mut all = parse(SAMPLE).unwrap();
+        let named = |all: &mut Vec<Profile>, i: usize| {
+            let mut p = all[i].clone();
+            p.default = true;
+            put(all, Some(i), p);
+        };
+        named(&mut all, 0);
+        named(&mut all, 2);
+        assert_eq!(all.iter().filter(|p| p.default).count(), 1);
+        assert!(all[2].default);
+
+        // Editing the default and switching it off leaves none.
+        let mut off = all[2].clone();
+        off.default = false;
+        put(&mut all, Some(2), off);
+        assert!(all.iter().all(|p| !p.default));
+
+        // A new one that is the default takes it from the rest.
+        named(&mut all, 1);
+        let mut new = all[0].clone();
+        new.name = "new".into();
+        new.default = true;
+        put(&mut all, None, new);
+        assert_eq!(all.iter().filter(|p| p.default).count(), 1);
+        assert!(all.last().unwrap().default);
+    }
+
+    #[test]
+    fn the_star_moves_the_default_and_takes_it_away() {
+        let mut all = parse(SAMPLE).unwrap();
+        toggle_default(&mut all, 1);
+        assert_eq!(default_of(&all), Some("console"));
+        toggle_default(&mut all, 3);
+        assert_eq!(default_of(&all), Some("myi64"));
+        toggle_default(&mut all, 3);
+        assert_eq!(default_of(&all), None);
+        toggle_default(&mut all, 99);
+        assert_eq!(default_of(&all), None);
+    }
+
+    fn default_of(all: &[Profile]) -> Option<&str> {
+        all.iter().find(|p| p.default).map(|p| p.name.as_str())
     }
 }
