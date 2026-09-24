@@ -5,7 +5,8 @@ The working roadmap: what is done, what 1.0 ships with, and what is parked. The 
 every control function are in [compat-matrix.md](compat-matrix.md), and released changes in
 [CHANGELOG.md](../CHANGELOG.md).
 
-Latest release: **1.0.0** (17 September 2026). From 1.0 the version follows Semantic Versioning:
+Latest release: **1.1.2** (18 September 2026); 1.0.0 was released on 17 September 2026 (see
+[Since 1.0](#since-10)). From 1.0 the version follows Semantic Versioning:
 a breaking change to the crates' public API or to saved settings takes the major, new terminal
 behaviour takes the minor, fixes take the patch. Before 1.0 the minor version followed the
 milestone reached.
@@ -131,8 +132,11 @@ left here is other people's hardware rather than work.
   announces itself about once a minute and a solicit built by hand has never been answered — so
   the window says as much rather than looking broken while it waits.
 
-  Left: nothing. Several fields of the messages are still copied rather than understood; they are
-  marked in [`lat-protocol.md`](lat-protocol.md). Not available in the Flatpak, which has no raw
+  Left: no planned work, but this is the least settled part of the project: it took three
+  releases (1.1.0–1.1.2, see [Since 1.0](#since-10)) to hold a session for hours, and a change is
+  proved by a long `VEETEE_LAT_TRACE` run against a real host, not by the tests. Several fields of
+  the messages are still copied rather than understood; they are marked in
+  [`lat-protocol.md`](lat-protocol.md). Not available in the Flatpak, which has no raw
   sockets, nor on Windows, which has no raw Ethernet without a driver.
 
 ## 1.0, and what it ships with
