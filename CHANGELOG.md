@@ -16,6 +16,15 @@ Before 1.0 the minor version followed the project milestones (0.3 = M3). The for
   overwritten, and a file that does not arrive complete is removed. Tested both ways against
   C-Kermit and G-Kermit, which CI now installs. The window comes next; see `docs/kermit.md`.
 
+  With attribute packets, where the other Kermit offers them as C-Kermit and G-Kermit both do:
+  veetee tells the host whether each file is text or binary, and its size, so text arrives as
+  text without the host's Kermit being put in text mode as well; and it takes the sender's word
+  for each file it receives, so C-Kermit, which decides for itself, sends text and binary in one
+  batch correctly.
+
+  veetee asks for the CRC, proved against both; a Kermit that cannot do it answers otherwise,
+  and both ends then use the one-character check.
+
 ## [1.2.0] - 2026-09-24
 
 A saved connection can be made the default, opened when veetee starts without being told where

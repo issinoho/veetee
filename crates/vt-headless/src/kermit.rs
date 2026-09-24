@@ -37,7 +37,8 @@ options:
   --binary               send the bytes exactly (default: text, CR LF on the line)
   --names as-sent        keep a received name as sent, version and case included
                          (default: LOGIN.COM;3 arrives as login.com)
-  --check 1|2|3          the block check to ask for (default 1)
+  --check 1|2|3          the block check to ask for (default 3, the CRC; a Kermit
+                         that cannot do it answers otherwise, and both use 1)
   --retries N            tries before giving up on a packet (default 10)
   --verbose              print every packet to stderr
 
@@ -446,6 +447,7 @@ impl Store for Received {
 struct Files {
     paths: VecDeque<PathBuf>,
     open: Option<File>,
+    size: Option<u64>,
 }
 
 impl Files {
@@ -453,6 +455,7 @@ impl Files {
         Files {
             paths: paths.into(),
             open: None,
+            size: None,
         }
     }
 }
@@ -464,6 +467,7 @@ impl Source for Files {
             return Ok(None);
         };
         let file = File::open(&path).map_err(|e| format!("{}: {e}", path.display()))?;
+        self.size = file.metadata().ok().map(|m| m.len());
         self.open = Some(file);
         let name = path
             .file_name()
@@ -476,6 +480,10 @@ impl Source for Files {
     fn read(&mut self, buf: &mut [u8]) -> Result<usize, String> {
         let file = self.open.as_mut().ok_or("no file is open")?;
         file.read(buf).map_err(|e| e.to_string())
+    }
+
+    fn size(&self) -> Option<u64> {
+        self.size
     }
 }
 

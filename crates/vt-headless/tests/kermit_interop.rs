@@ -223,3 +223,79 @@ fn with_g_kermit_and_the_one_character_check() {
 fn with_g_kermit_and_the_crc() {
     exchange(Peer::GKermit, "3");
 }
+
+/// With attribute packets, the host's Kermit needs telling nothing: veetee
+/// says whether each file is text, and the receiving Kermit, left at its own
+/// default of binary, follows. On OpenVMS that is the difference between a
+/// user setting the mode at both ends and at one.
+fn told_only_by_veetee(peer: Peer) {
+    if !peer.available() {
+        return;
+    }
+    let scratch = Scratch::new(&format!("{peer:?}-attributes"));
+    let (binary, text) = write_files(&scratch.src());
+    let src = scratch.src();
+    let out = scratch.out();
+    for (flag, files) in [("--binary", &binary), ("", &text)] {
+        let cmd = format!("cd '{}' && {}", out.display(), peer.command("", "-r"));
+        let mut args = vec!["send"];
+        args.extend(files.iter().copied());
+        args.extend(["--command", &cmd]);
+        if !flag.is_empty() {
+            args.push(flag);
+        }
+        let (ok, log) = vt_headless(&args, &src);
+        assert!(ok, "veetee to {peer:?} {flag}:\n{log}");
+        for name in files.iter() {
+            let sent = std::fs::read(src.join(name)).unwrap();
+            let got = std::fs::read(out.join(name)).unwrap();
+            let expected = if flag.is_empty() {
+                as_unix_text(&sent)
+            } else {
+                sent
+            };
+            assert!(got == expected, "veetee to {peer:?} {flag}: {name} differs");
+        }
+    }
+}
+
+/// And the other way: C-Kermit, left to itself, looks at each file and says
+/// which it is, so veetee — set to binary — still receives text as text.
+#[test]
+fn c_kermit_left_to_itself_says_which_files_are_text() {
+    let peer = Peer::CKermit;
+    if !peer.available() {
+        return;
+    }
+    let scratch = Scratch::new("ckermit-auto");
+    let (binary, text) = write_files(&scratch.src());
+    let src = scratch.src();
+    let into = scratch.incoming();
+    let all: Vec<&str> = binary.iter().chain(&text).copied().collect();
+    let cmd = format!(
+        "cd '{}' && {}",
+        src.display(),
+        peer.command("", &format!("-s {}", all.join(" ")))
+    );
+    let into_s = into.display().to_string();
+    let (ok, log) = vt_headless(
+        &["receive", "--binary", "--into", &into_s, "--command", &cmd],
+        &src,
+    );
+    assert!(ok, "{log}");
+    for name in &all {
+        let sent = std::fs::read(src.join(name)).unwrap();
+        let got = std::fs::read(into.join(name)).unwrap();
+        assert!(got == sent, "{name} differs");
+    }
+}
+
+#[test]
+fn c_kermit_is_told_the_mode_by_veetee_alone() {
+    told_only_by_veetee(Peer::CKermit);
+}
+
+#[test]
+fn g_kermit_is_told_the_mode_by_veetee_alone() {
+    told_only_by_veetee(Peer::GKermit);
+}

@@ -255,7 +255,9 @@ vt-headless kermit receive --into ~/incoming --telnet vms1
 vt-headless kermit send LOGIN.COM --serial /dev/ttyUSB0 -b 9600
 ```
 
-Text is the default and `--binary` sends the bytes exactly; a received name is made safe and
+Text is the default and `--binary` sends the bytes exactly. Where the host's Kermit takes
+attribute packets, it is told which each file is, and a sender that says so decides for the files
+it sends. A received name is made safe and
 never overwrites a file (`LOGIN.COM;3` arrives as `login.com`, or `login.1.com` if that is
 taken). `vt-headless kermit` alone lists the options. It is tested against C-Kermit and
 G-Kermit; the plan, and what is still to come, is in [docs/kermit.md](docs/kermit.md).

@@ -274,19 +274,15 @@ files, sockets or timers, so all of it is testable anywhere. It is clean-room, w
 da Cruz's *Kermit: A File Transfer Protocol* and the Kermit Protocol Manual; `gkermit` and
 C-Kermit are GPL, so they are counterparties to test against and never a reference.
 
-- **Done**: packets, built and read, with the three block checks; the send-init parameters and
-  how the two ends' are agreed; and the encoding that carries a file over a line that will not
-  pass a control character or an eighth bit, with a repeat count. `gkermit`'s real send-init is
-  pinned as a captured vector, and the one-character check matched it.
-- **Not done**: the state machine that sends and receives a file, files and text line endings,
-  timers and retries, any wiring to a transport or a window, and interop with a real Kermit
-  (`gkermit` will not run on a pipe, so the harness needs a pty).
-- **Marked as unproved**: the sixteen-bit CRC has never been checked against another
-  implementation, so veetee does not ask for it (a far end that asks gets it), and the
-  capability bits are carried and not read. Long packets, sliding windows and attribute packets
-  are not supported, so a far end that offers them gets short packets, one at a time.
+- **Done**: whole transfers both ways (K1), with retries, cancelling, text and binary, and
+  received names made safe; `vt-headless kermit`, over any connection veetee has (K2); attribute
+  packets, so the host is told whether a file is text; and the CRC, asked for by default. All of
+  it is proved both ways against C-Kermit and G-Kermit, which CI installs.
+- **Not done**: the window (K3), and acceptance against KERMIT-32 on OpenVMS (K4).
+- **Not supported**: long packets and sliding windows, so a far end offering them gets short
+  packets, one at a time — slower on a fast link, which a serial console is not.
 
-The lesson of LAT applies: a peer written here is too well behaved to find anything, so this is
-not done until a transfer has run against a real Kermit, and against KERMIT-32 on OpenVMS.
+The lesson of LAT applies: a peer written here is too well behaved to find anything. The real
+Kermits found three faults the simulated line did not; KERMIT-32 on OpenVMS is the one left.
 
 An Android port is planned in outline in [`android.md`](android.md).

@@ -22,12 +22,14 @@
 //! as counterparties to test against over a pipe, never as a reference to
 //! copy, gkermit being GPL.
 
+pub mod attributes;
 mod data;
 mod init;
 pub mod names;
 pub mod text;
 mod transfer;
 
+pub use attributes::{Attributes, FileType};
 pub use data::{decode, encode};
 pub use init::{Params, ours};
 pub use names::{Names, local_name};
@@ -76,8 +78,8 @@ pub enum Check {
     Two,
     /// A sixteen-bit CRC in three characters.
     ///
-    /// 🔎 Never yet checked against another implementation, so veetee does
-    /// not ask for it; it is here to be read when the far end asks.
+    /// What veetee asks for, proved against C-Kermit and G-Kermit in both
+    /// directions (`crates/vt-headless/tests/kermit_interop.rs`).
     Three,
 }
 

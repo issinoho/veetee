@@ -12,8 +12,8 @@ use std::collections::VecDeque;
 use std::time::{Duration, Instant};
 
 use vt_kermit::{
-    Check, Kind, LineEnding, MARK, Mode, Packet, Params, Receiver, Sender, Settings, Source,
-    Status, Store, encode, ours, read,
+    Attributes, Check, FileType, Kind, LineEnding, MARK, Mode, Packet, Params, Receiver, Sender,
+    Settings, Source, Status, Store, encode, ours, read,
 };
 
 /// Files received, and whether each was finished as complete.
@@ -78,6 +78,9 @@ impl Source for Files {
         buf[..n].copy_from_slice(&self.current[self.at..self.at + n]);
         self.at += n;
         Ok(n)
+    }
+    fn size(&self) -> Option<u64> {
+        Some(self.current.len() as u64)
     }
 }
 
@@ -274,8 +277,15 @@ fn a_line_that_loses_and_repeats_still_delivers() {
         damage: 0,
         repeat: 7,
     };
+    let one = Settings {
+        params: Params {
+            check: Check::One,
+            ..ours()
+        },
+        ..binary()
+    };
     for seed in 1..=40 {
-        let outcome = transfer(&files, binary(), binary(), bad, seed, None);
+        let outcome = transfer(&files, one.clone(), one.clone(), bad, seed, None);
         assert_arrived(&files, &outcome);
     }
 }
@@ -436,6 +446,29 @@ fn a_receiver_waiting_asks_for_the_send_init() {
     assert_eq!((packet.kind, packet.sequence), (Kind::Nak, 0));
 }
 
+/// The far end of the exchanges written by hand: veetee's own parameters,
+/// but with the one-character check the hand-built packets carry. So each of
+/// these is also a Kermit that cannot do the CRC, answered by veetee falling
+/// back to type 1.
+fn far() -> Vec<u8> {
+    Params {
+        check: Check::One,
+        ..ours()
+    }
+    .build()
+}
+
+/// The same, offering no attribute packets either, for exchanges about
+/// something else.
+fn plain() -> Vec<u8> {
+    Params {
+        check: Check::One,
+        capabilities: Vec::new(),
+        ..ours()
+    }
+    .build()
+}
+
 /// Builds a packet as a far end would, for the exchanges written by hand.
 fn packet(seq: u8, kind: Kind, data: &[u8]) -> Vec<u8> {
     Packet {
@@ -459,29 +492,46 @@ const GKERMIT_SEND_INIT: &[u8] = &[
 ];
 
 #[test]
-fn a_real_kermits_send_init_is_answered_with_the_one_character_check_and_kept_to() {
-    let start = Instant::now();
-    let mut receiver = Receiver::new(binary(), start);
-    let mut store = Received::default();
-    let answer = receiver.feed(GKERMIT_SEND_INIT, start, &mut store);
-    let (seq, kind, data) = only(&answer);
-    assert_eq!((seq, kind), (0, Kind::Ack));
-    let ours_read = Params::read(&data);
-    assert_eq!(
-        ours_read.check,
-        Check::One,
-        "veetee does not ask for the CRC"
-    );
-    assert_eq!(ours_read.quote_eighth, Some(b'&'));
+fn a_real_kermits_send_init_is_answered_and_the_check_agreed_is_kept_to() {
+    // Both ends asking for the CRC agree on it; one asking for the CRC and
+    // answered 1 falls back to 1. Either way the next packet has to be read
+    // with the check agreed, and a nak would mean it was not.
+    for (asking, agreed_check) in [(Check::Three, Check::Three), (Check::One, Check::One)] {
+        let start = Instant::now();
+        let settings = Settings {
+            params: Params {
+                check: asking,
+                ..ours()
+            },
+            ..binary()
+        };
+        let mut receiver = Receiver::new(settings, start);
+        let mut store = Received::default();
+        let answer = receiver.feed(GKERMIT_SEND_INIT, start, &mut store);
+        let (seq, kind, data) = only(&answer);
+        assert_eq!((seq, kind), (0, Kind::Ack));
+        let ours_read = Params::read(&data);
+        assert_eq!(ours_read.check, asking);
+        assert_eq!(ours_read.quote_eighth, Some(b'&'));
 
-    // G-Kermit asked for the CRC and was answered 1, so its next packet comes
-    // with the one-character check, and has to be read that way.
-    let agreed = Params::agreed(&Params::read(&GKERMIT_SEND_INIT[4..26]), &ours_read);
-    assert_eq!(agreed.check, Check::One);
-    let (name, _) = encode(b"notes.txt", &agreed, 80);
-    let answer = receiver.feed(&packet(1, Kind::File, &name), start, &mut store);
-    assert_eq!(only(&answer).1, Kind::Ack, "not a nak: the check was right");
-    assert_eq!(store.files[0].0, "notes.txt");
+        let agreed = Params::agreed(&Params::read(&GKERMIT_SEND_INIT[4..26]), &ours_read);
+        assert_eq!(agreed.check, agreed_check);
+        let (name, _) = encode(b"notes.txt", &agreed, 80);
+        let file = Packet {
+            sequence: 1,
+            kind: Kind::File,
+            data: &name,
+        }
+        .build(agreed_check, MARK, Some(b'\r'));
+        let answer = receiver.feed(&file, start, &mut store);
+        let (p, _) = read(&answer, agreed_check, MARK).expect("an answer");
+        assert_eq!(
+            p.kind,
+            Kind::Ack,
+            "{asking:?}: not a nak, the check was right"
+        );
+        assert_eq!(store.files[0].0, "notes.txt");
+    }
 }
 
 #[test]
@@ -489,7 +539,7 @@ fn a_repeated_packet_is_acknowledged_again_and_written_once() {
     let start = Instant::now();
     let mut receiver = Receiver::new(binary(), start);
     let mut store = Received::default();
-    let init = ours().build();
+    let init = far();
     receiver.feed(&packet(0, Kind::SendInit, &init), start, &mut store);
     receiver.feed(&packet(1, Kind::File, b"A.DAT"), start, &mut store);
     let first = receiver.feed(&packet(2, Kind::Data, b"hello"), start, &mut store);
@@ -509,7 +559,7 @@ fn a_nak_for_the_next_packet_is_an_acknowledgement_of_this_one() {
     let mut sender = Sender::new(binary());
     let mut source = Files::new(&[("A.DAT", b"abc".to_vec())]);
     sender.start(start);
-    sender.feed(&packet(0, Kind::Ack, &ours().build()), start, &mut source);
+    sender.feed(&packet(0, Kind::Ack, &plain()), start, &mut source);
     // The answer to the file's name was lost, and all the sender hears is
     // the receiver asking for packet 2.
     let out = sender.feed(&packet(2, Kind::Nak, b""), start, &mut source);
@@ -541,8 +591,7 @@ fn a_receiver_that_says_x_skips_that_file_and_not_the_rest() {
         ("KEEP.DAT", b"kept".to_vec()),
     ]);
     sender.start(start);
-    let init = ours().build();
-    sender.feed(&packet(0, Kind::Ack, &init), start, &mut source);
+    sender.feed(&packet(0, Kind::Ack, &plain()), start, &mut source);
     let data = sender.feed(&packet(1, Kind::Ack, b""), start, &mut source);
     assert_eq!(only(&data).1, Kind::Data);
     let end = sender.feed(&packet(2, Kind::Ack, b"X"), start, &mut source);
@@ -566,11 +615,7 @@ fn an_error_from_the_far_end_is_reported_in_its_own_words() {
     let start = Instant::now();
     let mut receiver = Receiver::new(binary(), start);
     let mut store = Received::default();
-    receiver.feed(
-        &packet(0, Kind::SendInit, &ours().build()),
-        start,
-        &mut store,
-    );
+    receiver.feed(&packet(0, Kind::SendInit, &far()), start, &mut store);
     receiver.feed(&packet(1, Kind::File, b"A.DAT"), start, &mut store);
     receiver.feed(
         &packet(2, Kind::Error, b"%RMS-E-FNF, file not found"),
@@ -600,7 +645,7 @@ fn a_sender_whose_last_answer_is_lost_still_finishes() {
     });
     let mut source = Files::new(&[]);
     sender.start(start);
-    let out = sender.feed(&packet(0, Kind::Ack, &ours().build()), start, &mut source);
+    let out = sender.feed(&packet(0, Kind::Ack, &far()), start, &mut source);
     assert_eq!(only(&out).1, Kind::Break);
     let mut now = start;
     while *sender.status() == Status::Running {
@@ -615,21 +660,131 @@ fn a_hostile_file_name_is_refused_or_made_safe() {
     let start = Instant::now();
     let mut receiver = Receiver::new(binary(), start);
     let mut store = Received::default();
-    receiver.feed(
-        &packet(0, Kind::SendInit, &ours().build()),
-        start,
-        &mut store,
-    );
+    receiver.feed(&packet(0, Kind::SendInit, &far()), start, &mut store);
     receiver.feed(&packet(1, Kind::File, b"../../.PROFILE"), start, &mut store);
     assert_eq!(store.files[0].0, ".profile");
 
     let mut receiver = Receiver::new(binary(), start);
-    receiver.feed(
-        &packet(0, Kind::SendInit, &ours().build()),
-        start,
-        &mut store,
-    );
+    receiver.feed(&packet(0, Kind::SendInit, &far()), start, &mut store);
     let out = receiver.feed(&packet(1, Kind::File, b"[SYSMGR]"), start, &mut store);
     assert_eq!(only(&out).1, Kind::Error);
     assert!(matches!(receiver.status(), Status::Failed(_)));
+}
+
+#[test]
+fn where_both_offer_them_the_sender_says_what_the_file_is() {
+    let start = Instant::now();
+    let mut source = Files::new(&[("NOTES.TXT", b"one\ntwo\n".to_vec())]);
+    let mut sender = Sender::new(Settings::default());
+    sender.start(start);
+    sender.feed(&packet(0, Kind::Ack, &far()), start, &mut source);
+    let out = sender.feed(&packet(1, Kind::Ack, b""), start, &mut source);
+    let (seq, kind, data) = only(&out);
+    assert_eq!((seq, kind), (2, Kind::Attributes));
+    let said = Attributes::read(&data);
+    assert_eq!(said.file_type, Some(FileType::Text));
+    assert_eq!(said.size, Some(8), "the file's own size, not the line's");
+    let out = sender.feed(&packet(2, Kind::Ack, b"Y"), start, &mut source);
+    assert_eq!(only(&out).1, Kind::Data, "and then its contents");
+
+    // A far end that does not offer them gets none.
+    let mut source = Files::new(&[("NOTES.TXT", b"one\n".to_vec())]);
+    let mut sender = Sender::new(Settings::default());
+    sender.start(start);
+    sender.feed(&packet(0, Kind::Ack, &plain()), start, &mut source);
+    let out = sender.feed(&packet(1, Kind::Ack, b""), start, &mut source);
+    assert_eq!(only(&out).1, Kind::Data);
+}
+
+#[test]
+fn a_file_refused_on_its_attributes_is_skipped_and_the_rest_sent() {
+    let start = Instant::now();
+    let mut source = Files::new(&[("BIG.DAT", vec![0; 5000]), ("SMALL.DAT", b"x".to_vec())]);
+    let mut sender = Sender::new(binary());
+    sender.start(start);
+    sender.feed(&packet(0, Kind::Ack, &far()), start, &mut source);
+    sender.feed(&packet(1, Kind::Ack, b""), start, &mut source);
+    // N, and the tag of what it objects to: the size.
+    let out = sender.feed(&packet(2, Kind::Ack, b"N1"), start, &mut source);
+    assert_eq!(only(&out), (3, Kind::EndOfFile, b"D".to_vec()));
+    let out = sender.feed(&packet(3, Kind::Ack, b""), start, &mut source);
+    let (_, kind, name) = only(&out);
+    assert_eq!((kind, name.as_slice()), (Kind::File, &b"SMALL.DAT"[..]));
+    assert_eq!(sender.progress().files, 0);
+}
+
+#[test]
+fn the_senders_word_on_text_or_binary_beats_the_receivers_setting() {
+    // What C-Kermit does left to itself: it looks at each file and says.
+    let files = [
+        ("NOTES.TXT", b"one\ntwo\n".to_vec()),
+        ("DATA.BIN", b"one\r\ntwo".to_vec()),
+    ];
+    let start = Instant::now();
+    for (receiving, said, sent, arrives) in [
+        (
+            Mode::Binary,
+            &b"\"#AMJ"[..],
+            &files[0].1,
+            &b"one\ntwo\n"[..],
+        ),
+        (Mode::Text, &b"\"\"B8"[..], &files[1].1, &b"one\r\ntwo"[..]),
+    ] {
+        let mut receiver = Receiver::new(
+            Settings {
+                mode: receiving,
+                local: LineEnding::Lf,
+                ..Settings::default()
+            },
+            start,
+        );
+        let mut store = Received::default();
+        receiver.feed(&packet(0, Kind::SendInit, &far()), start, &mut store);
+        receiver.feed(&packet(1, Kind::File, b"F"), start, &mut store);
+        let out = receiver.feed(&packet(2, Kind::Attributes, said), start, &mut store);
+        assert_eq!(only(&out), (2, Kind::Ack, b"Y".to_vec()));
+        // As text, the line form: CR LF, sent as #M#J.
+        let data: Vec<u8> = if said.starts_with(b"\"#A") {
+            b"one#M#Jtwo#M#J".to_vec()
+        } else {
+            sent.iter()
+                .flat_map(|&b| match b {
+                    b'\r' => b"#M".to_vec(),
+                    b'\n' => b"#J".to_vec(),
+                    b => vec![b],
+                })
+                .collect()
+        };
+        receiver.feed(&packet(3, Kind::Data, &data), start, &mut store);
+        receiver.feed(&packet(4, Kind::EndOfFile, b""), start, &mut store);
+        assert_eq!(
+            store.files[0].1,
+            arrives,
+            "{:?}",
+            String::from_utf8_lossy(said)
+        );
+    }
+}
+
+#[test]
+fn over_a_bad_line_attributes_and_all_still_arrive() {
+    // Both ends are veetee, which offers attributes, so every file here goes
+    // with an attribute packet; the receiver is set to text and the sender
+    // says binary, which has to win for these files to arrive intact.
+    let files = awkward();
+    let text_receiver = Settings {
+        mode: Mode::Text,
+        ..Settings::default()
+    };
+    let bad = Line {
+        lose: 7,
+        damage: 0,
+        repeat: 7,
+    };
+    for seed in 1..=10 {
+        assert_arrived(
+            &files,
+            &transfer(&files, binary(), text_receiver.clone(), bad, seed, None),
+        );
+    }
 }

@@ -27,6 +27,7 @@
 
 use std::time::{Duration, Instant};
 
+use crate::attributes::{self, Attributes, FileType};
 use crate::names::{self, Names};
 use crate::text::{FromLine, LineEnding, ToLine};
 use crate::{Check, Error, Kind, MARK, Packet, Params, decode, encode, ours};
@@ -92,6 +93,11 @@ pub trait Source {
     fn next_file(&mut self) -> Result<Option<String>, String>;
     /// More of the current file; nought at its end.
     fn read(&mut self, buf: &mut [u8]) -> Result<usize, String>;
+    /// The current file's size in bytes, where it is known, to tell the far
+    /// end in an attribute packet.
+    fn size(&self) -> Option<u64> {
+        None
+    }
 }
 
 /// Where a transfer has got to.
@@ -115,6 +121,9 @@ pub struct Progress {
     pub bytes: u64,
     /// Files finished and kept.
     pub files: u32,
+    /// The size of the file now going, where the sender said or the source
+    /// knows, so that progress can be a proportion.
+    pub size: Option<u64>,
 }
 
 /// Sequence numbers count to 63 and begin again.
@@ -151,6 +160,8 @@ struct Link {
     agreed: Option<(Params, Params)>,
     /// What to read and build with before anything is agreed.
     before: Params,
+    /// Both ends offered attribute packets, so a sender sends them.
+    attributes: bool,
     buffer: Vec<u8>,
     /// The last packet that might need sending again.
     last: Vec<u8>,
@@ -169,6 +180,7 @@ impl Link {
             ours: settings.params.clone(),
             agreed: None,
             before: Params::default(),
+            attributes: false,
             buffer: Vec::new(),
             last: Vec::new(),
             retries: 0,
@@ -178,6 +190,8 @@ impl Link {
     }
 
     fn agree(&mut self, theirs: &Params) {
+        self.attributes = attributes::offered(&self.ours.capabilities)
+            && attributes::offered(&theirs.capabilities);
         let reading = Params::agreed(&self.ours, theirs);
         let mut sending = reading.clone();
         // Each end prefixes control characters with the character it named,
@@ -315,6 +329,9 @@ pub struct Receiver {
     state: Receiving,
     expected: u8,
     lines: FromLine,
+    /// How this file's contents travel: the user's setting, unless the
+    /// sender said otherwise in an attribute packet.
+    mode: Mode,
     /// A file is open in the store.
     open: bool,
     cancelling: bool,
@@ -329,12 +346,14 @@ impl Receiver {
         let mut link = Link::new(&settings);
         link.arm(now);
         let lines = FromLine::new(settings.local);
+        let mode = settings.mode;
         Receiver {
             link,
             settings,
             state: Receiving::SendInit,
             expected: 0,
             lines,
+            mode,
             open: false,
             cancelling: false,
             status: Status::Running,
@@ -483,8 +502,10 @@ impl Receiver {
                 }
                 self.open = true;
                 self.lines = FromLine::new(self.settings.local);
+                self.mode = self.settings.mode;
                 self.progress.file = Some(name);
                 self.progress.bytes = 0;
+                self.progress.size = None;
                 self.state = Receiving::Data;
                 self.ack(seq, b"", now)
             }
@@ -499,11 +520,22 @@ impl Receiver {
                 };
                 out
             }
-            (Receiving::Data, Kind::Attributes) => self.ack(seq, b"", now),
+            (Receiving::Data, Kind::Attributes) => {
+                // Read whether or not they were agreed: a sender that sends
+                // them knows best what its file is.
+                let said = Attributes::read(&p.data);
+                match said.file_type {
+                    Some(FileType::Text) => self.mode = Mode::Text,
+                    Some(FileType::Binary) => self.mode = Mode::Binary,
+                    None => {}
+                }
+                self.progress.size = said.size;
+                self.ack(seq, b"Y", now)
+            }
             (Receiving::Data, Kind::Data) => {
                 if !self.cancelling {
                     let bytes = decode(&p.data, self.link.reading());
-                    let written = match self.settings.mode {
+                    let written = match self.mode {
                         Mode::Binary => bytes,
                         Mode::Text => {
                             let mut text = Vec::with_capacity(bytes.len());
@@ -528,7 +560,7 @@ impl Receiver {
                     self.cancelling = true;
                 }
                 let keep = !self.cancelling;
-                if keep && self.settings.mode == Mode::Text {
+                if keep && self.mode == Mode::Text {
                     let mut tail = Vec::new();
                     self.lines.finish(&mut tail);
                     if !tail.is_empty() {
@@ -585,6 +617,7 @@ impl Receiver {
 enum Sending {
     SendInit,
     File,
+    Attributes,
     Data,
     EndOfFile,
     Break,
@@ -733,11 +766,34 @@ impl Sender {
                 self.next_file(now, source)
             }
             Sending::File => {
-                self.state = Sending::Data;
                 self.pending.clear();
                 self.lines = ToLine::default();
                 self.eof = false;
                 self.discarding = false;
+                if !self.link.attributes {
+                    self.state = Sending::Data;
+                    return self.send_data(now, source);
+                }
+                self.state = Sending::Attributes;
+                let said = Attributes {
+                    file_type: Some(match self.settings.mode {
+                        Mode::Text => FileType::Text,
+                        Mode::Binary => FileType::Binary,
+                    }),
+                    size: self.progress.size,
+                };
+                self.packet(Kind::Attributes, &said.build(), now)
+            }
+            Sending::Attributes => {
+                // N refuses the file — too big, say — and whatever follows
+                // it names the attributes it objected to. The file is ended
+                // unsent, marked discard, and the next one offered.
+                if data.first() == Some(&b'N') {
+                    self.state = Sending::EndOfFile;
+                    self.discarding = true;
+                    return self.packet(Kind::EndOfFile, b"D", now);
+                }
+                self.state = Sending::Data;
                 self.send_data(now, source)
             }
             Sending::Data => {
@@ -789,6 +845,7 @@ impl Sender {
                 let (encoded, _) = encode(name.as_bytes(), self.link.sending(), self.link.room());
                 self.progress.file = Some(name);
                 self.progress.bytes = 0;
+                self.progress.size = source.size();
                 self.state = Sending::File;
                 self.packet(Kind::File, &encoded, now)
             }

@@ -48,11 +48,10 @@ pub struct Params {
     /// The capability field and anything after it, kept exactly as it
     /// arrived.
     ///
-    /// 🔎 Unread. Its bits are said to cover long packets, sliding windows
-    /// and attribute packets, but which bit is which has not been confirmed
-    /// against anything, and veetee does none of the three — so it is carried
-    /// and not interpreted, which is also why a far end offering long packets
-    /// gets short ones and is right to.
+    /// Only the attribute bit is read (see [`crate::attributes::offered`]).
+    /// The others cover long packets and sliding windows, which veetee does
+    /// not do, so a far end offering them gets short packets one at a time
+    /// and is right to.
     pub capabilities: Vec<u8>,
 }
 
@@ -88,6 +87,13 @@ pub fn ours() -> Params {
         timeout: 10,
         quote_eighth: Some(b'&'),
         repeat: Some(b'~'),
+        // The CRC: proved both ways against C-Kermit and G-Kermit, and the
+        // one-character check lets a damaged length through one time in
+        // sixty-four. Asking costs nothing where the far end cannot do it:
+        // it answers with another check, and both ends then use type 1.
+        check: Check::Three,
+        // Attribute packets, and nothing else: no long packets or windows.
+        capabilities: vec![tochar(crate::attributes::CAPABLE)],
         ..Params::default()
     }
 }
@@ -283,8 +289,17 @@ mod tests {
         assert_eq!(agreed.repeat, Some(b'~'), "both want one, and it named it");
         assert_eq!(
             agreed.check,
+            Check::Three,
+            "both ask for the CRC, so it is used"
+        );
+        let answering_one = Params {
+            check: Check::One,
+            ..ours()
+        };
+        assert_eq!(
+            Params::agreed(&answering_one, &Params::read(packet.data)).check,
             Check::One,
-            "it asked for the CRC and veetee answers 1, so both fall back to 1"
+            "an end answering 1 to it has both fall back to 1"
         );
     }
 
@@ -427,7 +442,14 @@ mod tests {
         let mut block = ours().build();
         block.extend_from_slice(&[tochar(0x1a), tochar(0x02)]);
         let read = Params::read(&block);
-        assert_eq!(read.capabilities, vec![tochar(0x1a), tochar(0x02)]);
+        assert_eq!(
+            read.capabilities,
+            vec![
+                tochar(crate::attributes::CAPABLE),
+                tochar(0x1a),
+                tochar(0x02)
+            ]
+        );
         assert_eq!(read.build(), block, "and goes back out untouched");
     }
 

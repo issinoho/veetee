@@ -27,11 +27,12 @@ to test against and never a reference.
 | Packets: build, read, the three block checks, the packet types | Done |
 | Send-init parameters: read, build, agree between two ends | Done; `gkermit`'s real send-init pinned as a fixture |
 | Data encoding: control, eighth-bit and repeat prefixes, filling a packet to the room agreed | Done |
-| The 16-bit CRC (check type 3) | Proved against C-Kermit and G-Kermit both ways (K2); not yet asked for by default |
+| The 16-bit CRC (check type 3) | Proved against C-Kermit and G-Kermit both ways (K2), and asked for by default |
 | Transfers: `Sender` and `Receiver` (K1) | Done, unreleased; tested end to end over a simulated line |
 | `vt-headless kermit` and interop (K2) | Done, unreleased; both ways against C-Kermit and G-Kermit, text and binary, check 1 and the CRC |
+| Attribute packets: file type and size | Done, unreleased; brought forward from K5, proved against both |
 | The capability field | Carried, not read |
-| Long packets, sliding windows, attribute packets | Not supported; a far end offering them gets short packets, one at a time |
+| Long packets, sliding windows | Not supported; a far end offering them gets short packets, one at a time |
 
 ## The plan
 
@@ -111,9 +112,11 @@ and fails if either is missing. What it found:
   a strong reason to bring attribute packets forward.
 - **A file with CR LF already in it survives.** A Unix Kermit sends its CR as data, so CR CR LF;
   veetee keeps the lone CR and the file arrives exactly as it was.
-- **The CRC is proved**, so veetee could now ask for it. It is left at the one-character check
-  until decided: the protocol falls back to type 1 with any Kermit that cannot do the CRC, but
-  KERMIT-32 has not been seen doing either.
+- **The CRC is proved**, and veetee now asks for it (decided 24 September 2026). With G-Kermit
+  and C-Kermit, which ask for it themselves, it is what is used. A Kermit that cannot do it —
+  possibly KERMIT-32, which has not been seen either way — answers with another check, and the
+  protocol has both ends fall back to type 1, so asking costs nothing. The one-character check
+  stays tested: the soak that loses and repeats packets runs with it.
 
 The plan as written before it was built:
 
@@ -136,6 +139,32 @@ That is enough for CI: files of every awkward shape (empty, one byte, all 256 by
 runs, CR LF and bare LF text) sent both ways, text and binary, with each check type. It settles
 the CRC against `gkermit` the first time it runs. C-Kermit can be added the same way where it
 installs.
+
+### Attribute packets, brought forward
+
+**Done** (24 September 2026), as `attributes.rs`, because K2 showed that without them a receiving
+Kermit assumes binary: text sent to a host kept its CR LF unless the host's Kermit was put in text
+mode as well. veetee now offers attributes in its send-init (capability bit 8), and where the far
+end offers them too it sends the file's type (`AMJ` for text, `B8` for binary) and its size in
+bytes and in kilobytes. Receiving, it takes a sender's type over its own setting, as both Kermits
+do, and reads the size for progress. Interop tests prove both halves: C-Kermit and G-Kermit told
+nothing store veetee's text as text, and C-Kermit left to choose per file sends a mixed batch that
+veetee, set to binary, receives intact.
+
+Three things came from watching what the two Kermits send rather than from the page:
+
+- **The data is not prefix-encoded.** C-Kermit's date goes out under the tag `#`, which as file
+  data would be the control prefix; decoding the field would have lost the tag and everything
+  after it. It is read raw.
+- **veetee does not send the sending system** (`.`, which C-Kermit sends as `U1` for Unix). The
+  G-Kermit manual says two Kermits that recognise each other as the same system switch to binary,
+  and veetee's text travels in the line's form, so being recognised would put CR LF in the host's
+  file.
+- **A refusal is `N` in the answer**, followed by the tags objected to; veetee then ends the file
+  unsent, marked discard, and offers the next.
+
+Not sent yet: the file's date, which OpenVMS would keep, and protection. Neither is needed to get
+a file across intact.
 
 ### K3. In the window
 
@@ -168,9 +197,9 @@ to check:
 
 ### K5. After that, only if wanted
 
-Attribute packets (file size, so progress can be a percentage; dates; text or binary chosen by
-the sender), long packets and sliding windows (speed on a fast link), server mode (`GET` from the
-terminal end), and autodownload (starting a receive when a send-init arrives unasked).
+Dates and protection in attribute packets, long packets and sliding windows (speed on a fast
+link), server mode (`GET` from the terminal end), and autodownload (starting a receive when a
+send-init arrives unasked).
 
 ## Decisions to make
 
