@@ -5,7 +5,7 @@ The working roadmap: what is done, what 1.0 ships with, and what is parked. The 
 every control function are in [compat-matrix.md](compat-matrix.md), and released changes in
 [CHANGELOG.md](../CHANGELOG.md).
 
-Latest release: **1.2.0** (24 September 2026); 1.0.0 was released on 17 September 2026 (see
+Latest release: **1.3.0** (24 September 2026); 1.0.0 was released on 17 September 2026 (see
 [Since 1.0](#since-10)). From 1.0 the version follows Semantic Versioning:
 a breaking change to the crates' public API or to saved settings takes the major, new terminal
 behaviour takes the minor, fixes take the patch. Before 1.0 the minor version followed the
@@ -256,17 +256,22 @@ is unit-tested and has never run in anger, no host having dropped a circuit sinc
 it what veetee opens when started without one, in place of the login shell, and `--shell` is the
 way back. Like Close Session it has been seen only by a compiler and its unit tests.
 
+**1.3.0** (24 September 2026) added **Kermit file transfer**, in the window and from the command
+line, and fixed LAT for any paste longer than 255 characters: veetee filled a slot to 255 and
+OpenVMS, which never sends more than 254, dropped the circuit. That was found through Kermit, the
+first time a transfer over LAT had to recover.
+
 ## After 1.0
 
 VT340 Sixel and ReGIS graphics, Tektronix 4010/4014, printer controller output to CUPS or PDF,
 X/Y/ZMODEM file transfer, scripting and macros. The parser already accepts and safely ignores
 their sequences.
 
-### Kermit: started
+### Kermit: released, acceptance under way
 
 Kermit is the one file transfer with a DEC reason to be here: OpenVMS ships KERMIT-32, and on a
-serial or LAT line there is no SCP or FTP to fall back on. It is under way, unreleased, and
-nothing in the window uses it yet. The plan, in five steps from the state machine to acceptance
+serial or LAT line there is no SCP or FTP to fall back on. Released in 1.3.0: *Send File…* and
+*Receive File…* in the window, and `vt-headless kermit`. The plan, in five steps from the state machine to acceptance
 on OpenVMS, is [`kermit.md`](kermit.md).
 
 **`vt-kermit`** is the protocol layer on the same footing as `vt-lat`: bytes in, bytes out, no
@@ -278,7 +283,12 @@ C-Kermit are GPL, so they are counterparties to test against and never a referen
   received names made safe; `vt-headless kermit`, over any connection veetee has (K2); attribute
   packets, so the host is told whether a file is text; and the CRC, asked for by default. All of
   it is proved both ways against C-Kermit and G-Kermit, which CI installs.
-- **Not done**: the window (K3), and acceptance against KERMIT-32 on OpenVMS (K4).
+- **Acceptance on OpenVMS (K4), under way**: against C-Kermit 9.0.300 on MYI64, everything passes
+  over Telnet and LAT — text and binary both ways, a mixed batch, cancelling from either end.
+  Still to try: SSH, serial, C-Kermit 8.0.211, and KERMIT-32 where a system has it.
+- **Open**: about 25 KB/s on a LAN, which long packets would fix; a `# N3` that C-Kermit on
+  OpenVMS shows on every transfer veetee sends, not yet explained; and pasting faster than
+  OpenVMS reads, which overruns its type-ahead buffer where veetee should honour XOFF.
 - **Not supported**: long packets and sliding windows, so a far end offering them gets short
   packets, one at a time — slower on a fast link, which a serial console is not.
 

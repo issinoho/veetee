@@ -28,9 +28,9 @@ to test against and never a reference.
 | Send-init parameters: read, build, agree between two ends | Done; `gkermit`'s real send-init pinned as a fixture |
 | Data encoding: control, eighth-bit and repeat prefixes, filling a packet to the room agreed | Done |
 | The 16-bit CRC (check type 3) | Proved against C-Kermit and G-Kermit both ways (K2), and asked for by default |
-| Transfers: `Sender` and `Receiver` (K1) | Done, unreleased; tested end to end over a simulated line |
-| `vt-headless kermit` and interop (K2) | Done, unreleased; both ways against C-Kermit and G-Kermit, text and binary, check 1 and the CRC |
-| Attribute packets: file type and size | Done, unreleased; brought forward from K5, proved against both |
+| Transfers: `Sender` and `Receiver` (K1) | Released in 1.3.0; tested end to end over a simulated line |
+| `vt-headless kermit` and interop (K2) | Released in 1.3.0; both ways against C-Kermit and G-Kermit, text and binary, check 1 and the CRC |
+| Attribute packets: file type and size | Released in 1.3.0; brought forward from K5, proved against both |
 | The capability field | Carried, not read |
 | Long packets, sliding windows | Not supported; a far end offering them gets short packets, one at a time |
 

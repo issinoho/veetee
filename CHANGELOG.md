@@ -8,36 +8,42 @@ Before 1.0 the minor version followed the project milestones (0.3 = M3). The for
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-09-24
+
+**Kermit file transfer**, in the window and from the command line, over whatever connection a
+session has. It is tested against C-Kermit and G-Kermit on Linux, and against C-Kermit 9.0.300 on
+OpenVMS over Telnet and LAT: text and binary both ways, a mixed batch, and cancelling from either
+end. Also a LAT fix worth having on its own: a long paste no longer kills the session.
+
+- **Added: Send File… and Receive File…** in the window menu. Start `SEND` or `RECEIVE` at the
+  host's Kermit, then choose the matching item: received files go into a folder you pick
+  (Downloads to begin with), and sent files each go as text or binary by what is in them. A bar
+  above the screen shows the file and how far it has got, with a Cancel button — once to stop
+  tidily, twice to stop at once. While a transfer runs, what the host sends goes to it rather
+  than the screen, typed keys are dropped, and the log pauses; the host's own output either side
+  of it, its Kermit prompt included, reaches the screen as usual.
+- **Added: `vt-headless kermit`**, the same without the window: `receive --into DIR` and
+  `send FILE...` over Telnet, SSH, a serial line, or a command on a pty. Text by default and
+  `--binary` for the bytes exactly.
+- **What it does for you.** A received file's name is made safe before anything is written: only
+  its last part is kept, so a host cannot choose where it lands, and `LOGIN.COM;3` arrives as
+  `login.com`. An existing file is never overwritten (`login.1.com` is used instead), and a file
+  that does not arrive complete is removed. With attribute packets, which C-Kermit and G-Kermit
+  both offer, veetee tells the host whether each file is text or binary, so text arrives on
+  OpenVMS as variable-length records and binary as fixed 512-byte records without `SET FILE
+  TYPE` at either end; receiving, it takes the sender's word for each file. It asks for the CRC,
+  and falls back to the one-character check with a Kermit that cannot do it.
+- **Known limits.** Packets are short and sent one at a time, so a transfer runs at about 25 to
+  30 KB/s on a LAN — 20 MB takes 11 to 14 minutes — whatever the line could do; long packets
+  would fix it. C-Kermit keeps a partial binary file when a transfer to it is cancelled, by its
+  own `SET FILE INCOMPLETE AUTO` default; `SET FILE INCOMPLETE DISCARD` at the host changes that.
+  KERMIT-32, serial and SSH have not yet been tried against OpenVMS.
 - **Fixed: pasting more than 255 characters into a LAT session killed it.** veetee filled a LAT
   slot to 255 bytes, and OpenVMS drops the circuit when it gets one: nothing more is
   acknowledged, the screen stops, and a minute later veetee says the host stopped answering.
   OpenVMS itself never sends more than 254, and neither does veetee now. Typing never came near
   it; a long paste did, and so did a Kermit transfer the first time it had to recover. The LAT
-  trace (`VEETEE_LAT_TRACE`) also records each message's flag bits now, which is what showed the
-  flags were not the cause.
-- **Added: Send File… and Receive File…**, Kermit file transfer in the window, over the
-  session's connection. Start `SEND` or `RECEIVE` at the host's Kermit, then choose the matching
-  item: received files go into a folder you pick (Downloads to begin with), sent files each go
-  as text or binary by what is in them. A bar above the screen shows the file and how far it has
-  got, with a Cancel button; while a transfer runs, what the host sends goes to it rather than
-  the screen, typed keys are dropped, and the log pauses. The host's own output either side of
-  the transfer — its Kermit prompt included — reaches the screen as usual.
-- **Added: `vt-headless kermit`**, Kermit file transfer over any connection veetee has — Telnet,
-  SSH, a serial line, or a command on a pty — without the window. `receive --into DIR` and
-  `send FILE...`, text by default and `--binary` for the bytes exactly, with the one-character
-  check or the CRC. A received file's name is made safe before anything is written — only its
-  last part is kept, so a host cannot choose where it lands — an existing file is never
-  overwritten, and a file that does not arrive complete is removed. Tested both ways against
-  C-Kermit and G-Kermit, which CI now installs. The window comes next; see `docs/kermit.md`.
-
-  With attribute packets, where the other Kermit offers them as C-Kermit and G-Kermit both do:
-  veetee tells the host whether each file is text or binary, and its size, so text arrives as
-  text without the host's Kermit being put in text mode as well; and it takes the sender's word
-  for each file it receives, so C-Kermit, which decides for itself, sends text and binary in one
-  batch correctly.
-
-  veetee asks for the CRC, proved against both; a Kermit that cannot do it answers otherwise,
-  and both ends then use the one-character check.
+  trace (`VEETEE_LAT_TRACE`) also records each message's flag bits.
 
 ## [1.2.0] - 2026-09-24
 
@@ -677,7 +683,8 @@ The first release: VT100 through VT420 emulation with local, Telnet, SSH and ser
   `cargo deny` licence checks and parser fuzzing.
 - `cargo xtask dist` builds the release tarball and Debian package.
 
-[Unreleased]: https://github.com/issinoho/veetee/compare/v1.2.0...HEAD
+[Unreleased]: https://github.com/issinoho/veetee/compare/v1.3.0...HEAD
+[1.3.0]: https://github.com/issinoho/veetee/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/issinoho/veetee/compare/v1.1.2...v1.2.0
 [1.1.2]: https://github.com/issinoho/veetee/compare/v1.1.1...v1.1.2
 [1.1.1]: https://github.com/issinoho/veetee/compare/v1.1.0...v1.1.1
