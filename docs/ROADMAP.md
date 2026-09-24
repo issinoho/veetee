@@ -5,7 +5,7 @@ The working roadmap: what is done, what 1.0 ships with, and what is parked. The 
 every control function are in [compat-matrix.md](compat-matrix.md), and released changes in
 [CHANGELOG.md](../CHANGELOG.md).
 
-Latest release: **1.1.2** (18 September 2026); 1.0.0 was released on 17 September 2026 (see
+Latest release: **1.2.0** (24 September 2026); 1.0.0 was released on 17 September 2026 (see
 [Since 1.0](#since-10)). From 1.0 the version follows Semantic Versioning:
 a breaking change to the crates' public API or to saved settings takes the major, new terminal
 behaviour takes the minor, fixes take the patch. Before 1.0 the minor version followed the
@@ -251,6 +251,10 @@ dropped in veetee's own receive buffer across 1.35 MB.
 
 **Still to be seen fire**: the dead-peer timer, which ends a session after a minute of silence. It
 is unit-tested and has never run in anger, no host having dropped a circuit since it was written.
+
+**1.2.0** (24 September 2026) added a **default connection**: a star beside a saved connection makes
+it what veetee opens when started without one, in place of the login shell, and `--shell` is the
+way back. Like Close Session it has been seen only by a compiler and its unit tests.
 
 ## After 1.0
 

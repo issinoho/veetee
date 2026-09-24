@@ -8,6 +8,11 @@ Before 1.0 the minor version followed the project milestones (0.3 = M3). The for
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-09-24
+
+A saved connection can be made the default, opened when veetee starts without being told where
+to connect.
+
 - **Added: a default connection.** A star beside each saved connection in the Connections window
   makes it the one veetee opens when it is started without being told where to connect — a click on
   the launcher, or `veetee` with no connection option — instead of your login shell. Click the star
@@ -641,7 +646,8 @@ The first release: VT100 through VT420 emulation with local, Telnet, SSH and ser
   `cargo deny` licence checks and parser fuzzing.
 - `cargo xtask dist` builds the release tarball and Debian package.
 
-[Unreleased]: https://github.com/issinoho/veetee/compare/v1.1.2...HEAD
+[Unreleased]: https://github.com/issinoho/veetee/compare/v1.2.0...HEAD
+[1.2.0]: https://github.com/issinoho/veetee/compare/v1.1.2...v1.2.0
 [1.1.2]: https://github.com/issinoho/veetee/compare/v1.1.1...v1.1.2
 [1.1.1]: https://github.com/issinoho/veetee/compare/v1.1.0...v1.1.1
 [1.1.0]: https://github.com/issinoho/veetee/compare/v1.0.0...v1.1.0

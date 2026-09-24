@@ -67,6 +67,11 @@
   </supports>
   <content_rating type="oars-1.1"/>
   <releases>
+    <release version="1.2.0" date="2026-09-24">
+      <description>
+        <p>A saved connection can be made the default, opened when veetee starts without a connection.</p>
+      </description>
+    </release>
     <release version="1.1.2" date="2026-09-18">
       <description>
         <p>A LAT terminal no longer goes dead a few minutes into every session.</p>
