@@ -266,7 +266,8 @@ their sequences.
 
 Kermit is the one file transfer with a DEC reason to be here: OpenVMS ships KERMIT-32, and on a
 serial or LAT line there is no SCP or FTP to fall back on. It is under way, unreleased, and
-nothing in the window uses it yet.
+nothing in the window uses it yet. The plan, in five steps from the state machine to acceptance
+on OpenVMS, is [`kermit.md`](kermit.md).
 
 **`vt-kermit`** is the protocol layer on the same footing as `vt-lat`: bytes in, bytes out, no
 files, sockets or timers, so all of it is testable anywhere. It is clean-room, written from
