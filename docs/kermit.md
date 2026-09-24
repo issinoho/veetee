@@ -168,6 +168,23 @@ a file across intact.
 
 ### K3. In the window
 
+**Built** (24 September 2026), and **not yet seen working in the window**: the session under it
+is tested end to end against G-Kermit on a pty (`session.rs`), but the menu items, the file
+dialogs and the bar have been run by nothing but the compiler. What was built follows the plan
+below, with these differences:
+
+- **Text or binary is decided per file** when sending, by looking at it as C-Kermit does (no
+  nulls, and nearly all printable or the controls text uses), and the host told in an attribute
+  packet; there is no mode to choose. Receiving follows the sender's word, text otherwise.
+- **The glue to files moved into `vt_kermit::files`**, which both the window and `vt-headless`
+  now use: the folder that never overwrites, the files to send, and a transfer to drive.
+- **A finished receiver keeps only packets.** It holds the line for two seconds in case the
+  sender asks again for the end of the batch, but only what starts with a packet mark: the
+  host's prompt, printed the moment its Kermit finishes, goes to the screen. The first version
+  took everything for those two seconds, and the session test caught it losing the text the host
+  printed after the transfer.
+- **Not checked in the Flatpak**, where the file dialogs go through the portal.
+
 - **Menu**: *Receive File…* and *Send File…* in the window menu, beside *Log to File…*. The user
   starts `SEND` or `RECEIVE` on the host first, then picks the matching item, which is how every
   terminal emulator with Kermit has worked.

@@ -8,6 +8,13 @@ Before 1.0 the minor version followed the project milestones (0.3 = M3). The for
 
 ## [Unreleased]
 
+- **Added: Send File… and Receive File…**, Kermit file transfer in the window, over the
+  session's connection. Start `SEND` or `RECEIVE` at the host's Kermit, then choose the matching
+  item: received files go into a folder you pick (Downloads to begin with), sent files each go
+  as text or binary by what is in them. A bar above the screen shows the file and how far it has
+  got, with a Cancel button; while a transfer runs, what the host sends goes to it rather than
+  the screen, typed keys are dropped, and the log pauses. The host's own output either side of
+  the transfer — its Kermit prompt included — reaches the screen as usual.
 - **Added: `vt-headless kermit`**, Kermit file transfer over any connection veetee has — Telnet,
   SSH, a serial line, or a command on a pty — without the window. `receive --into DIR` and
   `send FILE...`, text by default and `--binary` for the bytes exactly, with the one-character

@@ -18,11 +18,64 @@ use crate::view::{Callbacks, SharedKeymap, TerminalView};
 /// The most sessions a window holds.
 pub const MAX_SESSIONS: usize = 2;
 
+/// A bar above a session's screen while a file transfer has its line: what
+/// is going, how far it has got, and a way to stop it.
+struct TransferBar {
+    bar: gtk::Box,
+    label: gtk::Label,
+    progress: gtk::ProgressBar,
+    cancel: gtk::Button,
+}
+
+impl TransferBar {
+    fn new() -> TransferBar {
+        let label = gtk::Label::builder()
+            .xalign(0.0)
+            .hexpand(true)
+            .ellipsize(gtk::pango::EllipsizeMode::Middle)
+            .build();
+        let progress = gtk::ProgressBar::builder()
+            .valign(gtk::Align::Center)
+            .width_request(160)
+            .build();
+        let cancel = gtk::Button::builder().label("Cancel").build();
+        let bar = gtk::Box::builder()
+            .orientation(gtk::Orientation::Horizontal)
+            .spacing(12)
+            .margin_start(8)
+            .margin_end(8)
+            .margin_top(4)
+            .margin_bottom(4)
+            .visible(false)
+            .build();
+        bar.append(&label);
+        bar.append(&progress);
+        bar.append(&cancel);
+        TransferBar {
+            bar,
+            label,
+            progress,
+            cancel,
+        }
+    }
+}
+
+/// A size for people: bytes, then KB and MB.
+fn size_text(bytes: u64) -> String {
+    match bytes {
+        0..1024 => format!("{bytes} bytes"),
+        1024..1_048_576 => format!("{} KB", bytes / 1024),
+        _ => format!("{:.1} MB", bytes as f64 / 1_048_576.0),
+    }
+}
+
 struct Pane {
     id: u64,
     view: TerminalView,
     frame: gtk::Box,
     header: gtk::Label,
+    /// Shown while a Kermit transfer has the session's line.
+    transfer: TransferBar,
     /// Host-supplied session name (DECSWT).
     name: RefCell<String>,
     /// Extra status such as "Hold Screen" or "Disconnected".
@@ -183,14 +236,17 @@ impl Workspace {
             .margin_bottom(2)
             .css_classes(["caption-heading"])
             .build();
+        let transfer = TransferBar::new();
         let frame = gtk::Box::new(gtk::Orientation::Vertical, 0);
         frame.append(&header);
+        frame.append(&transfer.bar);
         frame.append(view.container());
         let pane = Rc::new(Pane {
             id,
             view,
             frame,
             header,
+            transfer,
             name: RefCell::new(String::new()),
             status: RefCell::new(String::new()),
         });
@@ -564,6 +620,205 @@ impl Workspace {
             None => "This session is not being recorded (--record FILE)".into(),
         };
         self.notify(&message);
+    }
+
+    /// Receive File: asks where to put them, then waits for the host's
+    /// Kermit to send.
+    pub fn receive_file(self: &Rc<Self>) {
+        let Some(pane) = self.ready_for_transfer() else {
+            return;
+        };
+        let dialog = gtk::FileDialog::builder()
+            .title("Receive Files Into")
+            .accept_label("Receive")
+            .build();
+        if let Some(downloads) = glib::user_special_dir(glib::UserDirectory::Downloads) {
+            dialog.set_initial_folder(Some(&gtk::gio::File::for_path(downloads)));
+        }
+        let weak = Rc::downgrade(self);
+        dialog.select_folder(
+            Some(&self.window),
+            gtk::gio::Cancellable::NONE,
+            move |result| {
+                let (Ok(folder), Some(ws)) = (result, weak.upgrade()) else {
+                    return;
+                };
+                let Some(dir) = folder.path() else { return };
+                let transfer = vt_kermit::files::Transfer::receive(
+                    vt_kermit::files::Folder::new(dir),
+                    vt_kermit::Settings::default(),
+                    std::time::Instant::now(),
+                );
+                ws.run_transfer(&pane, transfer, &[]);
+            },
+        );
+    }
+
+    /// Send File: asks which, then sends them to the host's Kermit, each as
+    /// text or binary by what is in it.
+    pub fn send_file(self: &Rc<Self>) {
+        let Some(pane) = self.ready_for_transfer() else {
+            return;
+        };
+        let dialog = gtk::FileDialog::builder()
+            .title("Send Files")
+            .accept_label("Send")
+            .build();
+        let weak = Rc::downgrade(self);
+        dialog.open_multiple(
+            Some(&self.window),
+            gtk::gio::Cancellable::NONE,
+            move |result| {
+                let (Ok(chosen), Some(ws)) = (result, weak.upgrade()) else {
+                    return;
+                };
+                let paths: Vec<std::path::PathBuf> = (0..chosen.n_items())
+                    .filter_map(|i| chosen.item(i))
+                    .filter_map(|item| item.downcast::<gtk::gio::File>().ok())
+                    .filter_map(|file| file.path())
+                    .collect();
+                if paths.is_empty() {
+                    return;
+                }
+                let (transfer, first) = vt_kermit::files::Transfer::send(
+                    vt_kermit::files::Paths::deciding_each(paths),
+                    vt_kermit::Settings::default(),
+                    std::time::Instant::now(),
+                );
+                ws.run_transfer(&pane, transfer, &first);
+            },
+        );
+    }
+
+    /// The active session, if it can start a transfer now.
+    fn ready_for_transfer(&self) -> Option<Rc<Pane>> {
+        let pane = self.active_pane()?;
+        if pane
+            .view
+            .session()
+            .transfer()
+            .is_some_and(|t| t.status == vt_kermit::Status::Running)
+        {
+            self.notify("A transfer is already running in this session");
+            return None;
+        }
+        Some(pane)
+    }
+
+    /// Starts a transfer on the pane's session and shows it until it ends.
+    fn run_transfer(
+        self: &Rc<Self>,
+        pane: &Rc<Pane>,
+        transfer: vt_kermit::files::Transfer,
+        first: &[u8],
+    ) {
+        let session = pane.view.session().clone();
+        let receiving = transfer.is_receiving();
+        if let Err(why) = session.start_transfer(transfer, first) {
+            self.notify(&why);
+            return;
+        }
+        let bar = &pane.transfer;
+        bar.cancel.set_label("Cancel");
+        bar.cancel.set_sensitive(true);
+        bar.progress.set_fraction(0.0);
+        bar.bar.set_visible(true);
+        // The first click stops tidily, which a far end may take a moment
+        // to act on; the second stops at once.
+        let pressed = Rc::new(Cell::new(0u8));
+        let handler = bar.cancel.connect_clicked({
+            let (session, pressed, label) = (session.clone(), pressed.clone(), bar.label.clone());
+            move |button| {
+                session.cancel_transfer();
+                match pressed.replace(pressed.get() + 1) {
+                    0 => {
+                        label.set_text("Cancelling…");
+                        button.set_label("Stop Now");
+                    }
+                    _ => button.set_sensitive(false),
+                }
+            }
+        });
+        let handler = RefCell::new(Some(handler));
+        let (weak, pane) = (Rc::downgrade(self), pane.clone());
+        glib::timeout_add_local(std::time::Duration::from_millis(250), move || {
+            let Some(ws) = weak.upgrade() else {
+                return glib::ControlFlow::Break;
+            };
+            let Some(state) = session.transfer() else {
+                pane.transfer.bar.set_visible(false);
+                return glib::ControlFlow::Break;
+            };
+            let bar = &pane.transfer;
+            let p = &state.progress;
+            if state.status == vt_kermit::Status::Running {
+                if pressed.get() == 0 {
+                    bar.label.set_text(&match (&p.file, receiving) {
+                        (None, true) => {
+                            "Waiting for the host to send: SEND at its Kermit prompt".to_string()
+                        }
+                        (None, false) => {
+                            "Waiting for the host: RECEIVE at its Kermit prompt".to_string()
+                        }
+                        (Some(name), true) => format!("Receiving {name}"),
+                        (Some(name), false) => format!("Sending {name}"),
+                    });
+                }
+                match p.size {
+                    Some(size) if size > 0 => {
+                        bar.progress
+                            .set_fraction((p.bytes as f64 / size as f64).min(1.0));
+                        bar.progress.set_text(Some(&format!(
+                            "{} of {}",
+                            size_text(p.bytes),
+                            size_text(size)
+                        )));
+                    }
+                    _ if p.file.is_some() => {
+                        bar.progress.pulse();
+                        bar.progress.set_text(Some(&size_text(p.bytes)));
+                    }
+                    _ => bar.progress.pulse(),
+                }
+                bar.progress.set_show_text(p.file.is_some());
+                return glib::ControlFlow::Continue;
+            }
+
+            bar.bar.set_visible(false);
+            if let Some(handler) = handler.take() {
+                bar.cancel.disconnect(handler);
+            }
+            let files = |n: u32| {
+                if n == 1 {
+                    "1 file".to_string()
+                } else {
+                    format!("{n} files")
+                }
+            };
+            let message = match &state.status {
+                vt_kermit::Status::Done if receiving => match state.saved.first() {
+                    Some(first) => {
+                        let place = first
+                            .parent()
+                            .map_or_else(String::new, |d| format!(" into {}", d.display()));
+                        format!("Received {}{place}", files(p.files))
+                    }
+                    None => "The host sent no files".to_string(),
+                },
+                vt_kermit::Status::Done => format!("Sent {}", files(p.files)),
+                vt_kermit::Status::Cancelled => "Transfer cancelled".to_string(),
+                vt_kermit::Status::Failed(why) => format!("Transfer failed: {why}"),
+                vt_kermit::Status::Running => unreachable!(),
+            };
+            ws.notify(&message);
+            // A receiver keeps the line a moment for a repeated packet;
+            // clear it away once that has passed.
+            let session = session.clone();
+            glib::timeout_add_local_once(std::time::Duration::from_secs(3), move || {
+                session.clear_transfer();
+            });
+            glib::ControlFlow::Break
+        });
     }
 
     pub fn keymap(&self) -> SharedKeymap {

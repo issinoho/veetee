@@ -246,9 +246,13 @@ them — much narrower than `CAP_NET_RAW` itself, but not nothing.
 
 ### File transfer
 
-Kermit is under way: not yet in the window, but `vt-headless kermit` transfers files over any
-connection veetee has. Start the other end first, with `SEND` or `RECEIVE` at the host's Kermit
-prompt:
+*Send File…* and *Receive File…* in the window menu transfer files with Kermit over the session's
+connection, whatever it is. Start the host's Kermit first — `SEND` or `RECEIVE` at its prompt —
+then choose the matching item. A bar above the screen shows the transfer and has a Cancel button
+(once to stop tidily, twice to stop at once); while it runs, keys go nowhere and the log pauses.
+Files sent go as text or binary by what is in them, and the host is told which.
+
+`vt-headless kermit` does the same without the window:
 
 ```sh
 vt-headless kermit receive --into ~/incoming --telnet vms1

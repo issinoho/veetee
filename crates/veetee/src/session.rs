@@ -10,6 +10,8 @@ use std::time::Duration;
 
 use vt_core::recording::Recorder;
 use vt_core::{Config, Event, Key, Terminal};
+use vt_kermit::files::Transfer;
+use vt_kermit::{Progress, Status};
 use vt_transport::{Transport, TransportWriter};
 
 /// Notifications from the I/O thread to the UI.
@@ -65,6 +67,19 @@ struct Shared {
     held: Mutex<bool>,
     resume: Condvar,
     closed: AtomicBool,
+    /// A Kermit transfer using the line. While it wants the line, what the
+    /// host sends goes to it rather than the terminal, and typed keys are
+    /// dropped. It stays here once finished until the UI takes it.
+    transfer: Mutex<Option<Transfer>>,
+}
+
+/// Where a Kermit transfer has got to, for the UI.
+#[derive(Debug, Clone)]
+pub struct TransferState {
+    pub status: Status,
+    pub progress: Progress,
+    /// Where received files were written.
+    pub saved: Vec<PathBuf>,
 }
 
 /// Handle used by the UI thread.
@@ -105,6 +120,7 @@ impl Session {
             held: Mutex::new(false),
             resume: Condvar::new(),
             closed: AtomicBool::new(false),
+            transfer: Mutex::new(None),
         });
         let session = Session {
             shared: shared.clone(),
@@ -261,8 +277,81 @@ impl Session {
         self.set_held(false);
     }
 
+    /// Starts a Kermit transfer on this session's line, sending `first` —
+    /// a sender's send-init — to begin it.
+    pub fn start_transfer(&self, transfer: Transfer, first: &[u8]) -> Result<(), String> {
+        let mut slot = self
+            .shared
+            .transfer
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        if slot.as_ref().is_some_and(Transfer::is_running) {
+            return Err("a transfer is already running in this session".into());
+        }
+        *slot = Some(transfer);
+        drop(slot);
+        write_line(&self.shared, first);
+        Ok(())
+    }
+
+    /// Asks the transfer to stop: tidily the first time, at once the second.
+    pub fn cancel_transfer(&self) {
+        let out = {
+            let mut slot = self
+                .shared
+                .transfer
+                .lock()
+                .unwrap_or_else(|e| e.into_inner());
+            slot.as_mut().map(Transfer::cancel).unwrap_or_default()
+        };
+        write_line(&self.shared, &out);
+    }
+
+    /// Where the transfer has got to, if there is one.
+    pub fn transfer(&self) -> Option<TransferState> {
+        let slot = self
+            .shared
+            .transfer
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        slot.as_ref().map(|t| TransferState {
+            status: t.status().clone(),
+            progress: t.progress().clone(),
+            saved: t.saved().to_vec(),
+        })
+    }
+
+    /// Removes a transfer that has finished with the line, which a receiver
+    /// has done a couple of seconds after it finishes.
+    pub fn clear_transfer(&self) {
+        let mut slot = self
+            .shared
+            .transfer
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        if slot
+            .as_ref()
+            .is_some_and(|t| !t.wants_line(std::time::Instant::now()))
+        {
+            *slot = None;
+        }
+    }
+
     fn send(&self, bytes: &[u8]) {
         if bytes.is_empty() {
+            return;
+        }
+        // Keys typed during a transfer would land in the middle of its
+        // packets, where they are noise at best.
+        let transferring = {
+            let slot = self
+                .shared
+                .transfer
+                .lock()
+                .unwrap_or_else(|e| e.into_inner());
+            slot.as_ref().is_some_and(Transfer::is_running)
+        };
+        if transferring {
             return;
         }
         {
@@ -283,6 +372,17 @@ impl Session {
         // Local echo may have changed the screen.
         request_redraw(&self.shared, &self.notices);
     }
+}
+
+/// Writes a transfer's packets to the line, and to any recording, which is a
+/// record of the line.
+fn write_line(shared: &Shared, bytes: &[u8]) {
+    if bytes.is_empty() {
+        return;
+    }
+    record(shared, |r| r.reply(bytes));
+    let mut writer = shared.writer.lock().unwrap_or_else(|e| e.into_inner());
+    let _ = writer.write_all(bytes).and_then(|()| writer.flush());
 }
 
 fn request_redraw(shared: &Shared, tx: &async_channel::Sender<Notice>) {
@@ -349,6 +449,23 @@ fn io_loop(
         };
         if n > 0 {
             record(&shared, |r| r.host(&buf[..n]));
+        }
+        // A transfer that wants the line has it: its packets are not for the
+        // screen, and not text for the log. It is fed on every pass, whether
+        // anything arrived or not, since that is also how its time passes.
+        let routed = {
+            let mut slot = shared.transfer.lock().unwrap_or_else(|e| e.into_inner());
+            let now = std::time::Instant::now();
+            match slot.as_mut() {
+                Some(t) if t.claims(&buf[..n], now) => Some(t.feed(&buf[..n], now)),
+                _ => None,
+            }
+        };
+        if let Some(out) = routed {
+            write_line(&shared, &out);
+            continue;
+        }
+        if n > 0 {
             log(&shared, |l| l.host(&buf[..n]));
         }
         let mut rest = &buf[..n];
@@ -513,6 +630,73 @@ mod tests {
         session.stop_log();
         assert_eq!(session.log_path(), None);
         assert_eq!(std::fs::read_to_string(&path).unwrap(), "after bold\n");
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    /// A whole receive through a session, against G-Kermit on a pty: the
+    /// file arrives, the screen shows what the host printed either side of
+    /// the transfer and none of its packets, and keys typed meanwhile go
+    /// nowhere.
+    #[test]
+    fn a_kermit_transfer_takes_the_line_and_gives_it_back() {
+        let have_gkermit = std::process::Command::new("sh")
+            .args(["-c", "command -v gkermit"])
+            .output()
+            .is_ok_and(|o| o.status.success());
+        if !have_gkermit {
+            assert!(
+                std::env::var_os("VEETEE_REQUIRE_KERMITS").is_none(),
+                "gkermit is not installed"
+            );
+            return;
+        }
+        let dir =
+            std::env::temp_dir().join(format!("veetee-session-kermit-{}", std::process::id()));
+        let (from, into) = (dir.join("from"), dir.join("into"));
+        std::fs::create_dir_all(&from).unwrap();
+        std::fs::create_dir_all(&into).unwrap();
+        let data: Vec<u8> = (0..=255u8).cycle().take(5000).collect();
+        std::fs::write(from.join("every.dat"), &data).unwrap();
+
+        let script = format!(
+            "printf 'before\\r\\n'; sleep 1; cd '{}' && gkermit -q -s every.dat; printf 'after\\r\\n'; sleep 1",
+            from.display()
+        );
+        let pty = Pty::spawn("/bin/sh", &["-c", script.as_str()], 24, 80, "vt420").unwrap();
+        let (session, notices) =
+            Session::start(Config::default(), Box::new(pty), None, None).unwrap();
+        std::thread::sleep(Duration::from_millis(500));
+        let settings = vt_kermit::Settings::default();
+        let transfer = Transfer::receive(
+            vt_kermit::files::Folder::new(into.clone()),
+            settings,
+            std::time::Instant::now(),
+        );
+        session.start_transfer(transfer, &[]).unwrap();
+        session.type_text("typed during the transfer");
+
+        while let Ok(notice) = notices.recv_blocking() {
+            if matches!(notice, Notice::Exited(_)) {
+                break;
+            }
+        }
+        let state = session
+            .transfer()
+            .expect("the finished transfer stays to be read");
+        assert_eq!(state.status, Status::Done);
+        assert_eq!(state.saved, [into.join("every.dat")]);
+        assert_eq!(std::fs::read(into.join("every.dat")).unwrap(), data);
+        std::thread::sleep(Duration::from_secs(2));
+        session.clear_transfer();
+        assert!(session.transfer().is_none());
+
+        let term = session.terminal();
+        let screen: Vec<String> = (0..term.grid().rows())
+            .map(|row| vt_core::dump::row_text(&term, row))
+            .filter(|line| !line.is_empty())
+            .collect();
+        assert_eq!(screen, ["before", "after"], "and no packets");
+        drop(term);
         let _ = std::fs::remove_dir_all(dir);
     }
 }

@@ -24,6 +24,7 @@
 
 pub mod attributes;
 mod data;
+pub mod files;
 mod init;
 pub mod names;
 pub mod text;

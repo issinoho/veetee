@@ -21,6 +21,7 @@ vt-fonts.workspace = true
 vt-keyboard.workspace = true
 vt-render.workspace = true
 vt-transport.workspace = true
+vt-kermit.workspace = true
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.61", features = ["Win32_System_Console"] }

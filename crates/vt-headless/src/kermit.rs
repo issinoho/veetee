@@ -6,15 +6,12 @@
 //! against a real one: `gkermit` refuses to run on a pipe but runs happily on
 //! a pty, which is exactly what `--command` gives it.
 
-use std::collections::VecDeque;
-use std::fs::{File, OpenOptions};
-use std::io::{self, ErrorKind, Read, Write};
-use std::path::{Path, PathBuf};
+use std::io::{self, ErrorKind, Write};
+use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
-use vt_kermit::{
-    Check, Mode, Names, Params, Receiver, Sender, Settings, Source, Status, Store, ours,
-};
+use vt_kermit::files::{Folder, Paths, Transfer};
+use vt_kermit::{Check, Mode, Names, Params, Settings, Status, ours};
 use vt_transport::Transport;
 use vt_transport::pty::Pty;
 use vt_transport::serial::{Serial, SerialConfig};
@@ -228,39 +225,6 @@ fn open(connection: &Connection) -> Result<Box<dyn Transport>, String> {
     opened.map_err(|e| format!("cannot connect: {e}"))
 }
 
-/// Either end of a transfer, so the loop below can drive both.
-enum End {
-    Receiving(Receiver, Received),
-    Sending(Sender, Files),
-}
-
-impl End {
-    fn feed(&mut self, bytes: &[u8], now: Instant) -> Vec<u8> {
-        match self {
-            End::Receiving(r, store) => r.feed(bytes, now, store),
-            End::Sending(s, source) => s.feed(bytes, now, source),
-        }
-    }
-    fn tick(&mut self, now: Instant) -> Vec<u8> {
-        match self {
-            End::Receiving(r, store) => r.tick(now, store),
-            End::Sending(s, _) => s.tick(now),
-        }
-    }
-    fn status(&self) -> &Status {
-        match self {
-            End::Receiving(r, _) => r.status(),
-            End::Sending(s, _) => s.status(),
-        }
-    }
-    fn files(&self) -> u32 {
-        match self {
-            End::Receiving(r, _) => r.progress().files,
-            End::Sending(s, _) => s.progress().files,
-        }
-    }
-}
-
 fn run(command: Command, mut transport: Box<dyn Transport>) -> Result<bool, String> {
     let mut writer = transport.writer().map_err(|e| e.to_string())?;
     let verbose = command.verbose;
@@ -277,65 +241,62 @@ fn run(command: Command, mut transport: Box<dyn Transport>) -> Result<bool, Stri
             .map_err(|e| format!("cannot send: {e}"))
     };
     let now = Instant::now();
-    let mut end = match command.direction {
+    let mut transfer = match command.direction {
         Direction::Receive { into } => {
             if !into.is_dir() {
                 return Err(format!("{}: not a directory", into.display()));
             }
-            End::Receiving(Receiver::new(command.settings, now), Received::new(into))
+            Transfer::receive(Folder::new(into), command.settings, now)
         }
         Direction::Send { files } => {
-            let mut sender = Sender::new(command.settings);
-            send(&sender.start(now))?;
-            End::Sending(sender, Files::new(files))
+            let (transfer, first) = Transfer::send(Paths::new(files), command.settings, now);
+            send(&first)?;
+            transfer
         }
     };
 
     let mut buf = vec![0u8; 4096];
-    while *end.status() == Status::Running {
+    let mut announced: Option<String> = None;
+    // Past the end of the transfer itself, a receiver stays a moment to
+    // answer the sender asking again for the end of the batch.
+    while transfer.wants_line(Instant::now()) {
         let n = match transport.read_timeout(&mut buf, Duration::from_millis(100)) {
             Ok(n) => n,
             Err(e) if e.kind() == ErrorKind::UnexpectedEof => {
                 // Whatever the far end said last has been heard; if the
                 // transfer is not over, it never will be.
-                if *end.status() == Status::Running {
+                if *transfer.status() == Status::Running {
                     return Err("the connection closed part way through".into());
                 }
                 break;
             }
             Err(e) => return Err(e.to_string()),
         };
-        let now = Instant::now();
-        if n > 0 {
-            if verbose {
-                eprintln!("< {}", visible(&buf[..n]));
-            }
-            let out = end.feed(&buf[..n], now);
-            send(&out)?;
+        if verbose && n > 0 {
+            eprintln!("< {}", visible(&buf[..n]));
         }
-        let out = end.tick(now);
+        let out = transfer.feed(&buf[..n], Instant::now());
         send(&out)?;
-    }
-
-    // A receiver's last answer may be lost, and the sender will ask again;
-    // stay a moment to answer it, which costs nothing if nothing comes.
-    if matches!(end, End::Receiving(..)) && *end.status() == Status::Done {
-        let until = Instant::now() + Duration::from_secs(1);
-        while Instant::now() < until {
-            match transport.read_timeout(&mut buf, Duration::from_millis(100)) {
-                Ok(n) if n > 0 => {
-                    let out = end.feed(&buf[..n], Instant::now());
-                    send(&out)?;
-                }
-                Ok(_) => {}
-                Err(_) => break,
+        let file = &transfer.progress().file;
+        if *file != announced {
+            if let Some(name) = file {
+                let doing = if transfer.is_receiving() {
+                    "receiving"
+                } else {
+                    "sending"
+                };
+                eprintln!("{doing} {name}");
             }
+            announced.clone_from(file);
         }
     }
 
-    let files = end.files();
+    for path in transfer.saved() {
+        eprintln!("saved {}", path.display());
+    }
+    let files = transfer.progress().files;
     let plural = if files == 1 { "" } else { "s" };
-    match end.status() {
+    match transfer.status() {
         Status::Done => {
             eprintln!("{files} file{plural} transferred");
             Ok(true)
@@ -369,157 +330,9 @@ fn visible(bytes: &[u8]) -> String {
     out
 }
 
-/// Received files, written into one directory.
-///
-/// A file is created under its own name only if nothing has that name: an
-/// existing file is never overwritten. The next free of `login.1.com`,
-/// `login.2.com` and so on is used instead. A file that does not arrive
-/// complete is removed.
-struct Received {
-    dir: PathBuf,
-    open: Option<(File, PathBuf)>,
-}
-
-impl Received {
-    fn new(dir: PathBuf) -> Received {
-        Received { dir, open: None }
-    }
-}
-
-/// `login.com` as `login.N.com`, or `readme` as `readme.N`.
-fn numbered(name: &str, n: u32) -> String {
-    match name.rsplit_once('.') {
-        Some((stem, ext)) if !stem.is_empty() => format!("{stem}.{n}.{ext}"),
-        _ => format!("{name}.{n}"),
-    }
-}
-
-fn create_new(dir: &Path, name: &str) -> io::Result<(File, PathBuf)> {
-    for n in 0..1000 {
-        let candidate = if n == 0 {
-            name.to_string()
-        } else {
-            numbered(name, n)
-        };
-        let path = dir.join(&candidate);
-        match OpenOptions::new().write(true).create_new(true).open(&path) {
-            Ok(file) => return Ok((file, path)),
-            Err(e) if e.kind() == ErrorKind::AlreadyExists => {}
-            Err(e) => return Err(e),
-        }
-    }
-    Err(io::Error::new(
-        ErrorKind::AlreadyExists,
-        format!("{name} and a thousand numbered copies of it already exist"),
-    ))
-}
-
-impl Store for Received {
-    fn create(&mut self, name: &str) -> Result<(), String> {
-        let (file, path) = create_new(&self.dir, name).map_err(|e| format!("{name}: {e}"))?;
-        eprintln!("receiving {}", path.display());
-        self.open = Some((file, path));
-        Ok(())
-    }
-
-    fn write(&mut self, data: &[u8]) -> Result<(), String> {
-        let (file, path) = self.open.as_mut().ok_or("no file is open")?;
-        file.write_all(data)
-            .map_err(|e| format!("{}: {e}", path.display()))
-    }
-
-    fn finish(&mut self, complete: bool) -> Result<(), String> {
-        let Some((file, path)) = self.open.take() else {
-            return Ok(());
-        };
-        if complete {
-            file.sync_all()
-                .map_err(|e| format!("{}: {e}", path.display()))
-        } else {
-            drop(file);
-            eprintln!("{}: incomplete, removed", path.display());
-            std::fs::remove_file(&path).map_err(|e| format!("{}: {e}", path.display()))
-        }
-    }
-}
-
-/// Files to send, one after another.
-struct Files {
-    paths: VecDeque<PathBuf>,
-    open: Option<File>,
-    size: Option<u64>,
-}
-
-impl Files {
-    fn new(paths: Vec<PathBuf>) -> Files {
-        Files {
-            paths: paths.into(),
-            open: None,
-            size: None,
-        }
-    }
-}
-
-impl Source for Files {
-    fn next_file(&mut self) -> Result<Option<String>, String> {
-        let Some(path) = self.paths.pop_front() else {
-            self.open = None;
-            return Ok(None);
-        };
-        let file = File::open(&path).map_err(|e| format!("{}: {e}", path.display()))?;
-        self.size = file.metadata().ok().map(|m| m.len());
-        self.open = Some(file);
-        let name = path
-            .file_name()
-            .map(|n| n.to_string_lossy().into_owned())
-            .ok_or_else(|| format!("{}: no file name", path.display()))?;
-        eprintln!("sending {}", path.display());
-        Ok(Some(name))
-    }
-
-    fn read(&mut self, buf: &mut [u8]) -> Result<usize, String> {
-        let file = self.open.as_mut().ok_or("no file is open")?;
-        file.read(buf).map_err(|e| e.to_string())
-    }
-
-    fn size(&self) -> Option<u64> {
-        self.size
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn a_taken_name_gets_a_number_and_keeps_its_type() {
-        assert_eq!(numbered("login.com", 1), "login.1.com");
-        assert_eq!(numbered("readme", 2), "readme.2");
-        assert_eq!(numbered(".profile", 1), ".profile.1");
-        assert_eq!(numbered("a.tar.gz", 3), "a.tar.3.gz");
-    }
-
-    #[test]
-    fn nothing_is_overwritten() {
-        let dir = std::env::temp_dir().join(format!("vt-headless-kermit-{}", std::process::id()));
-        std::fs::create_dir_all(&dir).unwrap();
-        std::fs::write(dir.join("login.com"), b"keep me").unwrap();
-        let mut store = Received::new(dir.clone());
-        store.create("login.com").unwrap();
-        store.write(b"new").unwrap();
-        store.finish(true).unwrap();
-        assert_eq!(std::fs::read(dir.join("login.com")).unwrap(), b"keep me");
-        assert_eq!(std::fs::read(dir.join("login.1.com")).unwrap(), b"new");
-
-        store.create("partial.dat").unwrap();
-        store.write(b"half").unwrap();
-        store.finish(false).unwrap();
-        assert!(
-            !dir.join("partial.dat").exists(),
-            "an incomplete file is removed"
-        );
-        std::fs::remove_dir_all(&dir).unwrap();
-    }
 
     #[test]
     fn options_are_read() {

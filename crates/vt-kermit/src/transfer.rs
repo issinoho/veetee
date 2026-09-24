@@ -98,6 +98,11 @@ pub trait Source {
     fn size(&self) -> Option<u64> {
         None
     }
+    /// Whether the current file goes as text or binary, where the source has
+    /// decided; otherwise the transfer's setting.
+    fn mode(&self) -> Option<Mode> {
+        None
+    }
 }
 
 /// Where a transfer has got to.
@@ -635,6 +640,8 @@ pub struct Sender {
     /// File contents read and converted but not yet sent.
     pending: Vec<u8>,
     lines: ToLine,
+    /// How this file goes: the source's choice, or the setting.
+    mode: Mode,
     eof: bool,
     /// The end of this file was sent marked discard.
     discarding: bool,
@@ -646,6 +653,7 @@ pub struct Sender {
 impl Sender {
     #[must_use]
     pub fn new(settings: Settings) -> Sender {
+        let mode = settings.mode;
         Sender {
             link: Link::new(&settings),
             settings,
@@ -653,6 +661,7 @@ impl Sender {
             seq: 0,
             pending: Vec::new(),
             lines: ToLine::default(),
+            mode,
             eof: false,
             discarding: false,
             cancelling: false,
@@ -776,7 +785,7 @@ impl Sender {
                 }
                 self.state = Sending::Attributes;
                 let said = Attributes {
-                    file_type: Some(match self.settings.mode {
+                    file_type: Some(match self.mode {
                         Mode::Text => FileType::Text,
                         Mode::Binary => FileType::Binary,
                     }),
@@ -846,6 +855,7 @@ impl Sender {
                 self.progress.file = Some(name);
                 self.progress.bytes = 0;
                 self.progress.size = source.size();
+                self.mode = source.mode().unwrap_or(self.settings.mode);
                 self.state = Sending::File;
                 self.packet(Kind::File, &encoded, now)
             }
@@ -862,7 +872,7 @@ impl Sender {
                 Ok(0) => self.eof = true,
                 Ok(n) => {
                     self.progress.bytes += n as u64;
-                    match self.settings.mode {
+                    match self.mode {
                         Mode::Binary => self.pending.extend_from_slice(&buf[..n]),
                         Mode::Text => self.lines.convert(&buf[..n], &mut self.pending),
                     }

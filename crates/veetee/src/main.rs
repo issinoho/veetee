@@ -112,6 +112,8 @@ fn build_window(app: &adw::Application, config: Config, options: Options) {
     session_section.append(Some("Mark Checkpoint"), Some("win.mark-checkpoint"));
     session_section.append(Some("Log to File…"), Some("win.log"));
     session_section.append(Some("Timestamp Log Lines"), Some("win.log-timestamps"));
+    session_section.append(Some("Send File…"), Some("win.send-file"));
+    session_section.append(Some("Receive File…"), Some("win.receive-file"));
     session_section.append(Some("Keyboard Map…"), Some("win.keymap"));
     menu.append_section(None, &session_section);
     let window_section = gio::Menu::new();
@@ -332,6 +334,28 @@ fn add_session_actions(window: &adw::ApplicationWindow, workspace: &Rc<workspace
         }
     });
     window.add_action(&stamps);
+
+    // Kermit, over whatever the session's connection is.
+    let send_file = gio::SimpleAction::new("send-file", None);
+    send_file.connect_activate({
+        let workspace = Rc::downgrade(workspace);
+        move |_, _| {
+            if let Some(ws) = workspace.upgrade() {
+                ws.send_file();
+            }
+        }
+    });
+    window.add_action(&send_file);
+    let receive_file = gio::SimpleAction::new("receive-file", None);
+    receive_file.connect_activate({
+        let workspace = Rc::downgrade(workspace);
+        move |_, _| {
+            if let Some(ws) = workspace.upgrade() {
+                ws.receive_file();
+            }
+        }
+    });
+    window.add_action(&receive_file);
 
     let search = gio::SimpleAction::new("search", None);
     search.connect_activate({
