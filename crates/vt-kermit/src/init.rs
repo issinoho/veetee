@@ -178,9 +178,16 @@ impl Params {
             quote_control: theirs.quote_control,
             quote_eighth: settle(ours.quote_eighth, theirs.quote_eighth),
             repeat: settle(ours.repeat, theirs.repeat),
-            // A check both ends can do. Veetee reads all three and asks for
-            // one, so this is whatever came back that is readable.
-            check: theirs.check,
+            // The check named in the send-init is used only if the answer
+            // names the same one; otherwise both ends fall back to the
+            // one-character check, which every Kermit has (Kermit Protocol
+            // Manual, the CHKT field). Taking the far end's regardless would
+            // have veetee checking one way while it checked another.
+            check: if ours.check == theirs.check {
+                theirs.check
+            } else {
+                Check::One
+            },
             capabilities: theirs.capabilities.clone(),
         }
     }
@@ -276,9 +283,28 @@ mod tests {
         assert_eq!(agreed.repeat, Some(b'~'), "both want one, and it named it");
         assert_eq!(
             agreed.check,
-            Check::Three,
-            "which is the one veetee has never checked against anything"
+            Check::One,
+            "it asked for the CRC and veetee answers 1, so both fall back to 1"
         );
+    }
+
+    #[test]
+    fn a_check_is_used_only_where_both_ends_name_it() {
+        let asking = |check| Params { check, ..ours() };
+        for (mine, theirs, used) in [
+            (Check::One, Check::One, Check::One),
+            (Check::One, Check::Three, Check::One),
+            (Check::Three, Check::One, Check::One),
+            (Check::Two, Check::Three, Check::One),
+            (Check::Three, Check::Three, Check::Three),
+            (Check::Two, Check::Two, Check::Two),
+        ] {
+            assert_eq!(
+                Params::agreed(&asking(mine), &asking(theirs)).check,
+                used,
+                "{mine:?} and {theirs:?}"
+            );
+        }
     }
 
     #[test]

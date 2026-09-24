@@ -11,7 +11,10 @@
 //! This is the protocol and nothing else — no files, no sockets, no timers, on
 //! the same footing as [`vt_lat`](../vt_lat/index.html). What arrives is
 //! handed to [`read`] and what should go out comes from [`Packet::build`], so
-//! the whole of it is testable against known bytes on any platform.
+//! the whole of it is testable against known bytes on any platform. A whole
+//! transfer is a [`Sender`] or a [`Receiver`], which are driven the same way:
+//! bytes and the time in, bytes to send out, and files through [`Source`] and
+//! [`Store`].
 //!
 //! Written from the protocol specification (Frank da Cruz, *Kermit: A File
 //! Transfer Protocol*, Digital Press 1987, and the Kermit Protocol Manual).
@@ -21,9 +24,15 @@
 
 mod data;
 mod init;
+pub mod names;
+pub mod text;
+mod transfer;
 
 pub use data::{decode, encode};
 pub use init::{Params, ours};
+pub use names::{Names, local_name};
+pub use text::LineEnding;
+pub use transfer::{Mode, Progress, Receiver, Sender, Settings, Source, Status, Store};
 
 /// A value carried as a printable character, which is how Kermit passes
 /// numbers through a line that may not be eight bits clean.
@@ -301,10 +310,13 @@ pub fn read(bytes: &[u8], check: Check, mark: u8) -> Result<(Packet<'_>, usize),
         return Err(Error::Incomplete);
     }
     let packet = &rest[..total];
-    let data_end = total - check.chars();
-    if data_end < 4 {
-        return Err(Error::Incomplete);
+    // Too short to hold a sequence number, a type and its check: whatever
+    // this is, it is all here and it is not a packet. Waiting for more would
+    // wait for ever, the length having already said there is no more.
+    if total < 4 + check.chars() {
+        return Err(Error::BadCheck);
     }
+    let data_end = total - check.chars();
     let expected = check.of(&packet[1..data_end]);
     if packet[data_end..] != expected[..] {
         return Err(Error::BadCheck);

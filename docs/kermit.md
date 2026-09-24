@@ -28,6 +28,7 @@ to test against and never a reference.
 | Send-init parameters: read, build, agree between two ends | Done; `gkermit`'s real send-init pinned as a fixture |
 | Data encoding: control, eighth-bit and repeat prefixes, filling a packet to the room agreed | Done |
 | The 16-bit CRC (check type 3) | Written, never checked against another implementation, so not asked for |
+| Transfers: `Sender` and `Receiver` (K1) | Done, unreleased; tested end to end over a simulated line, not yet against a real Kermit |
 | The capability field | Carried, not read |
 | Long packets, sliding windows, attribute packets | Not supported; a far end offering them gets short packets, one at a time |
 
@@ -36,6 +37,27 @@ to test against and never a reference.
 Five steps, each usable and tested on its own. The first two need nothing from the window.
 
 ### K1. The transfer state machine, in `vt-kermit`
+
+**Done** (24 September 2026), as `transfer.rs`, `text.rs` and `names.rs`. What building it found:
+
+- **The check type was agreed wrongly.** `Params::agreed` took the far end's choice outright,
+  so against `gkermit`, which asks for the CRC while veetee answers `1`, veetee would have read
+  every packet after the send-init with the CRC while `gkermit` sent the one-character check. The
+  protocol uses a check only where both ends name it and falls back to type 1 otherwise; it now
+  does, and the test that expected the CRC with `gkermit` expects type 1.
+- **A nak cannot answer a send-init.** A nak for packet *n*+1 acknowledges packet *n*, except when
+  *n* is the send-init, whose answer carries the receiver's parameters. Taking a nak for it left
+  the ends disagreeing about the prefixes — found by the lossy soak, as files arriving the right
+  length with the wrong bytes.
+- **The one-character check lets damage through.** With one packet in five damaged, about two
+  transfers in a hundred arrived wrong and reported success; with the CRC, none in a thousand.
+  Damage to the length moves where the check is read from, which a six-bit check misses one time
+  in sixty-four. So once K2 has proved the CRC against `gkermit`, veetee should ask for it.
+- **A short packet waited for ever.** A length too small to hold a sequence, a type and a check
+  was read as incomplete, which holds a line until the timeout; it is now damaged and skipped.
+
+The sketch that follows is what was planned; the API as built is close to it, with `Store` and
+`Source` traits in place of file actions.
 
 Sans-I/O like the rest of the crate, so every retry and timeout is testable without a clock or
 a line. One type per direction, driven by the caller:
