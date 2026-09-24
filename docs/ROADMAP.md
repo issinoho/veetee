@@ -255,7 +255,33 @@ is unit-tested and has never run in anger, no host having dropped a circuit sinc
 ## After 1.0
 
 VT340 Sixel and ReGIS graphics, Tektronix 4010/4014, printer controller output to CUPS or PDF,
-Kermit and X/Y/ZMODEM file transfer, scripting and macros. The parser already accepts and safely
-ignores their sequences.
+X/Y/ZMODEM file transfer, scripting and macros. The parser already accepts and safely ignores
+their sequences.
+
+### Kermit: started
+
+Kermit is the one file transfer with a DEC reason to be here: OpenVMS ships KERMIT-32, and on a
+serial or LAT line there is no SCP or FTP to fall back on. It is under way, unreleased, and
+nothing in the window uses it yet.
+
+**`vt-kermit`** is the protocol layer on the same footing as `vt-lat`: bytes in, bytes out, no
+files, sockets or timers, so all of it is testable anywhere. It is clean-room, written from
+da Cruz's *Kermit: A File Transfer Protocol* and the Kermit Protocol Manual; `gkermit` and
+C-Kermit are GPL, so they are counterparties to test against and never a reference.
+
+- **Done**: packets, built and read, with the three block checks; the send-init parameters and
+  how the two ends' are agreed; and the encoding that carries a file over a line that will not
+  pass a control character or an eighth bit, with a repeat count. `gkermit`'s real send-init is
+  pinned as a captured vector, and the one-character check matched it.
+- **Not done**: the state machine that sends and receives a file, files and text line endings,
+  timers and retries, any wiring to a transport or a window, and interop with a real Kermit
+  (`gkermit` will not run on a pipe, so the harness needs a pty).
+- **Marked as unproved**: the sixteen-bit CRC has never been checked against another
+  implementation, so veetee does not ask for it (a far end that asks gets it), and the
+  capability bits are carried and not read. Long packets, sliding windows and attribute packets
+  are not supported, so a far end that offers them gets short packets, one at a time.
+
+The lesson of LAT applies: a peer written here is too well behaved to find anything, so this is
+not done until a transfer has run against a real Kermit, and against KERMIT-32 on OpenVMS.
 
 An Android port is planned in outline in [`android.md`](android.md).
