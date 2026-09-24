@@ -300,7 +300,14 @@ pub fn read(bytes: &[u8], check: Check, mark: u8) -> Result<(Packet<'_>, usize),
         return Err(Error::Incomplete);
     }
     let count = unchar(rest[1]) as usize;
-    if count > MAX_COUNT as usize {
+    // Ninety-four is the most a short packet may count, and what veetee asks
+    // for. C-Kermit, asked for 94 and sending with the CRC, sends 95 — the
+    // length travelling as DEL — one character over (seen against C-Kermit
+    // 10.0 Beta.12, `vt-headless kermit receive --check 3`). The length is
+    // still unambiguous, and naking a packet the far end will only send the
+    // same way again would end the transfer, so 95 is read. Nothing past it
+    // is: that is not a seven-bit character at all.
+    if count > MAX_COUNT as usize + 1 {
         return Err(Error::TooLong);
     }
     // The count covers everything after the length, so the packet is that
@@ -469,10 +476,22 @@ mod tests {
 
     #[test]
     fn a_length_longer_than_a_short_packet_holds_is_refused() {
-        // tochar cannot carry more than ninety-four, so a length above it is
-        // the extended form, which is not read yet.
-        let claimed = [MARK, tochar(95), tochar(0), b'D', b'x'];
+        // Past DEL, a length is not a seven-bit character at all.
+        let claimed = [MARK, tochar(96), tochar(0), b'D', b'x'];
         assert_eq!(read(&claimed, Check::One, MARK), Err(Error::TooLong));
+    }
+
+    #[test]
+    fn a_packet_one_over_as_c_kermit_sends_it_is_read() {
+        // Ninety-five, the length travelling as DEL: C-Kermit's size for a
+        // full packet with the CRC, when it was asked for no more than 94.
+        let data = vec![b'x'; 95 - 2 - Check::Three.chars()];
+        let mut wire = vec![MARK, tochar(95), tochar(2), b'D'];
+        wire.extend_from_slice(&data);
+        wire.extend(Check::Three.of(&wire[1..]));
+        assert_eq!(wire[1], 0x7f);
+        let (read_back, used) = read(&wire, Check::Three, MARK).expect("read, not refused");
+        assert_eq!((read_back.data, used), (&data[..], wire.len()));
     }
 
     #[test]

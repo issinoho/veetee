@@ -18,11 +18,15 @@ jobs:
         with:
           components: rustfmt, clippy
       - uses: Swatinem/rust-cache@v2
-      - run: sudo apt-get update && sudo apt-get install -y libgtk-4-dev libadwaita-1-dev libasound2-dev
+      # C-Kermit and G-Kermit are the far end of the Kermit interop tests,
+      # run and never linked; VEETEE_REQUIRE_KERMITS makes their absence fail.
+      - run: sudo apt-get update && sudo apt-get install -y libgtk-4-dev libadwaita-1-dev libasound2-dev ckermit gkermit
       - run: cargo fmt --all --check
       - run: cargo clippy --workspace --all-targets
       - uses: taiki-e/install-action@nextest
       - run: cargo nextest run --workspace
+        env:
+          VEETEE_REQUIRE_KERMITS: 1
       - run: cargo test --workspace --doc
       - run: cargo xtask openvms
 

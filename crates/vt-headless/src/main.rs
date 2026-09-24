@@ -3,6 +3,7 @@
 use std::process::ExitCode;
 
 mod golden;
+mod kermit;
 mod lat;
 mod replay;
 mod script;
@@ -23,6 +24,11 @@ usage:
       session it opens. Linux only, and needs
       CAP_NET_RAW: LAT is raw Ethernet rather than IP.
 
+  vt-headless kermit receive [--into DIR] CONNECTION [OPTIONS]
+  vt-headless kermit send FILE... CONNECTION [OPTIONS]
+      Transfer files with Kermit over --command, --telnet, --ssh or --serial.
+      `vt-headless kermit` alone lists the options.
+
   vt-headless replay FILE.vtrec [--golden DIR] [--bless]
       Play a veetee session recording through the emulator and compare the
       screen at each checkpoint, and at the end as `final`, with DIR (default:
@@ -35,6 +41,7 @@ fn main() -> ExitCode {
         Some("run") => script::run(args),
         Some("lat") => lat::lat(args).map(|()| true),
         Some("replay") => replay::replay(args),
+        Some("kermit") => kermit::kermit(args).map_err(std::io::Error::other),
         _ => {
             eprintln!("{USAGE}");
             return ExitCode::from(2);

@@ -17,6 +17,7 @@ rustix = { version = "1", features = ["termios", "stdio"] }
 vt-parser.workspace = true
 vt-core.workspace = true
 vt-lat.workspace = true
+vt-kermit.workspace = true
 vt-transport.workspace = true
 
 [lints]

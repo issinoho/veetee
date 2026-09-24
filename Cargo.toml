@@ -13,6 +13,7 @@ authors = ["Iain Smith <iain@issinoho.com>"]
 vt-parser = { path = "crates/vt-parser", version = "1.2.0" }
 vt-core = { path = "crates/vt-core", version = "1.2.0" }
 vt-lat = { path = "crates/vt-lat", version = "1.2.0" }
+vt-kermit = { path = "crates/vt-kermit", version = "1.2.0" }
 vt-lat-helper = { path = "crates/vt-lat-helper", version = "1.2.0" }
 vt-fonts = { path = "crates/vt-fonts", version = "1.2.0" }
 vt-keyboard = { path = "crates/vt-keyboard", version = "1.2.0" }

@@ -23,12 +23,13 @@ documentation.
 | `crates/vt-core` | The terminal model: screen, modes, character sets, reports, DEC keyboard codes |
 | `crates/vt-transport` | Host connections: local PTY (ConPTY on Windows), serial lines, Telnet (with RFC 2217), SSH (via OpenSSH), LAT (Linux) |
 | `crates/vt-lat` | DEC LAT messages and a session state machine, with no I/O (see [docs/lat-protocol.md](docs/lat-protocol.md)) |
+| `crates/vt-kermit` | Kermit file transfer: packets, parameters and whole transfers, with no I/O (see [docs/kermit.md](docs/kermit.md)) |
 | `crates/vt-lat-helper` | Opens the LAT socket and hands it back, so nothing that draws a terminal holds `CAP_NET_RAW` |
 | `crates/vt-fonts` | Original DEC-style bitmap fonts (SIL OFL) for each model's character cells, and their parser |
 | `crates/vt-keyboard` | PC keyboard → DEC LK401 key map |
 | `crates/vt-render` | OpenGL renderer: dot stretching, scan lines, double-size lines, 132 columns |
 | `crates/veetee` | The GTK4/libadwaita application |
-| `crates/vt-headless` | CLI driver: `trace` parser actions; `run` scripted sessions with golden screen snapshots |
+| `crates/vt-headless` | CLI driver: `trace` parser actions; `run` scripted sessions with golden screen snapshots; `kermit` file transfer |
 | `xtask` | `cargo xtask vttest` / `esctest` run the conformance suites against pinned upstream versions; `dist` builds release packages |
 | `tests/conformance` | vttest session scripts with golden screens; esctest2 expected failures |
 | `docs/compat-matrix.md` | Per-function DEC compatibility status and sources |
@@ -242,6 +243,22 @@ them — much narrower than `CAP_NET_RAW` itself, but not nothing.
 `vt-headless lat INTERFACE` lists the services announcing themselves on a wire, and
 `--connect NODE` opens a session without the window, which is how the protocol was read.
 [docs/lat-protocol.md](docs/lat-protocol.md) records what the captures show.
+
+### File transfer
+
+Kermit is under way: not yet in the window, but `vt-headless kermit` transfers files over any
+connection veetee has. Start the other end first, with `SEND` or `RECEIVE` at the host's Kermit
+prompt:
+
+```sh
+vt-headless kermit receive --into ~/incoming --telnet vms1
+vt-headless kermit send LOGIN.COM --serial /dev/ttyUSB0 -b 9600
+```
+
+Text is the default and `--binary` sends the bytes exactly; a received name is made safe and
+never overwrites a file (`LOGIN.COM;3` arrives as `login.com`, or `login.1.com` if that is
+taken). `vt-headless kermit` alone lists the options. It is tested against C-Kermit and
+G-Kermit; the plan, and what is still to come, is in [docs/kermit.md](docs/kermit.md).
 
 ### Keyboard
 

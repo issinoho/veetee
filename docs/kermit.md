@@ -27,8 +27,9 @@ to test against and never a reference.
 | Packets: build, read, the three block checks, the packet types | Done |
 | Send-init parameters: read, build, agree between two ends | Done; `gkermit`'s real send-init pinned as a fixture |
 | Data encoding: control, eighth-bit and repeat prefixes, filling a packet to the room agreed | Done |
-| The 16-bit CRC (check type 3) | Written, never checked against another implementation, so not asked for |
-| Transfers: `Sender` and `Receiver` (K1) | Done, unreleased; tested end to end over a simulated line, not yet against a real Kermit |
+| The 16-bit CRC (check type 3) | Proved against C-Kermit and G-Kermit both ways (K2); not yet asked for by default |
+| Transfers: `Sender` and `Receiver` (K1) | Done, unreleased; tested end to end over a simulated line |
+| `vt-headless kermit` and interop (K2) | Done, unreleased; both ways against C-Kermit and G-Kermit, text and binary, check 1 and the CRC |
 | The capability field | Carried, not read |
 | Long packets, sliding windows, attribute packets | Not supported; a far end offering them gets short packets, one at a time |
 
@@ -93,6 +94,28 @@ lesson of LAT's soak test: model the far end's rules, not an obliging peer), plu
 with a captured fixture.
 
 ### K2. `vt-headless kermit`, and interop with a real Kermit
+
+**Done** (24 September 2026). `crates/vt-headless/tests/kermit_interop.rs` sends files of every
+awkward shape both ways, text and binary, with check 1 and the CRC, against C-Kermit 10.0 Beta.12
+and G-Kermit 2.01 locally; CI installs both from the Ubuntu archive (noble has C-Kermit Beta.11)
+and fails if either is missing. What it found:
+
+- **Every combination worked first time except one**, and the check-type fix from K1 is why:
+  both Kermits ask for the CRC, are answered `1`, and then send with the one-character check.
+- **C-Kermit sends one character over.** Asked for packets of 94 and sending with the CRC, it
+  sends 95, the length travelling as DEL. veetee now reads a length of 95; nothing longer.
+- **Without an attribute packet, a receiving Kermit assumes binary.** Both say so in their
+  documentation, and both kept veetee's CR LF lines as they arrived until told `-T`. So until
+  veetee sends attribute packets (K5), the user has to put the host's Kermit in text mode as
+  well as veetee — `SET FILE TYPE TEXT`, or its equivalent — which K3's dialog should say. It is
+  a strong reason to bring attribute packets forward.
+- **A file with CR LF already in it survives.** A Unix Kermit sends its CR as data, so CR CR LF;
+  veetee keeps the lone CR and the file arrives exactly as it was.
+- **The CRC is proved**, so veetee could now ask for it. It is left at the one-character check
+  until decided: the protocol falls back to type 1 with any Kermit that cannot do the CRC, but
+  KERMIT-32 has not been seen doing either.
+
+The plan as written before it was built:
 
 A command-line transfer over any transport veetee already has:
 

@@ -8,6 +8,14 @@ Before 1.0 the minor version followed the project milestones (0.3 = M3). The for
 
 ## [Unreleased]
 
+- **Added: `vt-headless kermit`**, Kermit file transfer over any connection veetee has — Telnet,
+  SSH, a serial line, or a command on a pty — without the window. `receive --into DIR` and
+  `send FILE...`, text by default and `--binary` for the bytes exactly, with the one-character
+  check or the CRC. A received file's name is made safe before anything is written — only its
+  last part is kept, so a host cannot choose where it lands — an existing file is never
+  overwritten, and a file that does not arrive complete is removed. Tested both ways against
+  C-Kermit and G-Kermit, which CI now installs. The window comes next; see `docs/kermit.md`.
+
 ## [1.2.0] - 2026-09-24
 
 A saved connection can be made the default, opened when veetee starts without being told where
