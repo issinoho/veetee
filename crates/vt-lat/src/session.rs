@@ -39,8 +39,18 @@ const SLOT_DATA: u8 = 0x00;
 /// 🔎 Type 11 arrives beside it carrying a single `@`, which is unread.
 const SLOT_END: u8 = 0xd0;
 
-/// One length byte counts a slot's data, so this is as much as one carries.
-const MAX_SLOT: usize = 255;
+/// The most data veetee puts in one slot: 254 bytes, one short of what the
+/// length byte could count.
+///
+/// 254 is what OpenVMS itself sends at most — thousands of full slots in the
+/// traces of 18 and 24 September 2026, every one of them 254 and none 255 —
+/// and a slot of 255 is fatal. Pasting 300 characters at the DCL prompt sent
+/// a slot of 255 and one of 45, and MYI64 acknowledged neither nor anything
+/// after them: the circuit went silent at once and the session was lost. A
+/// Kermit transfer over LAT died the same way the first time a recovery
+/// queued enough to fill a slot. Typing had never come near it; veetee's
+/// largest slot before that was 97 bytes.
+const MAX_SLOT: usize = 254;
 
 /// As much credit as the low nibble of a control byte will hold.
 ///
@@ -1130,6 +1140,30 @@ mod tests {
             })
             .collect();
         assert_eq!(lengths, vec![MAX_SLOT, 10]);
+    }
+
+    #[test]
+    fn no_slot_carries_more_than_openvms_sends() {
+        // 255 took a real circuit down; 254 is the most OpenVMS sends.
+        assert_eq!(MAX_SLOT, 254);
+        let (mut session, mut data) = agreed();
+        session.receive(PROMPT, &mut data);
+        session.take_outgoing();
+        session.write(&[b'x'; 300]);
+        session.release_typing();
+        let lengths: Vec<usize> = session
+            .take_outgoing()
+            .iter()
+            .filter_map(|frame| match crate::parse(frame) {
+                Ok(Message::Run(run)) => run.slots.first().map(|s| s.data.len()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            lengths,
+            vec![254, 46],
+            "the paste that killed a session, as it goes now"
+        );
     }
 
     #[test]

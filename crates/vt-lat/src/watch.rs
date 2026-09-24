@@ -168,13 +168,17 @@ pub fn describe(payload: &[u8], data: bool) -> String {
 }
 
 fn describe_run(run: &Run<'_>, data: bool) -> String {
+    // The flag bits are written out because what they mean is unread: the
+    // host sets 0x00 on some messages and 0x01 on others, and which of its
+    // messages wait on an answer is the question they may settle.
     let mut line = format!(
-        "{} seq={} ack={} ours={:04x} theirs={:04x}",
+        "{} seq={} ack={} ours={:04x} theirs={:04x} flags={}",
         if run.slots.is_empty() { "ack" } else { "run" },
         run.sequence,
         run.acknowledged,
         run.ours,
         run.theirs,
+        run.flags,
     );
     for slot in &run.slots {
         line.push(' ');
@@ -247,6 +251,7 @@ mod tests {
         assert!(line.starts_with("run seq="), "{line}");
         assert!(line.contains("data credit="), "{line}");
         assert!(line.contains("len="), "{line}");
+        assert!(line.contains(" flags="), "{line}");
     }
 
     #[test]

@@ -274,6 +274,14 @@ Each slot is a four-byte header and its data:
 the receiving session
 ```
 
+**A slot carries at most 254 bytes, not 255.** The byte count could say 255, but OpenVMS never
+sends more than 254 — thousands of full slots in the traces, every one 254 — and a slot of 255
+sent to it is fatal: MYI64 acknowledges nothing from that message on and the circuit goes silent
+until the dead-peer timer ends it. Found on 24 September 2026, when a Kermit transfer over LAT
+died the first time a recovery queued enough to fill a slot, and confirmed by pasting 300
+characters at the DCL prompt, which killed the session every time at 255 and never at 254.
+Four 254-byte slots in a row go through.
+
 **Data is padded to an even length**, and the whole message is then padded to the Ethernet
 minimum with zeros.
 
@@ -351,9 +359,9 @@ Each line is milliseconds since the trace opened, a direction, and the frame:
         0 --  lat MYI64 on eth0, unix 1789430400, slot data left out
        12 out call ours=1a3f theirs=0000 to=MYI64 from=VEETEE keepalive=20s frame=1500
        47 in  agree ours=e001 theirs=1a3f to=VEETEE from=MYI64 keepalive=20s frame=1500
-       48 out run seq=1 ack=3 ours=1a3f theirs=e001 [1->0 start credit=15 len=12]
-      210 in  run seq=4 ack=1 ours=e001 theirs=1a3f [1->1 data credit=0 len=61]
-      211 out ack seq=2 ack=4 ours=1a3f theirs=e001
+       48 out run seq=1 ack=3 ours=1a3f theirs=e001 flags=2 [1->0 start credit=15 len=12]
+      210 in  run seq=4 ack=1 ours=e001 theirs=1a3f flags=0 [1->1 data credit=0 len=61]
+      211 out ack seq=2 ack=4 ours=1a3f theirs=e001 flags=2
     60048 sum in=412 out=196 acks=18/94 slots=102/3 bytes=8841/17 dup=0 rewind=0 missed=0 ...
 ```
 
@@ -388,7 +396,10 @@ it holds the password typed into the session**, in clear, exactly as the wire ca
   and two empty ones. Only the device name is read.
 - **How much credit to grant, and what spends it.** That a slot spends one, and that running out
   stops a sender, is settled; the rest of the policy is veetee's own choice.
-- **The flag bits** that make a run message `0x00`, `0x01` or `0x02`.
+- **The flag bits** that make a run message `0x00`, `0x01` or `0x02`. The trace writes them out as
+  `flags=` (from 24 September 2026), because a Kermit transfer over LAT stalled while the host
+  held its replies waiting for veetee to acknowledge messages that carried nothing, and a bit that
+  asks for an answer is the likeliest thing to tell those messages from the ones that need none.
 - **Stop (`0x0a`)** is seen once, eleven bytes, and not understood beyond its shape. veetee builds
   one from those bytes as it leaves, and OpenVMS does release the `LTA` device — but the sessions
   that were watched had been logged out of first, which is reason enough on its own for VMS to

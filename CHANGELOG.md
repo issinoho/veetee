@@ -8,6 +8,13 @@ Before 1.0 the minor version followed the project milestones (0.3 = M3). The for
 
 ## [Unreleased]
 
+- **Fixed: pasting more than 255 characters into a LAT session killed it.** veetee filled a LAT
+  slot to 255 bytes, and OpenVMS drops the circuit when it gets one: nothing more is
+  acknowledged, the screen stops, and a minute later veetee says the host stopped answering.
+  OpenVMS itself never sends more than 254, and neither does veetee now. Typing never came near
+  it; a long paste did, and so did a Kermit transfer the first time it had to recover. The LAT
+  trace (`VEETEE_LAT_TRACE`) also records each message's flag bits now, which is what showed the
+  flags were not the cause.
 - **Added: Send File… and Receive File…**, Kermit file transfer in the window, over the
   session's connection. Start `SEND` or `RECEIVE` at the host's Kermit, then choose the matching
   item: received files go into a folder you pick (Downloads to begin with), sent files each go
