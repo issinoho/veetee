@@ -286,7 +286,7 @@ C-Kermit are GPL, so they are counterparties to test against and never a referen
 - **Acceptance on OpenVMS (K4), under way**: against C-Kermit 9.0.300 on MYI64, everything passes
   over Telnet and LAT — text and binary both ways, a mixed batch, cancelling from either end.
   Still to try: SSH, serial, C-Kermit 8.0.211, and KERMIT-32 where a system has it.
-- **Open**: about 25 KB/s on a LAN, which long packets would fix; a `# N3` that C-Kermit on
+- **Open**: long packets, done since 1.3.0 and to be proved against OpenVMS; a `# N3` that C-Kermit on
   OpenVMS shows on every transfer veetee sends, not yet explained; and pasting faster than
   OpenVMS reads, which overruns its type-ahead buffer where veetee should honour XOFF.
 - **Not supported**: long packets and sliding windows, so a far end offering them gets short

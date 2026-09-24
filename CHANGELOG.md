@@ -8,6 +8,15 @@ Before 1.0 the minor version followed the project milestones (0.3 = M3). The for
 
 ## [Unreleased]
 
+- **Kermit transfers are much faster: long packets.** Where the other Kermit offers them, as
+  C-Kermit and G-Kermit both do, packets are up to 9 KB rather than 94 bytes, so each exchange
+  carries about a hundred times as much. Against C-Kermit on the same machine, 20 MB took 1.5 to
+  2 seconds rather than 9 or 10; over a network, where every exchange waits on the other end, the
+  gain is larger. The size starts small and doubles while packets get through, halving whenever
+  one has to be sent again, so a slow serial line settles on what it can carry rather than timing
+  out on packets it never could. A Kermit that does not offer long packets gets short ones, as
+  before.
+
 ## [1.3.0] - 2026-09-24
 
 **Kermit file transfer**, in the window and from the command line, over whatever connection a

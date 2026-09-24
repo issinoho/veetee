@@ -32,7 +32,8 @@ to test against and never a reference.
 | `vt-headless kermit` and interop (K2) | Released in 1.3.0; both ways against C-Kermit and G-Kermit, text and binary, check 1 and the CRC |
 | Attribute packets: file type and size | Released in 1.3.0; brought forward from K5, proved against both |
 | The capability field | Carried, not read |
-| Long packets, sliding windows | Not supported; a far end offering them gets short packets, one at a time |
+| Long packets | Done, unreleased: up to 9024 bytes where both ends offer them, the size ramped up and down by what gets through; proved against C-Kermit and G-Kermit |
+| Sliding windows | Not supported; a far end offering them gets one packet at a time |
 
 ## The plan
 
@@ -165,6 +166,29 @@ Three things came from watching what the two Kermits send rather than from the p
 
 Not sent yet: the file's date, which OpenVMS would keep, and protection. Neither is needed to get
 a file across intact.
+
+### Long packets
+
+**Done** (25 September 2026), because the OpenVMS test ran at about 25 KB/s: 20 MB took 14
+minutes, with each exchange carrying about 50 bytes of a random file and waiting about 2 ms for
+the host. The extended form — a length of nought, then two base-95 length characters and a
+header check — is read always and sent where both ends offer long packets (capability bit 2),
+up to the far end's limit: 4000 for G-Kermit, 3999 for C-Kermit on OpenVMS, 9024 offered by
+veetee. Against C-Kermit locally, 20 MB fell from 9–10 seconds to 1.5–2.
+
+What real Kermits showed:
+
+- **C-Kermit goes one over again.** It ramps its packets up — 253, 498, 986, 1961, 3914, 7817,
+  then the limit — and at the limit, offered 9024, it sent 9025, the high length digit
+  travelling as DEL: the same off-by-one as 95 in a short packet. veetee reads one over, as it
+  does there. The interop tests had passed with a 30 KB file, which never reached the limit; they
+  now use 200 KB, and fail without the fix.
+- **veetee ramps as C-Kermit does.** A 9 KB packet takes nine seconds on a line at 9600 baud,
+  most of a host's timeout, and at 2400 could never arrive in time. So the size starts at 250,
+  doubles with each packet that gets through, and halves with each one sent again.
+
+Still to see: long packets over LAT, where one packet is thirty-six slots of 254 bytes and the
+host's credit decides how fast they go.
 
 ### K3. In the window
 

@@ -92,11 +92,25 @@ pub fn ours() -> Params {
         // sixty-four. Asking costs nothing where the far end cannot do it:
         // it answers with another check, and both ends then use type 1.
         check: Check::Three,
-        // Attribute packets, and nothing else: no long packets or windows.
-        capabilities: vec![tochar(crate::attributes::CAPABLE)],
+        // Attribute packets and long packets, and no sliding windows; then
+        // the window size, which without windows is one, and the longest
+        // extended packet veetee will read, as two base-95 digits.
+        capabilities: vec![
+            tochar(crate::attributes::CAPABLE | LONG_PACKETS),
+            tochar(1),
+            tochar((crate::MAX_LONG / 95) as u8),
+            tochar((crate::MAX_LONG % 95) as u8),
+        ],
         ..Params::default()
     }
 }
+
+/// The capability bit for long packets. G-Kermit offers `*`, which is 10:
+/// this and attributes, and its manual says it does both.
+pub(crate) const LONG_PACKETS: u8 = 2;
+
+/// What an end offering long packets but naming no length can receive.
+const DEFAULT_LONG: usize = 500;
 
 /// `Y` in the eighth-bit field: "whatever you propose".
 const AGREED: u8 = b'Y';
@@ -104,6 +118,29 @@ const AGREED: u8 = b'Y';
 const REFUSED: u8 = b'N';
 
 impl Params {
+    /// The longest extended packet this end can receive, if it offers long
+    /// packets at all.
+    ///
+    /// The capability bytes run on for as long as their lowest bit says
+    /// another follows; after them come the window size, and then the
+    /// length as two base-95 digits. G-Kermit's `*!J*` is long packets and
+    /// attributes, a window of one, and 42 × 95 + 10 = 4000, which its manual
+    /// gives as its default; C-Kermit on OpenVMS sends `^>J)`, for 3999.
+    #[must_use]
+    pub fn long(&self) -> Option<usize> {
+        let caps = &self.capabilities;
+        if unchar(*caps.first()?) & LONG_PACKETS == 0 {
+            return None;
+        }
+        let last = caps.iter().position(|&c| unchar(c) & 1 == 0)?;
+        let digit = |i: usize| caps.get(last + i).map(|&c| usize::from(unchar(c)));
+        let length = match (digit(2), digit(3)) {
+            (Some(high), Some(low)) if high * 95 + low > 0 => high * 95 + low,
+            _ => DEFAULT_LONG,
+        };
+        Some(length.min(crate::MAX_LONG))
+    }
+
     /// The data field of a send-init or of its acknowledgement.
     #[must_use]
     pub fn build(&self) -> Vec<u8> {
@@ -323,6 +360,42 @@ mod tests {
     }
 
     #[test]
+    fn how_long_a_packet_each_end_can_take() {
+        let (packet, _) =
+            crate::read(GKERMIT_SEND_INIT, Check::One, crate::MARK).expect("a packet");
+        assert_eq!(Params::read(packet.data).long(), Some(4000), "G-Kermit");
+        let vms = Params {
+            capabilities: b"^>J)0___N\"D7".to_vec(),
+            ..Params::default()
+        };
+        assert_eq!(vms.long(), Some(3999), "C-Kermit 9.0.300 on OpenVMS");
+        assert_eq!(ours().long(), Some(crate::MAX_LONG), "veetee");
+        let unnamed = Params {
+            capabilities: vec![tochar(LONG_PACKETS)],
+            ..Params::default()
+        };
+        assert_eq!(unnamed.long(), Some(500), "offered, with no length named");
+        let attributes_only = Params {
+            capabilities: vec![tochar(crate::attributes::CAPABLE)],
+            ..Params::default()
+        };
+        assert_eq!(attributes_only.long(), None);
+        assert_eq!(Params::default().long(), None, "no capabilities at all");
+        let continued = Params {
+            // Two capability bytes, the first saying another follows.
+            capabilities: vec![
+                tochar(LONG_PACKETS | 1),
+                tochar(0),
+                tochar(1),
+                tochar(10),
+                tochar(50),
+            ],
+            ..Params::default()
+        };
+        assert_eq!(continued.long(), Some(10 * 95 + 50));
+    }
+
+    #[test]
     fn what_veetee_asks_for_reads_back_as_it_was_asked() {
         let asked = ours();
         let read = Params::read(&asked.build());
@@ -438,17 +511,15 @@ mod tests {
     }
 
     #[test]
-    fn the_capability_field_is_carried_and_not_read() {
+    fn the_capability_field_is_carried_whole() {
         let mut block = ours().build();
         block.extend_from_slice(&[tochar(0x1a), tochar(0x02)]);
         let read = Params::read(&block);
+        let mut expected = ours().capabilities;
+        expected.extend_from_slice(&[tochar(0x1a), tochar(0x02)]);
         assert_eq!(
-            read.capabilities,
-            vec![
-                tochar(crate::attributes::CAPABLE),
-                tochar(0x1a),
-                tochar(0x02)
-            ]
+            read.capabilities, expected,
+            "what follows is kept as it came"
         );
         assert_eq!(read.build(), block, "and goes back out untouched");
     }

@@ -788,3 +788,95 @@ fn over_a_bad_line_attributes_and_all_still_arrive() {
         );
     }
 }
+
+#[test]
+fn where_both_offer_long_packets_a_file_goes_in_a_few_of_them() {
+    let start = Instant::now();
+    let data: Vec<u8> = (0..20_000u32).map(|i| (i * 7 % 251) as u8).collect();
+    let mut source = Files::new(&[("BIG.DAT", data.clone())]);
+    let mut store = Received::default();
+    let mut sender = Sender::new(binary());
+    let mut receiver = Receiver::new(binary(), start);
+    let mut out = sender.start(start);
+    let mut longest = 0;
+    let mut sent = 0;
+    while *sender.status() == Status::Running {
+        longest = longest.max(out.len());
+        sent += 1;
+        let back = receiver.feed(&out, start, &mut store);
+        out = sender.feed(&back, start, &mut source);
+    }
+    assert_eq!(sender.status(), &Status::Done);
+    assert_eq!(store.files[0].1, data);
+    assert!(
+        longest > 8000,
+        "packets filled to the far end's limit: {longest}"
+    );
+    assert!(
+        sent < 20,
+        "{sent} packets for 20 KB, where short ones would take hundreds"
+    );
+
+    // A far end that does not offer them gets short packets, as before.
+    let short = Settings {
+        params: Params {
+            capabilities: vec![vt_kermit::tochar(8)],
+            ..ours()
+        },
+        ..binary()
+    };
+    let mut source = Files::new(&[("BIG.DAT", data.clone())]);
+    let mut store = Received::default();
+    let mut sender = Sender::new(binary());
+    let mut receiver = Receiver::new(short, start);
+    let mut out = sender.start(start);
+    let mut longest = 0;
+    while *sender.status() == Status::Running {
+        longest = longest.max(out.len());
+        let back = receiver.feed(&out, start, &mut store);
+        out = sender.feed(&back, start, &mut source);
+    }
+    assert_eq!(store.files[0].1, data);
+    assert!(longest <= 100, "short packets only: {longest}");
+}
+
+#[test]
+fn a_senders_packets_grow_while_they_get_through_and_shrink_when_they_do_not() {
+    let start = Instant::now();
+    let mut source = Files::new(&[(
+        "BIG.DAT",
+        vec![b'x'; 60_000]
+            .iter()
+            .enumerate()
+            .map(|(i, _)| b'a' + (i % 26) as u8)
+            .collect(),
+    )]);
+    let mut sender = Sender::new(binary());
+    sender.start(start);
+    // A far end offering long packets, with the one-character check the
+    // hand-built answers carry.
+    sender.feed(&packet(0, Kind::Ack, &far()), start, &mut source);
+    sender.feed(&packet(1, Kind::Ack, b""), start, &mut source);
+    let mut sizes = Vec::new();
+    let mut out = sender.feed(&packet(2, Kind::Ack, b"Y"), start, &mut source);
+    for seq in 3..9 {
+        sizes.push(out.len());
+        out = sender.feed(&packet(seq, Kind::Ack, b""), start, &mut source);
+    }
+    assert!(
+        sizes.windows(2).all(|w| w[1] > w[0]),
+        "each packet bigger than the last while they get through: {sizes:?}"
+    );
+    assert!(sizes[0] < 300, "and the first one small: {sizes:?}");
+    // No answer: sent again, and the next one is half the size.
+    let before = out.len();
+    let again = sender.tick(start + Duration::from_secs(60));
+    assert_eq!(again, out, "the same packet again");
+    let next = sender.feed(&packet(9, Kind::Ack, b""), start, &mut source);
+    assert!(
+        next.len() < before,
+        "smaller after a retry: {} then {}",
+        before,
+        next.len()
+    );
+}

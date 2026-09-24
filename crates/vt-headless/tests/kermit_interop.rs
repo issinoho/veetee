@@ -92,7 +92,10 @@ fn write_files(dir: &Path) -> (Vec<&'static str>, Vec<&'static str>) {
     };
     let files: [(&str, Vec<u8>); 7] = [
         ("every.dat", (0..=255u8).cycle().take(1024).collect()),
-        ("noise.dat", (0..30_000).map(|_| noise()).collect()),
+        // Big enough for a Kermit ramping its packets up to reach the
+        // longest veetee offers: C-Kermit went one over there, and only a
+        // file of this size showed it.
+        ("noise.dat", (0..200_000).map(|_| noise()).collect()),
         ("empty.dat", Vec::new()),
         ("one.dat", vec![b'x']),
         ("runs.dat", {

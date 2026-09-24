@@ -250,7 +250,9 @@ pub enum Error {
     /// No mark yet, or not all of the packet has arrived. Keep the bytes and
     /// try again when more turn up.
     Incomplete,
-    /// The length said more than a short packet can hold.
+    /// The length said more than a packet can hold: past 94 in a short
+    /// packet's length (95 is allowed, see [`read`]), or the extra-long form,
+    /// which is not read.
     TooLong,
     /// The check did not match, so the packet is not to be trusted. The far
     /// end will send it again when it hears nothing, or a nak.
@@ -260,15 +262,45 @@ pub enum Error {
 /// The character that starts a packet, unless the far end asks for another.
 pub const MARK: u8 = 0x01;
 
+/// The most an extended packet's two length characters can count: data and
+/// check together, 94 × 95 + 94.
+pub const MAX_LONG: usize = 9024;
+
 impl Packet<'_> {
     /// The packet as it goes on the wire: mark, length, sequence, type, data,
     /// check, and whatever the far end wants at the end of a line.
     ///
     /// The length counts everything after itself including the check, which
     /// is why it depends on which check was agreed.
+    ///
+    /// Data too long for a short packet goes in the extended form: a length of
+    /// nought, then after the type two characters counting the data and the
+    /// check, and a one-character check on the header alone, so that a
+    /// damaged length is caught before anything waits for thousands of bytes
+    /// that are not coming. Only a far end that has offered long packets is
+    /// sent one; see [`Params::long`].
     #[must_use]
     pub fn build(&self, check: Check, mark: u8, eol: Option<u8>) -> Vec<u8> {
         let count = 3 + self.data.len() + check.chars() - 1;
+        if count > MAX_COUNT as usize {
+            let n = self.data.len() + check.chars();
+            debug_assert!(n <= MAX_LONG, "longer than the extended form counts");
+            let mut out = vec![
+                mark,
+                tochar(0),
+                tochar(self.sequence),
+                self.kind.as_byte(),
+                tochar((n / 95) as u8),
+                tochar((n % 95) as u8),
+            ];
+            out.extend(Check::One.of(&out[1..]));
+            out.extend_from_slice(self.data);
+            // The block check covers the extended header, its check
+            // included, as well as the data.
+            out.extend_from_slice(&check.of(&out[1..]));
+            out.extend(eol);
+            return out;
+        }
         let mut out = vec![mark, tochar(count as u8), tochar(self.sequence)];
         out.push(self.kind.as_byte());
         out.extend_from_slice(self.data);
@@ -303,6 +335,9 @@ pub fn read(bytes: &[u8], check: Check, mark: u8) -> Result<(Packet<'_>, usize),
         return Err(Error::Incomplete);
     }
     let count = unchar(rest[1]) as usize;
+    if count == 0 {
+        return read_long(rest, check, start);
+    }
     // Ninety-four is the most a short packet may count, and what veetee asks
     // for. C-Kermit, asked for 94 and sending with the CRC, sends 95 — the
     // length travelling as DEL — one character over (seen against C-Kermit
@@ -336,6 +371,46 @@ pub fn read(bytes: &[u8], check: Check, mark: u8) -> Result<(Packet<'_>, usize),
             sequence: unchar(packet[2]),
             kind: Kind::from_byte(packet[3]),
             data: &packet[4..data_end],
+        },
+        start + total,
+    ))
+}
+
+/// The extended form, from its mark on.
+fn read_long(rest: &[u8], check: Check, start: usize) -> Result<(Packet<'_>, usize), Error> {
+    // Mark, length, sequence, type, two length characters, header check.
+    const HEADER: usize = 7;
+    if rest.len() < HEADER {
+        return Err(Error::Incomplete);
+    }
+    if Check::One.of(&rest[1..6])[0] != rest[6] {
+        return Err(Error::BadCheck);
+    }
+    let n = usize::from(unchar(rest[4])) * 95 + usize::from(unchar(rest[5]));
+    // C-Kermit goes one over here as it does with short packets: offered
+    // 9024 and sending with the CRC, it sends 9025, the high digit travelling
+    // as DEL (C-Kermit 10.0 Beta.12, a 200 KB file, its tenth data packet).
+    // One over is read, as 95 is; nothing more.
+    if n > MAX_LONG + 1 {
+        return Err(Error::TooLong);
+    }
+    if n < check.chars() {
+        return Err(Error::BadCheck);
+    }
+    let total = HEADER + n;
+    if rest.len() < total {
+        return Err(Error::Incomplete);
+    }
+    let packet = &rest[..total];
+    let data_end = total - check.chars();
+    if packet[data_end..] != check.of(&packet[1..data_end])[..] {
+        return Err(Error::BadCheck);
+    }
+    Ok((
+        Packet {
+            sequence: unchar(packet[2]),
+            kind: Kind::from_byte(packet[3]),
+            data: &packet[HEADER..data_end],
         },
         start + total,
     ))
@@ -512,6 +587,90 @@ mod tests {
         assert_eq!(unchar(wire[1]), MAX_COUNT, "the length is at its limit");
         let (read_back, _) = read(&wire, Check::One, MARK).expect("still a packet");
         assert_eq!(read_back.data, &full[..]);
+    }
+
+    #[test]
+    fn a_long_packet_reads_back_as_it_was_built() {
+        for len in [92, 200, 1000, 3999, MAX_LONG - 3] {
+            let data: Vec<u8> = (0..len).map(|i| b' ' + (i % 90) as u8).collect();
+            for check in [Check::One, Check::Two, Check::Three] {
+                let sent = Packet {
+                    sequence: 5,
+                    kind: Kind::Data,
+                    data: &data,
+                };
+                let wire = sent.build(check, MARK, Some(b'\r'));
+                if len > Packet::max_data(check) {
+                    assert_eq!(wire[1], b' ', "the extended form's length is nought");
+                }
+                let (read_back, used) =
+                    read(&wire, check, MARK).unwrap_or_else(|e| panic!("{len} {check:?}: {e:?}"));
+                assert_eq!(read_back, sent, "{len} {check:?}");
+                assert_eq!(used, wire.len() - 1);
+            }
+        }
+    }
+
+    /// Worked out by hand from the specification: 100 bytes of `x` in packet
+    /// 1 with the one-character check. The count is the data and the check,
+    /// 101, which is 1 × 95 + 6 and travels as `!&`; the header check covers
+    /// the space, `!`, `D`, `!` and `&` — 32, 33, 68, 33 and 38, summing to
+    /// 204, which folds to 207 and leaves 15, travelling as `/`.
+    #[test]
+    fn a_long_packet_is_built_as_the_specification_says() {
+        let data = [b'x'; 100];
+        let wire = Packet {
+            sequence: 1,
+            kind: Kind::Data,
+            data: &data,
+        }
+        .build(Check::One, MARK, None);
+        assert_eq!(&wire[..7], b"\x01 !D!&/");
+        assert_eq!(wire.len(), 7 + 100 + 1);
+    }
+
+    #[test]
+    fn a_long_packet_is_waited_for_and_a_damaged_one_refused() {
+        let data = [b'x'; 500];
+        let whole = Packet {
+            sequence: 3,
+            kind: Kind::Data,
+            data: &data,
+        }
+        .build(Check::Three, MARK, None);
+        for upto in [0, 3, 6, 7, 100, whole.len() - 1] {
+            assert_eq!(
+                read(&whole[..upto], Check::Three, MARK).map(|(_, u)| u),
+                Err(Error::Incomplete),
+                "{upto} bytes"
+            );
+        }
+        for at in 1..whole.len() {
+            let mut damaged = whole.clone();
+            damaged[at] ^= 0x01;
+            match read(&damaged, Check::Three, MARK) {
+                Err(Error::BadCheck | Error::Incomplete | Error::TooLong) => {}
+                other => panic!("a bit flipped at {at} was not noticed: {other:?}"),
+            }
+        }
+        // One over the most that can be offered, as C-Kermit sends it, is
+        // read; two over is refused.
+        for (n, readable) in [(MAX_LONG + 1, true), (MAX_LONG + 2, false)] {
+            let mut wire = vec![MARK, tochar(0), tochar(11), b'D'];
+            wire.extend([tochar((n / 95) as u8), tochar((n % 95) as u8)]);
+            wire.extend(Check::One.of(&wire[1..]));
+            wire.extend(std::iter::repeat_n(b'x', n - Check::Three.chars()));
+            wire.extend(Check::Three.of(&wire[1..]));
+            assert_eq!(read(&wire, Check::Three, MARK).is_ok(), readable, "{n}");
+        }
+        // A damaged length is caught by the header check at once, rather
+        // than waited on.
+        let mut long_length = whole.clone();
+        long_length[4] ^= 0x04;
+        assert_eq!(
+            read(&long_length[..20], Check::Three, MARK).map(|(_, u)| u),
+            Err(Error::BadCheck)
+        );
     }
 
     #[test]

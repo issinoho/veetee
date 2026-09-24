@@ -167,6 +167,9 @@ struct Link {
     before: Params,
     /// Both ends offered attribute packets, so a sender sends them.
     attributes: bool,
+    /// Both ends offered long packets, and this is the longest the far end
+    /// will read.
+    long: Option<usize>,
     buffer: Vec<u8>,
     /// The last packet that might need sending again.
     last: Vec<u8>,
@@ -176,8 +179,8 @@ struct Link {
 }
 
 /// Past this, bytes that have not made a packet are noise: a packet is never
-/// more than a hundred.
-const MOST_BUFFERED: usize = 4096;
+/// more than a long packet's 9024 and its header.
+const MOST_BUFFERED: usize = 2 * crate::MAX_LONG + 64;
 
 impl Link {
     fn new(settings: &Settings) -> Link {
@@ -186,6 +189,7 @@ impl Link {
             agreed: None,
             before: Params::default(),
             attributes: false,
+            long: None,
             buffer: Vec::new(),
             last: Vec::new(),
             retries: 0,
@@ -197,6 +201,7 @@ impl Link {
     fn agree(&mut self, theirs: &Params) {
         self.attributes = attributes::offered(&self.ours.capabilities)
             && attributes::offered(&theirs.capabilities);
+        self.long = self.ours.long().and(theirs.long());
         let reading = Params::agreed(&self.ours, theirs);
         let mut sending = reading.clone();
         // Each end prefixes control characters with the character it named,
@@ -218,7 +223,14 @@ impl Link {
     }
 
     /// Room for data in a packet the far end can read.
+    ///
+    /// With long packets that is the far end's limit less the header and the
+    /// check, whichever way that limit is counted: a few characters short of
+    /// what it could take costs nothing, and one over would be refused.
     fn room(&self) -> usize {
+        if let Some(long) = self.long {
+            return long.saturating_sub(7 + self.check().chars());
+        }
         usize::from(self.sending().max_length).saturating_sub(2 + self.check().chars())
     }
 
@@ -618,6 +630,11 @@ impl Receiver {
     }
 }
 
+/// Where a sender's packets start when long packets are agreed, and the
+/// least it halves them to.
+const FIRST_SIZE: usize = 250;
+const LEAST_SIZE: usize = 80;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Sending {
     SendInit,
@@ -645,6 +662,13 @@ pub struct Sender {
     eof: bool,
     /// The end of this file was sent marked discard.
     discarding: bool,
+    /// How much data to put in the next packet, where long packets were
+    /// agreed: it starts small, doubles with every packet that gets through
+    /// and halves with every one sent again, so a slow or noisy line settles
+    /// on what it can carry. A packet of 9 KB takes nine seconds on a line at
+    /// 9600 baud, which is most of a host's timeout, and at 2400 could never
+    /// arrive in time. C-Kermit does the same, from 253 up.
+    size: usize,
     cancelling: bool,
     status: Status,
     progress: Progress,
@@ -664,6 +688,7 @@ impl Sender {
             mode,
             eof: false,
             discarding: false,
+            size: FIRST_SIZE,
             cancelling: false,
             status: Status::Running,
             progress: Progress::default(),
@@ -754,6 +779,7 @@ impl Sender {
     }
 
     fn again(&mut self, now: Instant) -> Vec<u8> {
+        self.size = (self.size / 2).max(LEAST_SIZE);
         if self.link.retry(now) {
             return self.link.last.clone();
         }
@@ -863,7 +889,13 @@ impl Sender {
     }
 
     fn send_data(&mut self, now: Instant, source: &mut dyn Source) -> Vec<u8> {
-        let room = self.link.room();
+        let room = if self.link.long.is_some() {
+            let room = self.link.room().min(self.size);
+            self.size = (self.size * 2).min(self.link.room());
+            room
+        } else {
+            self.link.room()
+        };
         // Read a packet's worth at a time, so the count of bytes sent is
         // never more than a packet ahead of what the far end has.
         let mut buf = vec![0u8; room.max(1)];
