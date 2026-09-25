@@ -197,7 +197,9 @@ rather than fixes; none of it was judged a reason to hold the release.
   line (TD/SMP, SSU).
 - **Indicator status line** field layout not yet checked against hardware; DECTST resets without a
   visible self-test.
-- **Printing**: printer controller and print screen data are swallowed; printing is post-1.0.
+- **Printing**: not yet available, and printer controller data is not swallowed as this said until
+  25 September 2026 but shown on the screen, because `CSI 5 i` is ignored. The plan is
+  [`printing.md`](printing.md).
 - **Hardware nobody here has.** RFC 2217 is proved against `ser2net`, and whether a DECserver,
   Lantronix or Moxa answers the option at all is unknown —
   [`rfc2217-testing.md`](rfc2217-testing.md) is written for whoever has one. Several details of
@@ -301,5 +303,8 @@ C-Kermit are GPL, so they are counterparties to test against and never a referen
 
 The lesson of LAT applies: a peer written here is too well behaved to find anything. The real
 Kermits found three faults the simulated line did not; KERMIT-32 on OpenVMS is the one left.
+
+Printing is planned in [`printing.md`](printing.md), from the printer functions in `vt-core` to
+PDF, a real printer, and acceptance on OpenVMS.
 
 An Android port is planned in outline in [`android.md`](android.md).
