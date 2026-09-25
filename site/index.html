@@ -419,7 +419,9 @@ footer p { margin: 0 0 8px; }
         <div class="feature"><span class="key"><small>DECCRA</small><strong>Rectangle</strong></span><h3>VT420 rectangles and pages</h3><p>Left/right margins, rectangular copy, fill, erase and attribute changes, checksums that match the hardware, page memory, macros and state reports.</p></div>
         <div class="feature"><span class="key light"><small>F4</small><strong>Session</strong></span><h3>Dual sessions</h3><p>Two independent sessions in a split window, just like a VT520 on two comm lines. The host can name each session and make it active.</p></div>
         <div class="feature"><span class="key gold"><small>F5</small><strong>Break</strong></span><h3>Telnet, SSH, serial and LAT</h3><p>Native Telnet with BREAK and RFC 2217 line control for terminal servers, SSH through your OpenSSH setup, and serial lines at DEC factory defaults (9600 8N1 XON/XOFF), on Linux and on Windows COM ports. On Linux there is LAT as well, DEC's own protocol straight on Ethernet: find the nodes announcing themselves and open a session, which OpenVMS sets up as a VT420.</p></div>
-        <div class="feature"><span class="key"><small>F1</small><strong>Hold Screen</strong></span><h3>Power-user touches</h3><p>Saved connections, session logs with timestamps, a searchable scrollback, screen reader support, copy and paste that translate DEC characters, Hold Screen with real flow control, a visual LK401 keymap editor, VT520 key programming and session recordings that replay as tests.</p></div>
+        <div class="feature"><span class="key light"><small>SEND</small><strong>Kermit</strong></span><h3>Kermit file transfer</h3><p>Send File and Receive File over any connection — Telnet, SSH, serial or LAT — to the host's own Kermit, with text or binary agreed file by file, CRC checks and long packets. Proved against C-Kermit on OpenVMS, and scriptable with <code>vt-headless kermit</code>.</p></div>
+        <div class="feature"><span class="key gold"><small>F2</small><strong>Print Screen</strong></span><h3>A printer port</h3><p>Print Screen, auto print and printer controller mode, as a VT420 has them: what the host prints on the printer at your desk becomes a PDF, or goes to a real printer through CUPS or Windows printing, chosen once.</p></div>
+        <div class="feature"><span class="key"><small>F1</small><strong>Hold Screen</strong></span><h3>Power-user touches</h3><p>Saved connections with a default to open at start, session logs with timestamps, a searchable scrollback, screen reader support, copy and paste that translate DEC characters, Hold Screen with real flow control, a visual LK401 keymap editor, VT520 key programming and session recordings that replay as tests.</p></div>
         <div class="feature"><span class="key gold"><small>F3</small><strong>Set-Up</strong></span><h3>Set-Up, as DEC built it</h3><p>The VT420 Set-Up Directory and its screens, or on a VT520 the pull-right menus and summary line, with Save, Recall and Default. Saved settings are the power-up settings, and Display Controls shows exactly what the host sends.</p></div>
         <div class="feature"><span class="key"><small>BEL</small><strong>Bell</strong></span><h3>Sound and motion</h3><p>Keyclick, warning and margin bells and DECPS tunes at the Set-Up volumes; smooth scroll at DEC speed with flow control; a CRT saver that blanks an idle screen.</p></div>
         <div class="feature"><span class="key light"><small>SET TERM</small><strong>Inquire</strong></span><h3>Honest identity</h3><p>Device attributes, mode reports, DECRQSS and terminal state reports answer as the chosen model, so <code>SET TERMINAL/INQUIRE</code> sees the terminal you picked.</p></div>
@@ -531,7 +533,7 @@ $ cd veetee && cargo run --release -p veetee</div>
   <section id="roadmap" style="background:var(--ink-2)">
     <div class="wrap">
       <p class="eyebrow">Roadmap</p>
-      <h2>The road to 1.0.</h2>
+      <h2>The road to 1.0, and since.</h2>
       <p class="lead">One milestone per minor release. Lit means shipped.</p>
       <div class="leds">
         <div class="milestone done"><span class="dot"></span><div><b>M0 · Foundations</b><span>Parser, CI, fuzzing, headless driver</span></div></div>
@@ -543,6 +545,7 @@ $ cd veetee && cargo run --release -p veetee</div>
         <div class="milestone done"><span class="dot"></span><div><b>M6 · Keyboard &amp; apps</b><span>Keymap editor, key programming, recordings · 0.6.0</span></div></div>
         <div class="milestone done"><span class="dot"></span><div><b>M7 · Fonts &amp; look</b><span>DEC-cell fonts, Set-Up, sound, CRT · 0.7.1</span></div></div>
         <div class="milestone done"><span class="dot"></span><div><b>M8 · 1.0</b><span>Connections, logs, search, screen readers, Flatpak, signed Windows builds ✓ · 1.0.0</span></div></div>
+        <div class="milestone done"><span class="dot"></span><div><b>Since 1.0</b><span>Default connection · 1.2.0 · Kermit file transfer · 1.3.0 · LAT that survives lost frames, long packets · 1.4.0 · Printing, XOFF from the host · 1.5.0</span></div></div>
       </div>
     </div>
   </section>

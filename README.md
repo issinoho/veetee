@@ -187,6 +187,10 @@ host's character sets: line breaks become Return, other control characters are d
 characters the sets lack are replaced by the nearest ones they have (“quotes” and dashes by ASCII,
 ł by l, € by EUR), or `?`.
 
+A long paste stops when the host sends XOFF and goes on at XON, over Telnet, SSH and LAT as on a
+serial line, unless Set-Up's flow control is off. OpenVMS sends them only to a terminal set
+`SET TERMINAL/HOSTSYNC`; without it, a paste longer than the type-ahead buffer loses characters.
+
 ### Serial lines
 
 ```sh
@@ -265,6 +269,32 @@ it sends. A received name is made safe and
 never overwrites a file (`LOGIN.COM;3` arrives as `login.com`, or `login.1.com` if that is
 taken). `vt-headless kermit` alone lists the options. It is tested against C-Kermit and
 G-Kermit; the plan, and what is still to come, is in [docs/kermit.md](docs/kermit.md).
+
+### Printing
+
+veetee has the printer port a DEC terminal has. *Print to Folder…* in the window menu makes each
+print job a PDF in a folder (Documents until one is chosen); *Print to Printer…* picks a printer
+once, prints a test page, and from then on sends every job to it without a dialog — through CUPS
+on Linux, GTK printing on Windows. While either is chosen, the host is told a printer is ready
+(`CSI ? 15 n` answers `CSI ? 10 n`) and the indicator status line says *Printer: Ready*.
+
+F2 (*Print Screen*) prints the scrolling region, or the page with DECPEX set. The host can print
+the screen (`CSI i`), the cursor line (`CSI ? 1 i`), turn auto print on and off (`CSI ? 5 i`,
+`CSI ? 4 i`) and send text straight to the printer in printer controller mode (`CSI 5 i` …
+`CSI 4 i`), with the VT52 forms of each. From OpenVMS, a file prints on the printer at your desk
+with
+
+```
+$ esc[0,8]=27
+$ set terminal/nowrap/nobroadcast
+$ write sys$output esc+"[5i"
+$ type/nopage report.txt
+$ write sys$output esc+"[4i"
+$ set terminal/wrap/broadcast
+```
+
+An OpenVMS print queue does not go through a terminal; the wiki's *Printing* page shows how to
+point one at CUPS instead. The plan is in [docs/printing.md](docs/printing.md).
 
 ### Keyboard
 
