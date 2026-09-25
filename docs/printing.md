@@ -139,12 +139,22 @@ On MYI64, run by the user. Done so far (25 September 2026):
   a blank sheet — for CUPS's own banner page, and for a job that asks for no paper and gets the
   printer's photo paper. Written up on the wiki's Printing page.
 
-Still to do:
+- Print Screen (F2) in EVE: the whole page, status and message lines included — EVE sets no
+  scrolling region, so the region is the page.
+- Print Screen in MONITOR SYSTEM: the display as it stood at that refresh, its boxes as lines and
+  the free list bar as the checkerboard.
+- Print extent: with a scrolling region of lines 5 to 10 set from DCL, F2 printed those six lines;
+  with DECPEX set as well, the whole page. (The cursor left below the region stays on line 24,
+  so the session looks frozen until the region is reset — DEC behaviour, not a fault.)
+- Auto print from DCL: `DIRECTORY` and `SHOW TIME` in one PDF when auto print ended, the line the
+  first `[?5i` was typed on left out.
+- Print cursor line from DCL: the one line.
 
-- Print Screen from a full-screen application: EVE, MONITOR.
-- Auto print, and the DSR answer seen by an application that asks.
-- Whatever application on the system prints to the terminal's printer, if one does: ALL-IN-1 and
-  DECforms are the usual ones. 🔎 Not yet known what MYI64 has.
+Waiting for an application that does it — nothing known on MYI64 does (25 September 2026):
+
+- The DSR answer (`CSI ? 15 n`) seen by an application that asks; the answer itself is tested in
+  `vt-core`.
+- An application printing to the terminal's printer: ALL-IN-1 is the usual one.
 
 ## Decisions
 

@@ -199,8 +199,9 @@ rather than fixes; none of it was judged a reason to hold the release.
   visible self-test.
 - **Printing**: released in 1.5.0 ([`printing.md`](printing.md)). The terminal's printer
   functions, printing to PDF and printing to a real printer are done; passing a host's printer
-  data through untouched is optional, and acceptance against OpenVMS applications (Print Screen
-  in EVE and MONITOR, auto print) is still to finish.
+  data through untouched is optional. Accepted on OpenVMS (every printer function, from DCL and
+  in EVE and MONITOR); an application that prints to the terminal's printer, such as ALL-IN-1,
+  is waited for.
 - **Hardware nobody here has.** RFC 2217 is proved against `ser2net`, and whether a DECserver,
   Lantronix or Moxa answers the option at all is unknown —
   [`rfc2217-testing.md`](rfc2217-testing.md) is written for whoever has one. Several details of
@@ -312,7 +313,7 @@ The lesson of LAT applies: a peer written here is too well behaved to find anyth
 Kermits found three faults the simulated line did not; KERMIT-32 on OpenVMS is the one left.
 
 Printing came in 1.5.0: the printer functions in `vt-core`, and print jobs to a PDF or a real
-printer. The plan, and the acceptance on OpenVMS still to finish, are in
+printer. The plan, and its acceptance on OpenVMS, are in
 [`printing.md`](printing.md).
 
 An Android port is planned in outline in [`android.md`](android.md).
