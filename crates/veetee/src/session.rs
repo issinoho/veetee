@@ -12,6 +12,7 @@ use vt_core::recording::Recorder;
 use vt_core::{Config, Event, Key, Terminal};
 use vt_kermit::files::Transfer;
 use vt_kermit::{Progress, Status};
+use vt_transport::serial::Line;
 use vt_transport::{Transport, TransportWriter};
 
 /// Notifications from the I/O thread to the UI.
@@ -33,6 +34,10 @@ pub enum Notice {
     Flow(bool),
     /// Something for the printer, from the host or from the screen.
     Print(vt_core::PrintJob),
+    /// The line was set anew, from Set-Up or by the host (DECSCS, DECSPP,
+    /// DECSFC); or, with the error, the port refused the new settings and
+    /// the line is as it was.
+    Line(Line, Option<String>),
 }
 
 /// Where and how to record a session.
@@ -83,6 +88,16 @@ struct Shared {
     /// What would have gone waits in `queued`, in order.
     stopped: AtomicBool,
     queued: Mutex<Vec<u8>>,
+    /// A serial line, or a terminal server's line by RFC 2217: what is set
+    /// on it, and what Set-Up said when it was set (docs/serial-setup.md).
+    line: Mutex<Option<LineState>>,
+}
+
+struct LineState {
+    /// The settings on the line.
+    current: Line,
+    /// The line as Set-Up described it when last compared.
+    setup: Line,
 }
 
 /// Where a Kermit transfer has got to, for the UI.
@@ -125,8 +140,22 @@ impl Session {
             printer: crate::printing::load().attached(),
             ..config
         };
+        let model = config.model;
         let mut term = Terminal::new(config);
         term.set_capture(logger.as_ref().is_some_and(|l| !l.is_raw()));
+        // The line as the connection set it — from the command line, the
+        // saved connection or Set-Up — is shown in Set-Up and becomes the
+        // power-up setting for this session, so a reset keeps it.
+        let line = transport.line().map(|current| {
+            let mut features = term.setup_features();
+            crate::line::put(&current, &mut features);
+            term.apply_setup_features(&features);
+            term.save_setup_features();
+            LineState {
+                current,
+                setup: crate::line::of(model, &term.setup_features()),
+            }
+        });
         let (tx, rx) = async_channel::unbounded();
         let flow_in_band = transport.flow_in_band();
         let shared = Arc::new(Shared {
@@ -143,6 +172,7 @@ impl Session {
             flow_in_band,
             stopped: AtomicBool::new(false),
             queued: Mutex::new(Vec::new()),
+            line: Mutex::new(line),
         });
         let session = Session {
             shared: shared.clone(),
@@ -231,6 +261,11 @@ impl Session {
     }
 
     /// The Print Screen key.
+    /// Set-Up was left, or its settings recalled: the line follows it.
+    pub fn setup_changed(&self) {
+        set_line(&self.shared, &self.notices);
+    }
+
     pub fn print_screen(&self) {
         self.terminal().print_screen();
     }
@@ -402,6 +437,46 @@ impl Session {
         }
         // Local echo may have changed the screen.
         request_redraw(&self.shared, &self.notices);
+    }
+}
+
+/// Sets the line anew when Set-Up's description of it has changed — in
+/// Set-Up, or by the host — as leaving Communications Set-Up does on the
+/// terminal. Only what changed in Set-Up changes on the line. A setting the
+/// port refuses leaves the line as it was, and Set-Up is put back to show it.
+fn set_line(shared: &Shared, tx: &async_channel::Sender<Notice>) {
+    let mut slot = shared.line.lock().unwrap_or_else(|e| e.into_inner());
+    let Some(state) = slot.as_mut() else { return };
+    let now = {
+        let term = shared.term.lock().unwrap_or_else(|e| e.into_inner());
+        crate::line::of(term.config().model, &term.setup_features())
+    };
+    if now == state.setup {
+        return;
+    }
+    let wanted = crate::line::changed(&state.setup, &now, &state.current);
+    state.setup = now;
+    if wanted == state.current {
+        return;
+    }
+    let result = shared
+        .writer
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .set_line(&wanted);
+    match result {
+        Ok(()) => {
+            state.current = wanted;
+            let _ = tx.try_send(Notice::Line(wanted, None));
+        }
+        Err(e) => {
+            let mut term = shared.term.lock().unwrap_or_else(|e| e.into_inner());
+            let mut features = term.setup_features();
+            crate::line::put(&state.current, &mut features);
+            term.apply_setup_features(&features);
+            state.setup = crate::line::of(term.config().model, &term.setup_features());
+            let _ = tx.try_send(Notice::Line(state.current, Some(e.to_string())));
+        }
     }
 }
 
@@ -590,6 +665,10 @@ fn io_loop(
             };
             let busy = n > 0 || !step.reply.is_empty() || !step.events.is_empty();
             handle_step(&step, &shared, transport.as_mut(), &tx);
+            if n > 0 {
+                // DECSCS, DECSPP or DECSFC may have changed the line.
+                set_line(&shared, &tx);
+            }
             if busy {
                 request_redraw(&shared, &tx);
             }
@@ -959,5 +1038,194 @@ mod tests {
         assert_eq!(screen, ["before", "after"], "and no packets");
         drop(term);
         let _ = std::fs::remove_dir_all(dir);
+    }
+}
+
+#[cfg(test)]
+mod line_tests {
+    use super::*;
+    use std::sync::mpsc;
+
+    /// A serial port that records the settings put on it, and refuses
+    /// 115200 baud as an adapter might.
+    struct Port {
+        from_host: mpsc::Receiver<Vec<u8>>,
+        line: Line,
+        set: Arc<Mutex<Vec<Line>>>,
+    }
+
+    struct PortWriter(Arc<Mutex<Vec<Line>>>);
+
+    impl Write for PortWriter {
+        fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+            Ok(buf.len())
+        }
+        fn flush(&mut self) -> io::Result<()> {
+            Ok(())
+        }
+    }
+
+    impl TransportWriter for PortWriter {
+        fn set_line(&mut self, line: &Line) -> io::Result<()> {
+            if line.baud == 115_200 {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    "unsupported baud rate",
+                ));
+            }
+            self.0.lock().unwrap().push(*line);
+            Ok(())
+        }
+    }
+
+    impl Transport for Port {
+        fn read_timeout(&mut self, buf: &mut [u8], timeout: Duration) -> io::Result<usize> {
+            match self.from_host.recv_timeout(timeout) {
+                Ok(bytes) => {
+                    buf[..bytes.len()].copy_from_slice(&bytes);
+                    Ok(bytes.len())
+                }
+                Err(mpsc::RecvTimeoutError::Timeout) => Ok(0),
+                Err(mpsc::RecvTimeoutError::Disconnected) => {
+                    Err(io::Error::from(io::ErrorKind::UnexpectedEof))
+                }
+            }
+        }
+        fn writer(&self) -> io::Result<Box<dyn TransportWriter>> {
+            Ok(Box::new(PortWriter(self.set.clone())))
+        }
+        fn description(&self) -> String {
+            "port".into()
+        }
+        fn line(&self) -> Option<Line> {
+            Some(self.line)
+        }
+    }
+
+    type Set = Arc<Mutex<Vec<Line>>>;
+
+    fn open(
+        model: vt_core::Model,
+        line: Line,
+    ) -> (
+        Session,
+        async_channel::Receiver<Notice>,
+        mpsc::Sender<Vec<u8>>,
+        Set,
+    ) {
+        let (host, from_host) = mpsc::channel();
+        let set = Arc::new(Mutex::new(Vec::new()));
+        let port = Port {
+            from_host,
+            line,
+            set: set.clone(),
+        };
+        let config = Config {
+            model,
+            ..Config::default()
+        };
+        let (session, notices) = Session::start(config, Box::new(port), None, None).unwrap();
+        (session, notices, host, set)
+    }
+
+    /// Changes Set-Up as its screens would, then leaves it.
+    fn in_set_up(session: &Session, change: impl FnOnce(&mut vt_core::setup::Features)) {
+        {
+            let mut term = session.terminal();
+            let mut features = term.setup_features();
+            change(&mut features);
+            term.apply_setup_features(&features);
+        }
+        session.setup_changed();
+    }
+
+    fn line_notice(notices: &async_channel::Receiver<Notice>) -> (Line, Option<String>) {
+        loop {
+            match notices.recv_blocking() {
+                Ok(Notice::Line(line, error)) => return (line, error),
+                Ok(_) => {}
+                Err(_) => panic!("no line notice"),
+            }
+        }
+    }
+
+    #[test]
+    fn set_up_shows_the_line_the_connection_opened() {
+        let line = Line {
+            baud: 19200,
+            data_bits: 7,
+            parity: vt_transport::serial::Parity::Even,
+            ..Line::default()
+        };
+        let (session, _notices, _host, set) = open(vt_core::Model::Vt420, line);
+        let term = session.terminal();
+        let features = term.setup_features();
+        assert_eq!(features.transmit_speed, 19200);
+        assert!(features.seven_bit_data);
+        assert_eq!(
+            term.saved_setup_features().map(|f| f.transmit_speed),
+            Some(19200),
+            "the power-up setting too, so a reset keeps the line"
+        );
+        assert!(set.lock().unwrap().is_empty(), "nothing set yet");
+    }
+
+    #[test]
+    fn leaving_set_up_sets_the_line() {
+        let (session, notices, _host, set) = open(vt_core::Model::Vt420, Line::default());
+        in_set_up(&session, |f| f.transmit_speed = 19200);
+        let wanted = Line {
+            baud: 19200,
+            ..Line::default()
+        };
+        assert_eq!(set.lock().unwrap().as_slice(), [wanted]);
+        assert_eq!(line_notice(&notices), (wanted, None));
+        // Leaving Set-Up with nothing changed sets nothing.
+        session.setup_changed();
+        assert_eq!(set.lock().unwrap().len(), 1);
+    }
+
+    #[test]
+    fn the_host_sets_the_speed_with_decscs() {
+        let (_session, _notices, host, set) = open(vt_core::Model::Vt520, Line::default());
+        // DECSCS: communication line 1 at 38400 baud (EK-VT520-RM).
+        host.send(b"\x1b[1;8*r".to_vec()).unwrap();
+        let mut done = false;
+        for _ in 0..200 {
+            if set.lock().unwrap().last().map(|l| l.baud) == Some(38400) {
+                done = true;
+                break;
+            }
+            thread::sleep(Duration::from_millis(10));
+        }
+        assert!(done, "set: {:?}", set.lock().unwrap());
+    }
+
+    #[test]
+    fn a_setting_the_port_refuses_leaves_the_line_and_set_up_as_they_were() {
+        let (session, notices, _host, set) = open(vt_core::Model::Vt420, Line::default());
+        in_set_up(&session, |f| f.transmit_speed = 115_200);
+        assert!(set.lock().unwrap().is_empty());
+        let (line, error) = line_notice(&notices);
+        assert_eq!(line, Line::default());
+        assert!(error.is_some_and(|e| e.contains("unsupported")));
+        assert_eq!(session.terminal().setup_features().transmit_speed, 9600);
+    }
+
+    #[test]
+    fn a_speed_set_up_cannot_show_survives_another_change() {
+        let line = Line {
+            baud: 250_000,
+            ..Line::default()
+        };
+        let (session, _notices, _host, set) = open(vt_core::Model::Vt420, line);
+        in_set_up(&session, |f| f.two_stop_bits = true);
+        assert_eq!(
+            set.lock().unwrap().as_slice(),
+            [Line {
+                stop_bits: 2,
+                ..line
+            }]
+        );
     }
 }

@@ -8,6 +8,7 @@ mod connections;
 mod gl_loader;
 mod keymap_editor;
 mod keymaps;
+mod line;
 mod log;
 mod printing;
 mod profiles;

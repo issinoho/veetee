@@ -23,7 +23,7 @@ use windows_sys::Win32::Storage::FileSystem::{FILE_FLAG_OVERLAPPED, ReadFile, Wr
 use windows_sys::Win32::System::IO::{CancelIoEx, GetOverlappedResult, OVERLAPPED};
 use windows_sys::Win32::System::Threading::{CreateEventW, INFINITE, WaitForSingleObject};
 
-use super::{FlowControl, Parity, SerialConfig, invalid};
+use super::{FlowControl, Line, Parity, SerialConfig};
 
 /// An open serial port.
 #[derive(Debug)]
@@ -39,12 +39,7 @@ impl Serial {
     /// Opens and configures the port (`COM3`, or a `\\.\` device path) for
     /// exclusive use.
     pub fn open(config: SerialConfig) -> io::Result<Serial> {
-        if !(5..=8).contains(&config.data_bits) {
-            return Err(invalid("data bits must be 5 to 8"));
-        }
-        if !(1..=2).contains(&config.stop_bits) {
-            return Err(invalid("stop bits must be 1 or 2"));
-        }
+        config.line().check()?;
         let port = OpenOptions::new()
             .read(true)
             .write(true)
@@ -52,28 +47,8 @@ impl Serial {
             .custom_flags(FILE_FLAG_OVERLAPPED)
             .open(device_path(&config.device))
             .map_err(|e| io::Error::new(e.kind(), format!("{}: {e}", config.device.display())))?;
-        let handle = port.as_raw_handle() as HANDLE;
-
-        let mut dcb = DCB {
-            DCBlength: size_of::<DCB>() as u32,
-            ..DCB::default()
-        };
-        // SAFETY: `handle` is an open port and `dcb` is correctly sized.
-        if unsafe { GetCommState(handle, &mut dcb) } == 0 {
-            return Err(io::Error::last_os_error());
-        }
-        apply_line_settings(&config, &mut dcb);
-        // SAFETY: as above.
-        if unsafe { SetCommState(handle, &dcb) } == 0 {
-            return Err(io::Error::new(
-                io::ErrorKind::InvalidInput,
-                format!(
-                    "{}: {}",
-                    config.device.display(),
-                    io::Error::last_os_error()
-                ),
-            ));
-        }
+        set_comm_state(&port, &config.line())
+            .map_err(|e| io::Error::new(e.kind(), format!("{}: {e}", config.device.display())))?;
         Ok(Serial {
             port: Arc::new(port),
             config,
@@ -117,8 +92,30 @@ fn device_path(device: &std::path::Path) -> PathBuf {
     }
 }
 
+/// Puts `line` on the port, leaving it as it was if the port refuses.
+fn set_comm_state(port: &File, line: &Line) -> io::Result<()> {
+    let handle = port.as_raw_handle() as HANDLE;
+    let mut dcb = DCB {
+        DCBlength: size_of::<DCB>() as u32,
+        ..DCB::default()
+    };
+    // SAFETY: `handle` is an open port and `dcb` is correctly sized.
+    if unsafe { GetCommState(handle, &mut dcb) } == 0 {
+        return Err(io::Error::last_os_error());
+    }
+    apply_line_settings(line, &mut dcb);
+    // SAFETY: as above.
+    if unsafe { SetCommState(handle, &dcb) } == 0 {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            io::Error::last_os_error().to_string(),
+        ));
+    }
+    Ok(())
+}
+
 /// Sets binary mode and the line parameters in `dcb`.
-fn apply_line_settings(config: &SerialConfig, dcb: &mut DCB) {
+fn apply_line_settings(config: &Line, dcb: &mut DCB) {
     // DCB bit fields, least significant first.
     const BINARY: u32 = 1 << 0;
     const PARITY_CHECK: u32 = 1 << 1;
@@ -170,6 +167,8 @@ fn apply_line_settings(config: &SerialConfig, dcb: &mut DCB) {
     match config.flow {
         FlowControl::None => bits |= RTS_CONTROL_ENABLE,
         FlowControl::XonXoff => bits |= RTS_CONTROL_ENABLE | OUT_X | IN_X,
+        FlowControl::XonXoffTransmit => bits |= RTS_CONTROL_ENABLE | OUT_X,
+        FlowControl::XonXoffReceive => bits |= RTS_CONTROL_ENABLE | IN_X,
         FlowControl::RtsCts => bits |= OUTX_CTS_FLOW | RTS_CONTROL_HANDSHAKE,
     }
     dcb._bitfield = bits;
@@ -248,6 +247,10 @@ impl crate::Transport for Serial {
     fn description(&self) -> String {
         self.config.to_string()
     }
+
+    fn line(&self) -> Option<Line> {
+        Some(self.config.line())
+    }
 }
 
 struct SerialWriter {
@@ -285,6 +288,11 @@ impl crate::TransportWriter for SerialWriter {
         }
         Ok(())
     }
+
+    fn set_line(&mut self, line: &Line) -> io::Result<()> {
+        line.check()?;
+        set_comm_state(&self.port, line)
+    }
 }
 
 #[cfg(test)]
@@ -302,7 +310,7 @@ mod tests {
             flow: FlowControl::RtsCts,
             ..SerialConfig::new("COM3")
         };
-        apply_line_settings(&config, &mut dcb);
+        apply_line_settings(&config.line(), &mut dcb);
         assert_eq!((dcb.BaudRate, dcb.ByteSize), (19200, 7));
         assert_eq!((dcb.Parity, dcb.StopBits), (EVENPARITY, TWOSTOPBITS));
         assert_eq!(
@@ -311,8 +319,20 @@ mod tests {
             "binary, parity check, CTS flow"
         );
         assert_eq!(dcb._bitfield >> 12 & 0b11, 2, "RTS handshake");
-        apply_line_settings(&SerialConfig::new("COM3"), &mut dcb);
+        apply_line_settings(&Line::default(), &mut dcb);
         assert_ne!(dcb._bitfield & (1 << 8), 0, "XON/XOFF by default");
+        apply_line_settings(
+            &Line {
+                flow: FlowControl::XonXoffTransmit,
+                ..Line::default()
+            },
+            &mut dcb,
+        );
+        assert_eq!(
+            dcb._bitfield >> 8 & 0b11,
+            0b01,
+            "stops at the host's XOFF, sends none"
+        );
         assert_eq!(config.to_string(), "COM3 19200 7E2 RTS/CTS");
     }
 

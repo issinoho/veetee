@@ -5,7 +5,7 @@ use std::io;
 use vt_core::{Config, Model};
 use vt_transport::Transport;
 use vt_transport::pty::Pty;
-use vt_transport::serial::{FlowControl, Parity, Serial, SerialConfig};
+use vt_transport::serial::{Line, Serial, SerialConfig};
 use vt_transport::ssh::{self, SshConfig};
 use vt_transport::telnet::{ComPort, Telnet, TelnetConfig};
 
@@ -42,8 +42,10 @@ options:
   --keymap FILE          PC-to-DEC keymap (default: the one saved from the Keyboard
                          Map window, else the built-in LK401 map)
 
-line options (picocom style; defaults are DEC factory Set-Up). With --serial they set
-the port; with --telnet they ask a terminal server for those settings (RFC 2217):
+line options (picocom style). With --serial they set the port; with --telnet they ask
+a terminal server for those settings (RFC 2217). What they leave out comes from the
+saved Communications Set-Up, else DEC's factory settings (shown); Set-Up changes the
+line while connected:
   -b, --baud RATE        bits per second (9600)
   -d, --databits N       5, 6, 7 or 8 (8)
   -p, --parity P         n none, e even, o odd, m mark, s space (n)
@@ -137,14 +139,33 @@ pub enum Parsed {
 }
 
 pub fn parse_args(args: impl Iterator<Item = String>) -> Result<Parsed, String> {
-    parse_args_with(args, crate::profiles::find, || {
-        // A file that cannot be read must not keep a terminal from opening, but
-        // it should not go unremarked either: the default is not being used.
-        crate::profiles::default_name().unwrap_or_else(|e| {
-            eprintln!("veetee: {e}\nveetee: opening your login shell instead");
-            None
-        })
-    })
+    parse_args_with(
+        args,
+        crate::profiles::find,
+        || {
+            // A file that cannot be read must not keep a terminal from opening, but
+            // it should not go unremarked either: the default is not being used.
+            crate::profiles::default_name().unwrap_or_else(|e| {
+                eprintln!("veetee: {e}\nveetee: opening your login shell instead");
+                None
+            })
+        },
+        setup_line,
+    )
+}
+
+/// The line the model's saved Communications Set-Up describes, or its
+/// factory Set-Up where nothing is saved.
+fn setup_line(model: Model) -> Line {
+    let mut config = Config {
+        model,
+        ..Config::default()
+    };
+    crate::setup_store::load_into(&mut config, 1);
+    let features = config
+        .setup
+        .unwrap_or_else(|| vt_core::setup::Features::factory(model));
+    crate::line::of(model, &features)
 }
 
 /// Whether the arguments say what to connect to, or ask for something that
@@ -170,10 +191,14 @@ fn names_a_connection(args: &[String]) -> bool {
 
 /// Parses the arguments, looking up `--profile` with `find`. Where they name no
 /// connection, `default` gives the saved connection to start from instead.
+/// A serial line named here, or a terminal server's line asked for over
+/// Telnet, starts from `setup_line`, the model's saved Communications Set-Up,
+/// and the line options change it; a saved connection's line is its own.
 pub fn parse_args_with(
     args: impl Iterator<Item = String>,
     find: impl Fn(&str) -> Result<crate::profiles::Profile, String>,
     default: impl Fn() -> Option<String>,
+    setup_line: impl Fn(Model) -> Line,
 ) -> Result<Parsed, String> {
     let mut config = Config::default();
     let mut options = Options {
@@ -373,27 +398,27 @@ pub fn parse_args_with(
         }
     }
 
+    // The line: a saved connection's own, or else Set-Up's; then the options.
+    let named = chosen > 0;
     match &mut options.connection {
-        Connection::Serial(serial) => apply_line(
-            line,
-            &mut serial.baud,
-            &mut serial.data_bits,
-            &mut serial.parity,
-            &mut serial.stop_bits,
-            &mut serial.flow,
-        )?,
+        Connection::Serial(serial) => {
+            let mut port = if named {
+                setup_line(config.model)
+            } else {
+                serial.line()
+            };
+            apply_line(line, &mut port)?;
+            serial.set_line(port);
+        }
         // The same options over Telnet ask a terminal server for the line
         // settings with RFC 2217.
         Connection::Telnet { com_port, .. } if !line.is_empty() => {
-            let port = com_port.get_or_insert_with(ComPort::default);
-            apply_line(
-                line,
-                &mut port.baud,
-                &mut port.data_bits,
-                &mut port.parity,
-                &mut port.stop_bits,
-                &mut port.flow,
-            )?;
+            let mut port = match com_port {
+                Some(port) if !named => *port,
+                _ => setup_line(config.model),
+            };
+            apply_line(line, &mut port)?;
+            *com_port = Some(port);
         }
         _ if !line.is_empty() => {
             return Err("line options need --serial DEVICE or --telnet HOST".into());
@@ -427,25 +452,18 @@ fn split_host_port(spec: &str) -> Result<(String, Option<u16>), String> {
 
 /// Applies the picocom-style line options to a serial port or, over Telnet,
 /// to the settings asked of a terminal server.
-fn apply_line(
-    line: Vec<(String, String)>,
-    baud: &mut u32,
-    data_bits: &mut u8,
-    parity: &mut Parity,
-    stop_bits: &mut u8,
-    flow: &mut FlowControl,
-) -> Result<(), String> {
+fn apply_line(line: Vec<(String, String)>, port: &mut Line) -> Result<(), String> {
     for (flag, v) in line {
         let number = |v: &str| {
             v.parse::<u32>()
                 .map_err(|_| format!("{flag}: not a number: {v:?}"))
         };
         match flag.as_str() {
-            "-b" | "--baud" => *baud = number(&v)?,
-            "-d" | "--databits" => *data_bits = number(&v)? as u8,
-            "-p" | "--parity" => *parity = v.parse()?,
-            "-s" | "--stopbits" => *stop_bits = number(&v)? as u8,
-            _ => *flow = v.parse()?,
+            "-b" | "--baud" => port.baud = number(&v)?,
+            "-d" | "--databits" => port.data_bits = number(&v)? as u8,
+            "-p" | "--parity" => port.parity = v.parse()?,
+            "-s" | "--stopbits" => port.stop_bits = number(&v)? as u8,
+            _ => port.flow = v.parse()?,
         }
     }
     Ok(())
@@ -676,7 +694,8 @@ mod tests {
                 .ok_or_else(|| format!("no profile {name:?}"))
         };
         let default = || default.map(str::to_owned);
-        match parse_args_with(args.iter().map(|a| a.to_string()), find, default)? {
+        let setup = |_| Line::default();
+        match parse_args_with(args.iter().map(|a| a.to_string()), find, default, setup)? {
             Parsed::Run(c, o) => Ok((c.model, o)),
             _ => Err("not run".into()),
         }
@@ -746,7 +765,8 @@ mod tests {
             parse_args_with(
                 ["--help".to_string()].into_iter(),
                 |_| Err(String::new()),
-                || Some("x".into())
+                || Some("x".into()),
+                |_| Line::default()
             ),
             Ok(Parsed::Help)
         ));
@@ -884,6 +904,46 @@ mod tests {
             panic!()
         };
         assert_eq!(com_port, None);
+    }
+
+    #[test]
+    fn a_serial_line_starts_from_communications_set_up() {
+        let run = |args: &[&str]| {
+            let profiles = crate::profiles::parse(
+                "[[profile]]\nname = \"console\"\nconnection = \"serial\"\ndevice = \"/dev/ttyS1\"\nbaud = 4800\n",
+            )
+            .unwrap();
+            let find = |name: &str| {
+                profiles
+                    .iter()
+                    .find(|p| p.name == name)
+                    .cloned()
+                    .ok_or_else(|| format!("no profile {name:?}"))
+            };
+            // Saved Set-Up: 19200 baud, 7 bits, even parity.
+            let setup = |_| Line {
+                baud: 19200,
+                data_bits: 7,
+                parity: vt_transport::serial::Parity::Even,
+                ..Line::default()
+            };
+            match parse_args_with(args.iter().map(|a| a.to_string()), find, || None, setup) {
+                Ok(Parsed::Run(_, o)) => o.connection.label(),
+                _ => panic!("not run"),
+            }
+        };
+        assert_eq!(run(&["--serial", "/dev/ttyS0"]), "/dev/ttyS0 19200 7E1");
+        // An option changes what it names, and Set-Up gives the rest.
+        assert_eq!(
+            run(&["--serial", "/dev/ttyS0", "-b", "38400"]),
+            "/dev/ttyS0 38400 7E1"
+        );
+        // A saved connection keeps its own line.
+        assert_eq!(run(&["--profile", "console"]), "/dev/ttyS1 4800 8N1");
+        assert_eq!(
+            run(&["--profile", "console", "-p", "o"]),
+            "/dev/ttyS1 4800 8O1"
+        );
     }
 
     #[test]

@@ -198,8 +198,13 @@ cargo run -p veetee -- --serial /dev/ttyUSB0                          # 9600 8N1
 cargo run -p veetee -- --serial /dev/ttyUSB0 -b 9600 -d 8 -p n -s 1 -f n   # picocom-style options
 ```
 
-Defaults are the DEC factory Set-Up values: 9600 baud, 8 data bits, no parity, 1 stop bit,
-XON/XOFF flow control. `-f h` selects RTS/CTS. F5 sends a line break; F1 (Hold Screen) stops
+The line comes from Communications Set-Up, as on the terminal: the saved Set-Up (F3, then Save),
+else the DEC factory values — 9600 baud, 8 data bits, no parity, 1 stop bit, XON/XOFF flow
+control. The options change what they name for that connection, and a saved connection keeps its
+own line; either way Set-Up shows what the line is doing. Leaving Set-Up with a new speed, data
+format or flow control changes the line at once, as the host can on the VT500 models with
+DECSCS, DECSPP and DECSFC, and the window's subtitle follows. `-f h` selects RTS/CTS, which is
+also what Set-Up's DSR and DTR flow control use. F5 sends a line break; F1 (Hold Screen) stops
 reading so the line is flow-controlled. The port is opened for exclusive use; add yourself to the
 `dialout` group (`sudo usermod -aG dialout $USER`, then log in again) rather than running as root.
 

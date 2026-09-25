@@ -89,7 +89,7 @@ pub struct Workspace {
     paned: gtk::Paned,
     config: Config,
     options: Options,
-    base_subtitle: String,
+    base_subtitle: RefCell<String>,
     panes: RefCell<Vec<Rc<Pane>>>,
     active: Cell<u64>,
     next_id: Cell<u64>,
@@ -125,7 +125,7 @@ impl Workspace {
             paned,
             config,
             options,
-            base_subtitle,
+            base_subtitle: RefCell::new(base_subtitle),
             panes: RefCell::new(Vec::new()),
             active: Cell::new(0),
             next_id: Cell::new(1),
@@ -168,6 +168,23 @@ impl Workspace {
 
     fn notify(&self, msg: &str) {
         self.toasts.add_toast(adw::Toast::new(msg));
+    }
+
+    /// The line was set anew from Set-Up or by the host: a serial line's
+    /// settings are in the subtitle, and either way a message says so.
+    fn line_set(&self, line: vt_transport::serial::Line, error: Option<String>) {
+        match error {
+            Some(e) => self.notify(&format!("The line stays at {line}: {e}")),
+            None => self.notify(&format!("Line set to {line}")),
+        }
+        if let cli::Connection::Serial(serial) = &self.options.connection {
+            *self.base_subtitle.borrow_mut() = format!(
+                "{} · {} {line}",
+                cli::model_name(self.config.model),
+                serial.device.display()
+            );
+            self.refresh();
+        }
     }
 
     /// Adds a connected session to the window.
@@ -230,6 +247,14 @@ impl Workspace {
                 move |job: vt_core::PrintJob| {
                     if let Some(ws) = weak.upgrade() {
                         ws.print(id, job);
+                    }
+                }
+            }),
+            line: Box::new({
+                let weak = weak.clone();
+                move |line, error| {
+                    if let Some(ws) = weak.upgrade() {
+                        ws.line_set(line, error);
                     }
                 }
             }),
@@ -477,7 +502,7 @@ impl Workspace {
         self.title.set_title(window_title);
         self.window.set_title(Some(window_title));
         let status = active.status.borrow();
-        let mut subtitle = self.base_subtitle.clone();
+        let mut subtitle = self.base_subtitle.borrow().clone();
         if split {
             let n = panes.iter().position(|p| p.id == active.id).unwrap_or(0) + 1;
             subtitle.push_str(&format!(" · Session {n}"));

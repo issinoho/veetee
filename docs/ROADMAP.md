@@ -190,9 +190,10 @@ rather than fixes; none of it was judged a reason to hold the release.
 
 ### Limitations 1.0 ships with (from compat-matrix.md)
 
-- **Stored-only Set-Up settings**: serial line settings in Set-Up are not applied to `--serial`
-  connections; zero style, energy saver, host wake-up, overscan, transmit rate limits, modem
-  control and the compose/Alt/F5 key options are saved and reported but do not change behaviour.
+- **Stored-only Set-Up settings**: zero style, energy saver, host wake-up, overscan, transmit
+  rate limits, modem control, the receive speed and the compose/Alt/F5 key options are saved and
+  reported but do not change behaviour. Communications Set-Up sets the serial line from 1.6.0
+  ([`serial-setup.md`](serial-setup.md)).
 - **Sessions**: a window holds two sessions (a VT520 has four), with no session management over one
   line (TD/SMP, SSU).
 - **Indicator status line** field layout not yet checked against hardware; DECTST resets without a

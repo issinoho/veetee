@@ -38,6 +38,12 @@ pub trait Transport: Send {
     fn flow_in_band(&self) -> bool {
         false
     }
+
+    /// The line settings of a serial port, or those asked of a terminal
+    /// server with RFC 2217; `None` for a connection with no line to set.
+    fn line(&self) -> Option<serial::Line> {
+        None
+    }
 }
 
 /// Sending side of a [`Transport`].
@@ -47,6 +53,16 @@ pub trait TransportWriter: Write + Send {
         Err(io::Error::new(
             io::ErrorKind::Unsupported,
             "this connection has no break signal",
+        ))
+    }
+
+    /// Changes the line settings while connected, as leaving a DEC
+    /// terminal's Communications Set-Up does. A setting the port refuses
+    /// leaves the line as it was.
+    fn set_line(&mut self, _line: &serial::Line) -> io::Result<()> {
+        Err(io::Error::new(
+            io::ErrorKind::Unsupported,
+            "this connection has no line settings",
         ))
     }
 }

@@ -8,6 +8,17 @@ Before 1.0 the minor version followed the project milestones (0.3 = M3). The for
 
 ## [Unreleased]
 
+- **Communications Set-Up sets the serial line**, as it does on the terminal, where before its
+  speed, data format and flow control were saved and shown but acted on nothing. `--serial`
+  opens with the saved Set-Up (DEC's factory 9600 8N1 XON/XOFF where nothing is saved); the
+  line options, and a saved connection's own settings, still win for that connection, and Set-Up
+  shows the line as it is. Leaving Set-Up with new settings changes the line at once, and so do
+  the host's DECSCS, DECSPP and DECSFC on the VT500 models; a setting the port refuses leaves the
+  line as it was, with a message. Telnet to a terminal server with COM Port Control (RFC 2217)
+  follows Set-Up the same way. A VT420 set to *No XOFF* still stops at the host's XOFF, as the
+  terminal does. Set-Up's DSR and DTR flow control are RTS/CTS on the port; the receive speed and
+  XOFF threshold stay stored only (docs/serial-setup.md).
+
 ## [1.5.0] - 2026-09-25
 
 **Printing.** veetee now has the printer port a DEC terminal has, and OpenVMS already believed it

@@ -44,6 +44,8 @@ pub struct Callbacks {
     pub exited: Box<dyn Fn(Option<String>)>,
     /// Something for the printer.
     pub print: Box<dyn Fn(vt_core::PrintJob)>,
+    /// The line was set anew, or (with the error) the port refused it.
+    pub line: Box<dyn Fn(vt_transport::serial::Line, Option<String>)>,
 }
 
 /// The keymap shared by the views in a window.
@@ -1025,6 +1027,8 @@ impl TerminalView {
             let _ = term.take_output();
             term.on_line()
         };
+        // Leaving Communications Set-Up puts its settings on the line.
+        session.setup_changed();
         // Local keeps the host on hold.
         session.set_held(view.was_held || !on_line);
         let status = if view.was_held {
@@ -1118,6 +1122,7 @@ impl TerminalView {
                     Notice::Title(name) => (callbacks.title)(&name),
                     Notice::Activate => (callbacks.activate)(),
                     Notice::Print(job) => (callbacks.print)(job),
+                    Notice::Line(line, error) => (callbacks.line)(line, error),
                     // Hold Screen and Local say more about why nothing moves,
                     // so they keep the status while either is on.
                     Notice::Flow(stopped) => {

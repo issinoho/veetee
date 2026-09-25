@@ -29,8 +29,77 @@ pub enum Parity {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FlowControl {
     None,
+    /// Both ways: stops sending at the host's XOFF, and sends XOFF when the
+    /// port's buffer fills.
     XonXoff,
+    /// Stops sending at the host's XOFF but sends none: a VT420 whose
+    /// Communications Set-Up says No XOFF, which still honours the host's.
+    XonXoffTransmit,
+    /// Sends XOFF when the buffer fills but does not stop at the host's (a
+    /// VT500 with transmit flow control off and receive XON/XOFF).
+    XonXoffReceive,
     RtsCts,
+}
+
+/// The settings of a line — speed, data format and flow control — apart
+/// from the port they are set on. The default is DEC's factory Set-Up.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Line {
+    pub baud: u32,
+    pub data_bits: u8,
+    pub parity: Parity,
+    pub stop_bits: u8,
+    pub flow: FlowControl,
+}
+
+impl Default for Line {
+    fn default() -> Line {
+        Line {
+            baud: 9600,
+            data_bits: 8,
+            parity: Parity::None,
+            stop_bits: 1,
+            flow: FlowControl::XonXoff,
+        }
+    }
+}
+
+impl Line {
+    /// Refuses a data format no port has.
+    pub fn check(&self) -> io::Result<()> {
+        if !(5..=8).contains(&self.data_bits) {
+            return Err(invalid("data bits must be 5 to 8"));
+        }
+        if !(1..=2).contains(&self.stop_bits) {
+            return Err(invalid("stop bits must be 1 or 2"));
+        }
+        Ok(())
+    }
+}
+
+impl fmt::Display for Line {
+    /// `9600 8N1`, plus the flow control when not XON/XOFF.
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let parity = match self.parity {
+            Parity::None => 'N',
+            Parity::Even => 'E',
+            Parity::Odd => 'O',
+            Parity::Mark => 'M',
+            Parity::Space => 'S',
+        };
+        write!(
+            f,
+            "{} {}{}{}",
+            self.baud, self.data_bits, parity, self.stop_bits
+        )?;
+        match self.flow {
+            FlowControl::XonXoff => Ok(()),
+            FlowControl::XonXoffTransmit => f.write_str(" XON/XOFF transmit only"),
+            FlowControl::XonXoffReceive => f.write_str(" XON/XOFF receive only"),
+            FlowControl::None => f.write_str(" no flow control"),
+            FlowControl::RtsCts => f.write_str(" RTS/CTS"),
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -46,41 +115,40 @@ pub struct SerialConfig {
 impl SerialConfig {
     /// A port with DEC factory settings.
     pub fn new(device: impl Into<PathBuf>) -> SerialConfig {
+        let line = Line::default();
         SerialConfig {
             device: device.into(),
-            baud: 9600,
-            data_bits: 8,
-            parity: Parity::None,
-            stop_bits: 1,
-            flow: FlowControl::XonXoff,
+            baud: line.baud,
+            data_bits: line.data_bits,
+            parity: line.parity,
+            stop_bits: line.stop_bits,
+            flow: line.flow,
         }
+    }
+
+    pub fn line(&self) -> Line {
+        Line {
+            baud: self.baud,
+            data_bits: self.data_bits,
+            parity: self.parity,
+            stop_bits: self.stop_bits,
+            flow: self.flow,
+        }
+    }
+
+    pub fn set_line(&mut self, line: Line) {
+        self.baud = line.baud;
+        self.data_bits = line.data_bits;
+        self.parity = line.parity;
+        self.stop_bits = line.stop_bits;
+        self.flow = line.flow;
     }
 }
 
 impl fmt::Display for SerialConfig {
     /// `/dev/ttyUSB0 9600 8N1`, plus the flow control when not XON/XOFF.
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let parity = match self.parity {
-            Parity::None => 'N',
-            Parity::Even => 'E',
-            Parity::Odd => 'O',
-            Parity::Mark => 'M',
-            Parity::Space => 'S',
-        };
-        write!(
-            f,
-            "{} {} {}{}{}",
-            self.device.display(),
-            self.baud,
-            self.data_bits,
-            parity,
-            self.stop_bits
-        )?;
-        match self.flow {
-            FlowControl::XonXoff => Ok(()),
-            FlowControl::None => f.write_str(" no flow control"),
-            FlowControl::RtsCts => f.write_str(" RTS/CTS"),
-        }
+        write!(f, "{} {}", self.device.display(), self.line())
     }
 }
 
@@ -101,11 +169,14 @@ impl FromStr for Parity {
 
 impl FromStr for FlowControl {
     type Err = String;
-    /// picocom style: `n` none, `x` XON/XOFF, `h` RTS/CTS hardware.
+    /// picocom style: `n` none, `x` XON/XOFF, `h` RTS/CTS hardware; and
+    /// `xt` and `xr` for XON/XOFF one way only, as Set-Up can choose.
     fn from_str(s: &str) -> Result<FlowControl, String> {
         Ok(match s.to_ascii_lowercase().as_str() {
             "n" | "none" => FlowControl::None,
             "x" | "xon" | "xonxoff" | "xoff" => FlowControl::XonXoff,
+            "xt" => FlowControl::XonXoffTransmit,
+            "xr" => FlowControl::XonXoffReceive,
             "h" | "rtscts" | "hardware" => FlowControl::RtsCts,
             _ => return Err(format!("unknown flow control {s:?} (use n, x or h)")),
         })

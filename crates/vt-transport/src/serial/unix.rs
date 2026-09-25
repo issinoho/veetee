@@ -11,7 +11,7 @@ use rustix::termios::{
     tcgetattr, tcsendbreak, tcsetattr,
 };
 
-use super::{FlowControl, Parity, SerialConfig, invalid};
+use super::{FlowControl, Line, Parity, SerialConfig, invalid};
 
 /// An open serial port.
 #[derive(Debug)]
@@ -23,12 +23,7 @@ pub struct Serial {
 impl Serial {
     /// Opens and configures the port. The port is claimed for exclusive use.
     pub fn open(config: SerialConfig) -> io::Result<Serial> {
-        if !(5..=8).contains(&config.data_bits) {
-            return Err(invalid("data bits must be 5 to 8"));
-        }
-        if !(1..=2).contains(&config.stop_bits) {
-            return Err(invalid("stop bits must be 1 or 2"));
-        }
+        config.line().check()?;
         let port = OpenOptions::new()
             .read(true)
             .write(true)
@@ -50,7 +45,7 @@ impl Serial {
         let _ = ioctl_tiocexcl(&port);
 
         let mut t = tcgetattr(&port)?;
-        apply_line_settings(&config, &mut t)?;
+        apply_line_settings(&config.line(), &mut t)?;
         tcsetattr(&port, OptionalActions::Now, &t)?;
         Ok(Serial { port, config })
     }
@@ -61,21 +56,21 @@ impl Serial {
 }
 
 /// Sets raw mode and the line parameters in `t`.
-fn apply_line_settings(config: &SerialConfig, t: &mut Termios) -> io::Result<()> {
+fn apply_line_settings(line: &Line, t: &mut Termios) -> io::Result<()> {
     t.make_raw();
-    t.set_speed(config.baud)
+    t.set_speed(line.baud)
         .map_err(|_| invalid("unsupported baud rate"))?;
     let mut c = t.control_modes;
     c.remove(ControlModes::CSIZE | ControlModes::PARENB | ControlModes::PARODD);
     c.remove(ControlModes::CMSPAR | ControlModes::CSTOPB | ControlModes::CRTSCTS);
     c.insert(ControlModes::CREAD | ControlModes::CLOCAL);
-    c.insert(match config.data_bits {
+    c.insert(match line.data_bits {
         5 => ControlModes::CS5,
         6 => ControlModes::CS6,
         7 => ControlModes::CS7,
         _ => ControlModes::CS8,
     });
-    match config.parity {
+    match line.parity {
         Parity::None => {}
         Parity::Even => c.insert(ControlModes::PARENB),
         Parity::Odd => c.insert(ControlModes::PARENB | ControlModes::PARODD),
@@ -84,14 +79,16 @@ fn apply_line_settings(config: &SerialConfig, t: &mut Termios) -> io::Result<()>
         }
         Parity::Space => c.insert(ControlModes::PARENB | ControlModes::CMSPAR),
     }
-    if config.stop_bits == 2 {
+    if line.stop_bits == 2 {
         c.insert(ControlModes::CSTOPB);
     }
     let mut i = t.input_modes;
     i.remove(InputModes::IXON | InputModes::IXOFF | InputModes::IXANY);
-    match config.flow {
+    match line.flow {
         FlowControl::None => {}
         FlowControl::XonXoff => i.insert(InputModes::IXON | InputModes::IXOFF),
+        FlowControl::XonXoffTransmit => i.insert(InputModes::IXON),
+        FlowControl::XonXoffReceive => i.insert(InputModes::IXOFF),
         FlowControl::RtsCts => c.insert(ControlModes::CRTSCTS),
     }
     t.control_modes = c;
@@ -135,6 +132,10 @@ impl crate::Transport for Serial {
     fn description(&self) -> String {
         self.config.to_string()
     }
+
+    fn line(&self) -> Option<Line> {
+        Some(self.config.line())
+    }
 }
 
 struct SerialWriter(File);
@@ -152,6 +153,15 @@ impl Write for SerialWriter {
 impl crate::TransportWriter for SerialWriter {
     fn send_break(&mut self) -> io::Result<()> {
         tcsendbreak(&self.0)?;
+        Ok(())
+    }
+
+    fn set_line(&mut self, line: &Line) -> io::Result<()> {
+        line.check()?;
+        let mut t = tcgetattr(&self.0)?;
+        apply_line_settings(line, &mut t)?;
+        // After what is already written has gone, at the old settings.
+        tcsetattr(&self.0, OptionalActions::Drain, &t)?;
         Ok(())
     }
 }
@@ -185,7 +195,7 @@ mod tests {
             flow: FlowControl::RtsCts,
             ..SerialConfig::new(&path)
         };
-        apply_line_settings(&config, &mut t).unwrap();
+        apply_line_settings(&config.line(), &mut t).unwrap();
         assert_eq!(t.input_speed(), 19200);
         let c = t.control_modes;
         assert!(c.contains(ControlModes::CS7 | ControlModes::PARENB | ControlModes::CSTOPB));
@@ -197,9 +207,9 @@ mod tests {
             format!("{} 19200 7E2 RTS/CTS", path.display())
         );
         apply_line_settings(
-            &SerialConfig {
+            &Line {
                 parity: Parity::Mark,
-                ..config
+                ..config.line()
             },
             &mut t,
         )
@@ -240,6 +250,38 @@ mod tests {
         let mut got = [0u8; 16];
         let n = master.read(&mut got).unwrap();
         assert_eq!(&got[..n], b"SYSTEM\r");
+    }
+
+    #[test]
+    fn the_line_changes_while_open() {
+        // As leaving Communications Set-Up with a new speed does.
+        let (_master, path) = loopback();
+        let serial = Serial::open(SerialConfig::new(&path)).unwrap();
+        let mut writer = serial.writer().unwrap();
+        writer
+            .set_line(&Line {
+                baud: 19200,
+                flow: FlowControl::XonXoffTransmit,
+                ..Line::default()
+            })
+            .unwrap();
+        let t = tcgetattr(&serial.port).unwrap();
+        assert_eq!(t.output_speed(), 19200);
+        assert!(t.input_modes.contains(InputModes::IXON));
+        assert!(
+            !t.input_modes.contains(InputModes::IXOFF),
+            "No XOFF: the port sends none"
+        );
+        // A format no port has is refused, and the line is left as it was.
+        assert!(
+            writer
+                .set_line(&Line {
+                    data_bits: 9,
+                    ..Line::default()
+                })
+                .is_err()
+        );
+        assert_eq!(tcgetattr(&serial.port).unwrap().output_speed(), 19200);
     }
 
     #[test]

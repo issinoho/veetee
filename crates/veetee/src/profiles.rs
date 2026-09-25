@@ -349,6 +349,8 @@ fn flow_name(flow: FlowControl) -> &'static str {
     match flow {
         FlowControl::None => "n",
         FlowControl::XonXoff => "x",
+        FlowControl::XonXoffTransmit => "xt",
+        FlowControl::XonXoffReceive => "xr",
         FlowControl::RtsCts => "h",
     }
 }
