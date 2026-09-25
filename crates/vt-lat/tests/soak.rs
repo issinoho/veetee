@@ -656,3 +656,44 @@ fn a_message_of_the_hosts_that_goes_missing_is_waited_for_and_read_in_its_place(
         stats.summary()
     );
 }
+
+#[test]
+fn a_kermit_packets_worth_goes_five_slots_to_a_message() {
+    let (mut session, mut host, mut data) = opened();
+    // The host prompts and grants a full allowance, as it does with room to
+    // spare, and then more as it reads.
+    let prompt = host.speak(b"$ ", 15).expect("credit at the start");
+    session.receive(&prompt, &mut data);
+    flush(&mut session, &mut host);
+    let grant = host.speak(b"", 3).expect("credit");
+    session.receive(&grant, &mut data);
+    flush(&mut session, &mut host);
+
+    let packet: Vec<u8> = (0..4000u32).map(|i| b' ' + (i % 90) as u8).collect();
+    session.write(&packet);
+    let frames = session.take_outgoing();
+    let slots: Vec<usize> = frames
+        .iter()
+        .filter_map(|frame| match vt_lat::parse(frame) {
+            Ok(Message::Run(run)) if !run.slots.is_empty() => Some(run.slots.len()),
+            _ => None,
+        })
+        .collect();
+    for frame in &frames {
+        assert!(frame.len() <= 1500, "a frame of {} bytes", frame.len());
+        host.hear(frame);
+    }
+    assert!(
+        slots.iter().all(|&n| n <= 5) && slots.iter().filter(|&&n| n == 5).count() >= 3,
+        "five slots to a message where the allowance covers them: {slots:?}"
+    );
+    assert_eq!(
+        slots.iter().sum::<usize>(),
+        16,
+        "4000 bytes is sixteen slots of 254 or less"
+    );
+    assert!(
+        host.typed.ends_with(&packet),
+        "and it arrives whole and in order"
+    );
+}

@@ -8,6 +8,9 @@ Before 1.0 the minor version followed the project milestones (0.3 = M3). The for
 
 ## [Unreleased]
 
+- **LAT sends up to five slots in a message**, as OpenVMS does, rather than one. At most sixteen
+  messages are left unacknowledged at once, so with one slot each no more than four kilobytes was
+  ever in flight, and a 20 MB Kermit transfer over LAT took 74 minutes.
 - **Fixed: a LAT session froze when one frame to the host was lost.** OpenVMS takes a circuit's
   messages only in order, so after a loss it went on acknowledging, alive, and discarded
   everything veetee sent. veetee never sent anything again, so the session stopped — within

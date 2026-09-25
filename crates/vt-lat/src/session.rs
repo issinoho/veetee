@@ -71,6 +71,11 @@ const WINDOW: usize = 16;
 /// stop the session dead, and losing a message is the lesser failure.
 const GAP_PATIENCE: usize = 8;
 
+/// The most slots of data in one message. Five of 254 bytes and their
+/// headers make about 1300 bytes, inside the 1500 each end says it can take
+/// in a frame; OpenVMS sends two in one message when it has that much.
+const SLOTS_PER_MESSAGE: usize = 5;
+
 /// The more telling of two things that happened while reading.
 fn combine(a: Event, b: Event) -> Event {
     match (a, b) {
@@ -386,12 +391,23 @@ impl Session {
             if self.kept.len() >= WINDOW {
                 return;
             }
-            if self.allowance < 1 && !std::mem::take(&mut forced) {
-                return;
+            // As many slots as the allowance covers go in one message, up to
+            // SLOTS_PER_MESSAGE; a forced send is one slot on its own.
+            let covered = usize::try_from(self.allowance.max(0)).unwrap_or(0);
+            let slots = if covered == 0 {
+                if !std::mem::take(&mut forced) {
+                    return;
+                }
+                1
+            } else {
+                covered.min(SLOTS_PER_MESSAGE)
+            };
+            let mut chunks = Vec::with_capacity(slots);
+            while chunks.len() < slots && !self.typed.is_empty() {
+                let take = self.typed.len().min(MAX_SLOT);
+                chunks.push(self.typed.drain(..take).collect::<Vec<u8>>());
             }
-            let take = self.typed.len().min(MAX_SLOT);
-            let chunk: Vec<u8> = self.typed.drain(..take).collect();
-            let frame = self.data_frame(&chunk);
+            let frame = self.data_frame(&chunks);
             self.outgoing.push(frame);
         }
     }
@@ -836,16 +852,28 @@ impl Session {
 
     /// A run message carrying one slot of session data, and any credit that
     /// has fallen due with it.
-    fn data_frame(&mut self, data: &[u8]) -> Vec<u8> {
+    ///
+    /// Several slots of data may go in one message, as OpenVMS sends them:
+    /// the window counts messages, so a message of one slot left most of it
+    /// empty, and a 20 MB transfer over LAT took 74 minutes with never more
+    /// than sixteen slots — four kilobytes — in flight. Credit is granted on
+    /// the first slot; each slot spends one of this end's allowance all the
+    /// same.
+    fn data_frame(&mut self, chunks: &[Vec<u8>]) -> Vec<u8> {
         // Type zero is session data, against SLOT_START for the slot that
         // asks for a service; the low nibble is what the far end may spend.
-        let control = SLOT_DATA | self.grant();
-        self.slot_frame(&[Slot {
-            to: self.remote_slot,
-            from: self.local_slot,
-            control,
-            data,
-        }])
+        let grant = self.grant();
+        let slots: Vec<Slot<'_>> = chunks
+            .iter()
+            .enumerate()
+            .map(|(i, data)| Slot {
+                to: self.remote_slot,
+                from: self.local_slot,
+                control: SLOT_DATA | if i == 0 { grant } else { 0 },
+                data,
+            })
+            .collect();
+        self.slot_frame(&slots)
     }
 
     /// Counts what the far end has spent, and grants more before it runs out.
