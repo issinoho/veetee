@@ -197,9 +197,10 @@ rather than fixes; none of it was judged a reason to hold the release.
   line (TD/SMP, SSU).
 - **Indicator status line** field layout not yet checked against hardware; DECTST resets without a
   visible self-test.
-- **Printing**: under way ([`printing.md`](printing.md)). The terminal's printer functions,
-  printing to PDF and printing to a real printer are done; passing a host's printer data through
-  untouched, and acceptance against OpenVMS applications, are still to come.
+- **Printing**: released in 1.5.0 ([`printing.md`](printing.md)). The terminal's printer
+  functions, printing to PDF and printing to a real printer are done; passing a host's printer
+  data through untouched is optional, and acceptance against OpenVMS applications (Print Screen
+  in EVE and MONITOR, auto print) is still to finish.
 - **Hardware nobody here has.** RFC 2217 is proved against `ser2net`, and whether a DECserver,
   Lantronix or Moxa answers the option at all is unknown —
   [`rfc2217-testing.md`](rfc2217-testing.md) is written for whoever has one. Several details of
@@ -276,8 +277,8 @@ from the host, so a long paste into OpenVMS with HOSTSYNC set no longer overruns
 
 ## After 1.0
 
-VT340 Sixel and ReGIS graphics, Tektronix 4010/4014, printer controller output to CUPS or PDF,
-X/Y/ZMODEM file transfer, scripting and macros. The parser already accepts and safely ignores
+VT340 Sixel and ReGIS graphics, Tektronix 4010/4014, X/Y/ZMODEM file transfer, scripting and
+macros. The parser already accepts and safely ignores
 their sequences.
 
 ### Kermit: released, acceptance under way
@@ -302,14 +303,16 @@ C-Kermit are GPL, so they are counterparties to test against and never a referen
 - **Long packets** (1.4.0): up to 9 KB where both ends offer them. 20 MB to OpenVMS over LAT takes
   16 minutes over Wi-Fi and 31 on the cable, the pace now the host's; over Telnet it is still to
   be timed.
-- **Open**: pasting faster than OpenVMS reads overruns its type-ahead buffer, where veetee should
-  honour XOFF.
+- **XOFF from the host** (1.5.0): pasting faster than OpenVMS reads overran its type-ahead buffer;
+  veetee now stops at XOFF and goes on at XON over Telnet, SSH and LAT, with the terminal set
+  `SET TERMINAL/HOSTSYNC`.
 - **Not supported**: sliding windows, so a far end offering them gets one packet at a time.
 
 The lesson of LAT applies: a peer written here is too well behaved to find anything. The real
 Kermits found three faults the simulated line did not; KERMIT-32 on OpenVMS is the one left.
 
-Printing is planned in [`printing.md`](printing.md), from the printer functions in `vt-core` to
-PDF, a real printer, and acceptance on OpenVMS.
+Printing came in 1.5.0: the printer functions in `vt-core`, and print jobs to a PDF or a real
+printer. The plan, and the acceptance on OpenVMS still to finish, are in
+[`printing.md`](printing.md).
 
 An Android port is planned in outline in [`android.md`](android.md).

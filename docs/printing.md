@@ -30,17 +30,19 @@ Printer Set-Up screens' *print mode*, *print extent*, *print terminator* and *pr
 
 ## Where it stands
 
-| Part | State |
-|---|---|
-| DSR printer status | Answers "no printer" (`CSI ? 13 n`) |
-| DECPFF, DECPEX | Kept and reported as modes, acted on by nothing |
-| Printer Set-Up screens and VT500 Printer menu | Settings kept and saved, acting on nothing |
-| Print Screen key (F2) | Shows "Printing is not available yet" |
-| `CSI … i` (Media Copy) | **Ignored — and so printer controller data appears on the screen.** Checked 25 September 2026: `CSI 5 i FOR THE PRINTER CSI 4 i` paints `FOR THE PRINTER`. The roadmap had said print data was swallowed; it is not. |
-| VT52 printer functions | Ignored, with the same result for `ESC W` |
+Released in 1.5.0 (P1 to P3); what follows is how it stood before, and now.
 
-The last two are a fault whatever else is done: a host that prints to the terminal's printer
-paints its print job over the screen. Fixing that is the first step.
+| Part | Before 1.5.0 | From 1.5.0 |
+|---|---|---|
+| DSR printer status | Answered "no printer" (`CSI ? 13 n`) | "Ready" (`CSI ? 10 n`) while a folder or printer is chosen, "no printer" where not |
+| DECPFF, DECPEX | Kept and reported, acted on by nothing | A form feed after Print Screen; the page rather than the scrolling region |
+| Printer Set-Up screens and VT500 Printer menu | Settings kept and saved, acting on nothing | Unchanged: print mode, extent and terminator come from the host's sequences |
+| Print Screen key (F2) | Showed "Printing is not available yet" | Prints the screen |
+| `CSI … i` (Media Copy) | **Ignored, so printer controller data appeared on the screen**: `CSI 5 i FOR THE PRINTER CSI 4 i` painted `FOR THE PRINTER` (checked 25 September 2026; the roadmap had said print data was swallowed) | Print screen, print cursor line, auto print and printer controller, each a print job; controller data never reaches the screen |
+| VT52 printer functions | Ignored, with the same result for `ESC W` | As the ANSI forms |
+
+Each print job goes to a PDF in a folder, or to a real printer chosen once (CUPS through `lp` on
+Linux, GTK printing on Windows).
 
 ## The plan
 
@@ -131,9 +133,14 @@ On MYI64, run by the user. Done so far (25 September 2026):
 - A line printed by DCL in printer controller mode came out on paper and not on the screen.
 - A whole file, printed with `LPRINT.COM` — `TYPE/NOPAGE` wrapped in `ESC [5i` … `ESC [4i`, the
   terminal set `/NOWRAP/NOBROADCAST` around it — the procedure on the wiki's Printing page.
+- Not veetee, but asked alongside: an OpenVMS **print queue** printing on the same printer, by
+  TCP/IP Services' LPD client to `cups-lpd` and CUPS. It needs `:sh:` in the printcap and
+  `-o job-sheets=none -o media=A4 -o media-type=stationery` on `cups-lpd`, or the printer feeds
+  a blank sheet — for CUPS's own banner page, and for a job that asks for no paper and gets the
+  printer's photo paper. Written up on the wiki's Printing page.
 
-- Printer controller from DCL: `WRITE SYS$OUTPUT` with `ESC [5i`, some lines, `ESC [4i` — the
-  lines reach the PDF and not the screen.
+Still to do:
+
 - Print Screen from a full-screen application: EVE, MONITOR.
 - Auto print, and the DSR answer seen by an application that asks.
 - Whatever application on the system prints to the terminal's printer, if one does: ALL-IN-1 and
