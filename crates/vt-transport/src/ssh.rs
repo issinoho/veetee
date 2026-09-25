@@ -52,6 +52,10 @@ pub fn connect(config: &SshConfig, rows: u16, cols: u16, term: &str) -> io::Resu
 }
 
 impl Transport for Ssh {
+    fn flow_in_band(&self) -> bool {
+        true
+    }
+
     fn read_timeout(&mut self, buf: &mut [u8], timeout: Duration) -> io::Result<usize> {
         self.pty.read_timeout(buf, timeout)
     }

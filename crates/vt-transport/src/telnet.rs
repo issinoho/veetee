@@ -488,6 +488,10 @@ impl Telnet {
 }
 
 impl crate::Transport for Telnet {
+    fn flow_in_band(&self) -> bool {
+        true
+    }
+
     fn read_timeout(&mut self, buf: &mut [u8], timeout: Duration) -> io::Result<usize> {
         // A zero timeout would mean "block forever" to the socket.
         let timeout = timeout.max(Duration::from_millis(1));

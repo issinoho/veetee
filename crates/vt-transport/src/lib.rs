@@ -27,6 +27,17 @@ pub trait Transport: Send {
 
     /// Short human-readable description, e.g. `/dev/ttyUSB0 9600 8N1`.
     fn description(&self) -> String;
+
+    /// Whether the host's XON and XOFF arrive in the data, for the terminal
+    /// to act on as a DEC terminal does. True of a network connection to a
+    /// host's terminal driver — Telnet, SSH, LAT — which is how OpenVMS asks
+    /// a terminal to stop sending when its type-ahead buffer is full. Not of
+    /// a serial line, whose driver acts on them and takes them out of the
+    /// data itself, nor of a local program on a pty, which has no line to
+    /// overrun and would stop the keyboard by printing a binary file.
+    fn flow_in_band(&self) -> bool {
+        false
+    }
 }
 
 /// Sending side of a [`Transport`].

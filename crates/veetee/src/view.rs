@@ -852,7 +852,13 @@ impl TerminalView {
             Local::HoldScreen => {
                 let held = !st.session.is_held();
                 st.session.set_held(held);
-                (st.callbacks.status)(if held { "Hold Screen" } else { "" });
+                (st.callbacks.status)(if held {
+                    "Hold Screen"
+                } else if st.session.is_stopped() {
+                    "XOFF from the host"
+                } else {
+                    ""
+                });
                 self.area.queue_render();
             }
             Local::Answerback => st.session.send_answerback(),
@@ -1017,6 +1023,8 @@ impl TerminalView {
             "Hold Screen"
         } else if !on_line {
             "Local"
+        } else if session.is_stopped() {
+            "XOFF from the host"
         } else {
             ""
         };
@@ -1101,6 +1109,14 @@ impl TerminalView {
                     }
                     Notice::Title(name) => (callbacks.title)(&name),
                     Notice::Activate => (callbacks.activate)(),
+                    // Hold Screen and Local say more about why nothing moves,
+                    // so they keep the status while either is on.
+                    Notice::Flow(stopped) => {
+                        let (held, on_line) = (session.is_held(), session.terminal().on_line());
+                        if !held && on_line {
+                            (callbacks.status)(if stopped { "XOFF from the host" } else { "" });
+                        }
+                    }
                     Notice::Exited(reason) => {
                         (callbacks.exited)(reason);
                         break;

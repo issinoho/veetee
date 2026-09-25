@@ -957,6 +957,10 @@ impl Lat {
 }
 
 impl crate::Transport for Lat {
+    fn flow_in_band(&self) -> bool {
+        true
+    }
+
     fn read_timeout(&mut self, buf: &mut [u8], timeout: Duration) -> io::Result<usize> {
         if self.unread() {
             return Ok(self.drain(buf));

@@ -8,6 +8,15 @@ Before 1.0 the minor version followed the project milestones (0.3 = M3). The for
 
 ## [Unreleased]
 
+- **XOFF from the host stops what veetee sends**, until XON, as a DEC terminal's does. OpenVMS
+  sends XOFF when its type-ahead buffer fills, and a paste of a few hundred characters at the DCL
+  prompt used to go on regardless and end in `DATAOVERUN`, the rest of it lost. Typing, pastes,
+  reports and Kermit packets now wait, in order, and the session's status says "XOFF from the
+  host" while they do. It applies over Telnet, SSH and LAT, where the host's XON and XOFF come in
+  the data; a serial line's driver already does it, and a local shell is left alone, since a
+  program printing a binary file would otherwise stop the keyboard. Set-Up's transmit flow
+  control (XON/XOFF from the factory) turns it off with *none*.
+
 ## [1.4.0] - 2026-09-25
 
 **Upgrade if you use LAT.** A LAT session in 1.3.0 froze for good the moment one frame to the

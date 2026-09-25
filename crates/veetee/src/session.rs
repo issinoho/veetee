@@ -28,6 +28,9 @@ pub enum Notice {
     SmoothScroll,
     /// The connection closed; the text says why when known.
     Exited(Option<String>),
+    /// The host said XOFF (true) or XON (false), stopping what the terminal
+    /// sends or letting it go.
+    Flow(bool),
 }
 
 /// Where and how to record a session.
@@ -71,6 +74,13 @@ struct Shared {
     /// host sends goes to it rather than the terminal, and typed keys are
     /// dropped. It stays here once finished until the UI takes it.
     transfer: Mutex<Option<Transfer>>,
+    /// Whether the host's XON and XOFF come in the data (see
+    /// [`Transport::flow_in_band`]).
+    flow_in_band: bool,
+    /// The host has sent XOFF: nothing is transmitted until it sends XON.
+    /// What would have gone waits in `queued`, in order.
+    stopped: AtomicBool,
+    queued: Mutex<Vec<u8>>,
 }
 
 /// Where a Kermit transfer has got to, for the UI.
@@ -110,6 +120,7 @@ impl Session {
         let mut term = Terminal::new(config);
         term.set_capture(logger.as_ref().is_some_and(|l| !l.is_raw()));
         let (tx, rx) = async_channel::unbounded();
+        let flow_in_band = transport.flow_in_band();
         let shared = Arc::new(Shared {
             writer: Mutex::new(transport.writer()?),
             term: Mutex::new(term),
@@ -121,6 +132,9 @@ impl Session {
             resume: Condvar::new(),
             closed: AtomicBool::new(false),
             transfer: Mutex::new(None),
+            flow_in_band,
+            stopped: AtomicBool::new(false),
+            queued: Mutex::new(Vec::new()),
         });
         let session = Session {
             shared: shared.clone(),
@@ -206,6 +220,11 @@ impl Session {
     pub fn send_break(&self) -> io::Result<()> {
         let mut writer = self.shared.writer.lock().unwrap_or_else(|e| e.into_inner());
         writer.send_break()
+    }
+
+    /// Whether the host has said XOFF, and what is sent is waiting for XON.
+    pub fn is_stopped(&self) -> bool {
+        self.shared.stopped.load(Ordering::Acquire)
     }
 
     pub fn is_held(&self) -> bool {
@@ -365,8 +384,7 @@ impl Session {
             }
         }
         record(&self.shared, |r| r.keys(bytes));
-        let mut writer = self.shared.writer.lock().unwrap_or_else(|e| e.into_inner());
-        if let Err(e) = writer.write_all(bytes) {
+        if let Err(e) = transmit(&self.shared, bytes) {
             let _ = self.notices.try_send(Notice::Exited(Some(e.to_string())));
         }
         // Local echo may have changed the screen.
@@ -381,9 +399,66 @@ fn write_line(shared: &Shared, bytes: &[u8]) {
         return;
     }
     record(shared, |r| r.reply(bytes));
-    let mut writer = shared.writer.lock().unwrap_or_else(|e| e.into_inner());
-    let _ = writer.write_all(bytes).and_then(|()| writer.flush());
+    let _ = transmit(shared, bytes);
 }
+
+/// Sends to the host, or, while it has said XOFF, queues in order to be sent
+/// when it says XON. Everything the terminal transmits goes this way —
+/// typing, pastes, reports and Kermit packets — and only Break does not,
+/// being a signal on the line rather than data.
+fn transmit(shared: &Shared, bytes: &[u8]) -> io::Result<()> {
+    let mut queued = shared.queued.lock().unwrap_or_else(|e| e.into_inner());
+    if shared.stopped.load(Ordering::Acquire) {
+        queued.extend_from_slice(bytes);
+        return Ok(());
+    }
+    let mut writer = shared.writer.lock().unwrap_or_else(|e| e.into_inner());
+    writer.write_all(bytes).and_then(|()| writer.flush())
+}
+
+/// Acts on XON and XOFF from the host, where they come in the data and
+/// Set-Up's transmit flow control is XON/XOFF, as it is from the factory.
+///
+/// A DEC terminal stops transmitting on XOFF and starts again on XON, and
+/// OpenVMS relies on it: its terminal driver sends XOFF when its type-ahead
+/// buffer fills, and a paste of a few hundred characters that went on
+/// regardless ended in `DATAOVERUN` with the rest of it lost. The two
+/// characters mean nothing to the display, and the parser ignores them.
+fn flow(shared: &Shared, bytes: &[u8], tx: &async_channel::Sender<Notice>) {
+    if !shared.flow_in_band || !bytes.iter().any(|&b| b == XON || b == XOFF) {
+        return;
+    }
+    let honoured = {
+        let term = shared.term.lock().unwrap_or_else(|e| e.into_inner());
+        term.setup_features().transmit_flow & 1 == 1
+    };
+    if !honoured {
+        return;
+    }
+    let was = shared.stopped.load(Ordering::Acquire);
+    for &byte in bytes {
+        match byte {
+            XOFF => shared.stopped.store(true, Ordering::Release),
+            XON => {
+                let mut queued = shared.queued.lock().unwrap_or_else(|e| e.into_inner());
+                shared.stopped.store(false, Ordering::Release);
+                if !queued.is_empty() {
+                    let mut writer = shared.writer.lock().unwrap_or_else(|e| e.into_inner());
+                    let _ = writer.write_all(&queued).and_then(|()| writer.flush());
+                    queued.clear();
+                }
+            }
+            _ => {}
+        }
+    }
+    let now = shared.stopped.load(Ordering::Acquire);
+    if now != was {
+        let _ = tx.try_send(Notice::Flow(now));
+    }
+}
+
+const XON: u8 = 0x11;
+const XOFF: u8 = 0x13;
 
 fn request_redraw(shared: &Shared, tx: &async_channel::Sender<Notice>) {
     if !shared.redraw_pending.swap(true, Ordering::AcqRel) {
@@ -449,6 +524,7 @@ fn io_loop(
         };
         if n > 0 {
             record(&shared, |r| r.host(&buf[..n]));
+            flow(&shared, &buf[..n], &tx);
         }
         // A transfer that wants the line has it: its packets are not for the
         // screen, and not text for the log. It is fed on every pass, whether
@@ -546,8 +622,7 @@ fn handle_step(
     }
     if !step.reply.is_empty() {
         record(shared, |r| r.reply(&step.reply));
-        let mut writer = shared.writer.lock().unwrap_or_else(|e| e.into_inner());
-        let _ = writer.write_all(&step.reply);
+        let _ = transmit(shared, &step.reply);
     }
     let volumes = step.volumes;
     for event in &step.events {
@@ -586,6 +661,136 @@ fn handle_step(
             Event::ScreenLinesChanged(_) | Event::IconNameChanged(_) => {}
             Event::LedsChanged(_) => {}
         }
+    }
+}
+
+#[cfg(test)]
+mod flow_tests {
+    use super::*;
+    use std::sync::mpsc;
+
+    /// A host that sends what the test gives it, and keeps what it is sent.
+    struct Scripted {
+        from_host: mpsc::Receiver<Vec<u8>>,
+        sent: Arc<Mutex<Vec<u8>>>,
+        in_band: bool,
+    }
+
+    struct Keeper(Arc<Mutex<Vec<u8>>>);
+
+    impl Write for Keeper {
+        fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+            self.0.lock().unwrap().extend_from_slice(buf);
+            Ok(buf.len())
+        }
+        fn flush(&mut self) -> io::Result<()> {
+            Ok(())
+        }
+    }
+
+    impl TransportWriter for Keeper {}
+
+    impl Transport for Scripted {
+        fn read_timeout(&mut self, buf: &mut [u8], timeout: Duration) -> io::Result<usize> {
+            match self.from_host.recv_timeout(timeout) {
+                Ok(bytes) => {
+                    buf[..bytes.len()].copy_from_slice(&bytes);
+                    Ok(bytes.len())
+                }
+                Err(mpsc::RecvTimeoutError::Timeout) => Ok(0),
+                Err(mpsc::RecvTimeoutError::Disconnected) => {
+                    Err(io::Error::from(io::ErrorKind::UnexpectedEof))
+                }
+            }
+        }
+        fn writer(&self) -> io::Result<Box<dyn TransportWriter>> {
+            Ok(Box::new(Keeper(self.sent.clone())))
+        }
+        fn description(&self) -> String {
+            "scripted".into()
+        }
+        fn flow_in_band(&self) -> bool {
+            self.in_band
+        }
+    }
+
+    /// What the host is sent, as the test sees it.
+    type Sent = Arc<Mutex<Vec<u8>>>;
+
+    fn connect(in_band: bool) -> (Session, mpsc::Sender<Vec<u8>>, Sent) {
+        let (host, from_host) = mpsc::channel();
+        let sent = Arc::new(Mutex::new(Vec::new()));
+        let transport = Scripted {
+            from_host,
+            sent: sent.clone(),
+            in_band,
+        };
+        let (session, _notices) =
+            Session::start(Config::default(), Box::new(transport), None, None).unwrap();
+        (session, host, sent)
+    }
+
+    fn until(what: impl Fn() -> bool) -> bool {
+        for _ in 0..200 {
+            if what() {
+                return true;
+            }
+            thread::sleep(Duration::from_millis(10));
+        }
+        false
+    }
+
+    #[test]
+    fn xoff_from_the_host_holds_what_is_typed_until_xon() {
+        let (session, host, sent) = connect(true);
+        host.send(b"$ \x13".to_vec()).unwrap();
+        assert!(until(|| session.is_stopped()), "XOFF read");
+        session.type_text("abc");
+        thread::sleep(Duration::from_millis(100));
+        assert!(
+            sent.lock().unwrap().is_empty(),
+            "nothing goes while stopped"
+        );
+        session.type_text("def");
+        host.send(b"\x11".to_vec()).unwrap();
+        assert!(
+            until(|| sent.lock().unwrap().as_slice() == b"abcdef"),
+            "all of it, in order, on XON"
+        );
+        assert!(!session.is_stopped());
+        session.type_text("g");
+        assert!(
+            until(|| sent.lock().unwrap().as_slice() == b"abcdefg"),
+            "and straight away after"
+        );
+    }
+
+    #[test]
+    fn a_connection_without_flow_in_the_data_ignores_it() {
+        // A local program printing a binary file would otherwise stop the
+        // keyboard.
+        let (session, host, sent) = connect(false);
+        host.send(b"\x13".to_vec()).unwrap();
+        thread::sleep(Duration::from_millis(100));
+        assert!(!session.is_stopped());
+        session.type_text("abc");
+        assert!(until(|| sent.lock().unwrap().as_slice() == b"abc"));
+    }
+
+    #[test]
+    fn set_up_with_no_transmit_flow_control_ignores_it() {
+        let (session, host, sent) = connect(true);
+        {
+            let mut term = session.terminal();
+            let mut features = term.setup_features();
+            features.transmit_flow = 0;
+            term.apply_setup_features(&features);
+        }
+        host.send(b"\x13".to_vec()).unwrap();
+        thread::sleep(Duration::from_millis(100));
+        assert!(!session.is_stopped());
+        session.type_text("abc");
+        assert!(until(|| sent.lock().unwrap().as_slice() == b"abc"));
     }
 }
 
