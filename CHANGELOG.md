@@ -13,7 +13,14 @@ Before 1.0 the minor version followed the project milestones (0.3 = M3). The for
   application printed on the user's printer — which OpenVMS believes veetee has, and lists as
   *Printer port* — was painted over the display. It now goes to the printer port and not the
   screen, as do print screen, print cursor line and auto print, in both their ANSI and VT52
-  forms. Nothing is printed on paper or to PDF yet; that comes next (`docs/printing.md`).
+  forms.
+- **Added: printing, to PDF.** Each print job — what the host prints on the terminal's printer,
+  or the screen, from the Print Screen key (F2) or *Print Screen* in the window menu — becomes a
+  PDF in your Documents folder, or wherever *Print to Folder…* says, and a message says where,
+  with a button to open it. The host is told a printer is ready, and the indicator status line
+  says so. What the host sends for a particular printer is read as a plain printer would read
+  it, its escape sequences passed over. Printing to a real printer comes next
+  (`docs/printing.md`).
 
 - **XOFF from the host stops what veetee sends**, until XON, as a DEC terminal's does. OpenVMS
   sends XOFF when its type-ahead buffer fills, and a paste of a few hundred characters at the DCL

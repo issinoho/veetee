@@ -13,6 +13,8 @@ async-channel = "2"
 cpal = "0.18"
 glow = "0.18"
 gtk = { version = "0.11", package = "gtk4", features = ["v4_14"] }
+# The same cairo GTK uses, with its PDF surface switched on: print jobs become PDFs.
+cairo = { version = "0.22", package = "cairo-rs", features = ["pdf"] }
 libloading = "0.9"
 serde = { version = "1", features = ["derive"] }
 toml = "1"

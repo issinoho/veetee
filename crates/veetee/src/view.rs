@@ -42,6 +42,8 @@ pub struct Callbacks {
     pub focused: Box<dyn Fn()>,
     /// The connection closed; the text says why when known.
     pub exited: Box<dyn Fn(Option<String>)>,
+    /// Something for the printer.
+    pub print: Box<dyn Fn(vt_core::PrintJob)>,
 }
 
 /// The keymap shared by the views in a window.
@@ -883,7 +885,13 @@ impl TerminalView {
                 Some(name) => (st.callbacks.notify)(&format!("Recorded checkpoint {name}")),
                 None => (st.callbacks.notify)("This session is not being recorded (--record FILE)"),
             },
-            Local::PrintScreen => (st.callbacks.notify)("Printing is not available yet"),
+            Local::PrintScreen => {
+                if st.session.terminal().config().printer {
+                    st.session.print_screen();
+                } else {
+                    (st.callbacks.notify)("No printer: choose Print to Folder in the window menu");
+                }
+            }
             Local::SwitchSession => {
                 let callbacks = st.callbacks.clone();
                 drop(st);
@@ -1109,6 +1117,7 @@ impl TerminalView {
                     }
                     Notice::Title(name) => (callbacks.title)(&name),
                     Notice::Activate => (callbacks.activate)(),
+                    Notice::Print(job) => (callbacks.print)(job),
                     // Hold Screen and Local say more about why nothing moves,
                     // so they keep the status while either is on.
                     Notice::Flow(stopped) => {
@@ -1166,7 +1175,11 @@ impl TerminalView {
 /// state on the left, page number and cursor position on the right.
 // 🔎 Field positions are approximate until checked against hardware.
 fn indicator_line(term: &vt_core::Terminal, held: bool, bell: bool) -> String {
-    let mut left = String::from(" Printer: None");
+    let mut left = String::from(if term.config().printer {
+        " Printer: Ready"
+    } else {
+        " Printer: None"
+    });
     if bell {
         left.push_str("   Bell");
     }

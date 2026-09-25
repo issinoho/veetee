@@ -230,6 +230,18 @@ impl Terminal {
         std::mem::take(&mut self.emu.output)
     }
 
+    /// The Print Screen key: the scrolling region or the page (DECPEX) to
+    /// the printer port, as [`Event::Print`].
+    pub fn print_screen(&mut self) {
+        self.emu.print_screen();
+    }
+
+    /// Whether something stands in for a printer, which decides what the
+    /// printer status report says.
+    pub fn set_printer(&mut self, attached: bool) {
+        self.emu.config.printer = attached;
+    }
+
     pub fn take_events(&mut self) -> Vec<Event> {
         std::mem::take(&mut self.emu.events)
     }

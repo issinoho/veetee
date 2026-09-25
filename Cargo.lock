@@ -1419,6 +1419,7 @@ name = "veetee"
 version = "1.4.0"
 dependencies = [
  "async-channel",
+ "cairo-rs",
  "cpal",
  "glow",
  "gtk4",

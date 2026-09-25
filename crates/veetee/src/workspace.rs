@@ -225,6 +225,14 @@ impl Workspace {
                     }
                 }
             }),
+            print: Box::new({
+                let weak = weak.clone();
+                move |job: vt_core::PrintJob| {
+                    if let Some(ws) = weak.upgrade() {
+                        ws.print(id, job);
+                    }
+                }
+            }),
         };
         let view = TerminalView::new(session, notices, callbacks, self.keymap.clone());
         view.set_theme(self.theme.borrow().clone());
@@ -620,6 +628,109 @@ impl Workspace {
             None => "This session is not being recorded (--record FILE)".into(),
         };
         self.notify(&message);
+    }
+
+    /// A print job, from the host or the screen: written as a PDF into the
+    /// printer folder, off the main thread, and a message says where.
+    fn print(self: &Rc<Self>, id: u64, job: vt_core::PrintJob) {
+        let Some(folder) = crate::printing::load().folder else {
+            return;
+        };
+        let name = self
+            .panes
+            .borrow()
+            .iter()
+            .find(|p| p.id == id)
+            .map(|p| p.name.borrow().clone())
+            .filter(|n| !n.is_empty())
+            .or_else(|| self.options.profile.clone())
+            .unwrap_or_else(|| "veetee".into());
+        let paper = crate::printing::paper();
+        let text = crate::printing::text_of(&job);
+        let (tx, rx) = async_channel::bounded(1);
+        std::thread::spawn(move || {
+            let _ = std::fs::create_dir_all(&folder);
+            let path = crate::printing::new_path(&folder, &name);
+            let written =
+                crate::printing::write_pdf(&text, &path, paper).map(|pages| (path, pages));
+            let _ = tx.send_blocking(written);
+        });
+        let weak = Rc::downgrade(self);
+        glib::spawn_future_local(async move {
+            let (Ok(written), Some(ws)) = (rx.recv().await, weak.upgrade()) else {
+                return;
+            };
+            match written {
+                Ok((path, pages)) => {
+                    let shown = path
+                        .file_name()
+                        .map_or_else(String::new, |n| n.to_string_lossy().into_owned());
+                    let toast = adw::Toast::builder()
+                        .title(glib::markup_escape_text(&format!(
+                            "Printed {shown}{}",
+                            if pages == 1 {
+                                String::new()
+                            } else {
+                                format!(", {pages} pages")
+                            }
+                        )))
+                        .button_label("Open")
+                        .build();
+                    let window = ws.window.clone();
+                    toast.connect_button_clicked(move |_| {
+                        gtk::FileLauncher::new(Some(&gtk::gio::File::for_path(&path))).launch(
+                            Some(&window),
+                            gtk::gio::Cancellable::NONE,
+                            |_| {},
+                        );
+                    });
+                    ws.toasts.add_toast(toast);
+                }
+                Err(e) => ws.notify(&format!("Cannot print: {e}")),
+            }
+        });
+    }
+
+    /// Print Screen from the window menu, for the active session.
+    pub fn print_screen(&self) {
+        let Some(pane) = self.active_pane() else {
+            return;
+        };
+        if crate::printing::load().folder.is_none() {
+            self.notify("No printer: choose Print to Folder in the window menu");
+            return;
+        }
+        pane.view.session().print_screen();
+    }
+
+    /// Print to Folder: where print jobs go from now on. Choosing one also
+    /// tells every session's host that a printer is ready.
+    pub fn choose_print_folder(self: &Rc<Self>) {
+        let dialog = gtk::FileDialog::builder()
+            .title("Print to Folder")
+            .accept_label("Print Here")
+            .build();
+        if let Some(folder) = crate::printing::load().folder {
+            dialog.set_initial_folder(Some(&gtk::gio::File::for_path(folder)));
+        }
+        let weak = Rc::downgrade(self);
+        dialog.select_folder(
+            Some(&self.window),
+            gtk::gio::Cancellable::NONE,
+            move |result| {
+                let (Ok(chosen), Some(ws)) = (result, weak.upgrade()) else {
+                    return;
+                };
+                let Some(folder) = chosen.path() else { return };
+                crate::printing::save(&crate::printing::Printer {
+                    folder: Some(folder.clone()),
+                });
+                for pane in ws.panes.borrow().iter() {
+                    pane.view.session().terminal().set_printer(true);
+                }
+                ws.notify(&format!("Printing to {}", folder.display()));
+            },
+        );
     }
 
     /// Receive File: asks where to put them, then waits for the host's

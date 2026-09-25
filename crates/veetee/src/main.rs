@@ -9,6 +9,7 @@ mod gl_loader;
 mod keymap_editor;
 mod keymaps;
 mod log;
+mod printing;
 mod profiles;
 mod session;
 mod setup_store;
@@ -112,6 +113,8 @@ fn build_window(app: &adw::Application, config: Config, options: Options) {
     session_section.append(Some("Mark Checkpoint"), Some("win.mark-checkpoint"));
     session_section.append(Some("Log to File…"), Some("win.log"));
     session_section.append(Some("Timestamp Log Lines"), Some("win.log-timestamps"));
+    session_section.append(Some("Print Screen"), Some("win.print-screen"));
+    session_section.append(Some("Print to Folder…"), Some("win.print-folder"));
     session_section.append(Some("Send File…"), Some("win.send-file"));
     session_section.append(Some("Receive File…"), Some("win.receive-file"));
     session_section.append(Some("Keyboard Map…"), Some("win.keymap"));
@@ -334,6 +337,28 @@ fn add_session_actions(window: &adw::ApplicationWindow, workspace: &Rc<workspace
         }
     });
     window.add_action(&stamps);
+
+    // The printer port: each print job a PDF in the chosen folder.
+    let print_screen = gio::SimpleAction::new("print-screen", None);
+    print_screen.connect_activate({
+        let workspace = Rc::downgrade(workspace);
+        move |_, _| {
+            if let Some(ws) = workspace.upgrade() {
+                ws.print_screen();
+            }
+        }
+    });
+    window.add_action(&print_screen);
+    let print_folder = gio::SimpleAction::new("print-folder", None);
+    print_folder.connect_activate({
+        let workspace = Rc::downgrade(workspace);
+        move |_, _| {
+            if let Some(ws) = workspace.upgrade() {
+                ws.choose_print_folder();
+            }
+        }
+    });
+    window.add_action(&print_folder);
 
     // Kermit, over whatever the session's connection is.
     let send_file = gio::SimpleAction::new("send-file", None);

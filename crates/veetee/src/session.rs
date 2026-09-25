@@ -31,6 +31,8 @@ pub enum Notice {
     /// The host said XOFF (true) or XON (false), stopping what the terminal
     /// sends or letting it go.
     Flow(bool),
+    /// Something for the printer, from the host or from the screen.
+    Print(vt_core::PrintJob),
 }
 
 /// Where and how to record a session.
@@ -117,6 +119,12 @@ impl Session {
             None => None,
         };
         let logger = log.map(crate::log::Logger::open).transpose()?;
+        // The host is told a printer is ready where print jobs have somewhere
+        // to go (docs/printing.md).
+        let config = Config {
+            printer: crate::printing::load().folder.is_some(),
+            ..config
+        };
         let mut term = Terminal::new(config);
         term.set_capture(logger.as_ref().is_some_and(|l| !l.is_raw()));
         let (tx, rx) = async_channel::unbounded();
@@ -220,6 +228,11 @@ impl Session {
     pub fn send_break(&self) -> io::Result<()> {
         let mut writer = self.shared.writer.lock().unwrap_or_else(|e| e.into_inner());
         writer.send_break()
+    }
+
+    /// The Print Screen key.
+    pub fn print_screen(&self) {
+        self.terminal().print_screen();
     }
 
     /// Whether the host has said XOFF, and what is sent is waiting for XON.
@@ -659,9 +672,9 @@ fn handle_step(
                 let _ = tx.try_send(Notice::Activate);
             }
             Event::ScreenLinesChanged(_) | Event::IconNameChanged(_) => {}
-            // Nothing stands in for a printer yet (docs/printing.md, P2):
-            // what is printed goes nowhere, but no longer to the screen.
-            Event::Print(_) => {}
+            Event::Print(job) => {
+                let _ = tx.try_send(Notice::Print(job.clone()));
+            }
             Event::LedsChanged(_) => {}
         }
     }
@@ -839,6 +852,46 @@ mod tests {
         assert_eq!(session.log_path(), None);
         assert_eq!(std::fs::read_to_string(&path).unwrap(), "after bold\n");
         let _ = std::fs::remove_dir_all(dir);
+    }
+
+    /// What a host prints on the terminal's printer reaches the window as a
+    /// print job, and not the screen.
+    #[test]
+    fn printer_controller_output_is_a_print_job_not_screen_text() {
+        let pty = Pty::spawn(
+            "/bin/sh",
+            &[
+                "-c",
+                // Plain line feeds: the pty makes each a CR LF on its way.
+                "printf 'before\\n\\033[5iREPORT LINE 1\\nREPORT LINE 2\\n\\033[4iafter\\n'; sleep 1",
+            ],
+            24,
+            80,
+            "vt420",
+        )
+        .unwrap();
+        let (session, notices) =
+            Session::start(Config::default(), Box::new(pty), None, None).unwrap();
+        let mut jobs = Vec::new();
+        while let Ok(notice) = notices.recv_blocking() {
+            match notice {
+                Notice::Print(job) => jobs.push(job),
+                Notice::Exited(_) => break,
+                _ => {}
+            }
+        }
+        assert_eq!(
+            jobs,
+            [vt_core::PrintJob::Controller(
+                b"REPORT LINE 1\r\nREPORT LINE 2\r\n".to_vec()
+            )]
+        );
+        let term = session.terminal();
+        let screen: Vec<String> = (0..term.grid().rows())
+            .map(|row| vt_core::dump::row_text(&term, row))
+            .filter(|line| !line.is_empty())
+            .collect();
+        assert_eq!(screen, ["before", "after"]);
     }
 
     /// A whole receive through a session, against G-Kermit on a pty: the

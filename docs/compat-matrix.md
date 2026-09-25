@@ -54,7 +54,7 @@ conformance scripts in `tests/conformance/vttest`.
 | ICH | `CSI @` | ✅ | **VT220 and later** — the VT102 does not have it (vttest, UG102) |
 | VT52 mode | `ESC A–K Y Z = > < F G` | ✅ | Out-of-range `ESC Y` line **or column** leaves that coordinate unchanged (VT100 family; a real VT52 clamps) |
 | VT52 printer functions | `ESC ^ _ W X ] V` | ✅ | Auto print on and off, printer controller on and off, print screen, print cursor line, as the ANSI forms below |
-| MC, media copy | `CSI 0/5 i`, `CSI ? 1/4/5 i` | 🟡 | Print screen (scrolling region, or the page with DECPEX; a form feed with DECPFF), printer controller (everything to the printer, nothing to the screen, until `CSI 4 i` in 7-bit or 8-bit form, found across reads), print cursor line, auto print (each line as the cursor leaves it). Each becomes a print job for the window (docs/printing.md). 🔎 The other `CSI ? … i` functions — composed display, all pages, printer-to-host — are ignored until checked against EK-VT420-RM and EK-VT520-RM |
+| MC, media copy | `CSI 0/5 i`, `CSI ? 1/4/5 i` | 🟡 | Print screen (scrolling region, or the page with DECPEX; a form feed with DECPFF), printer controller (everything to the printer, nothing to the screen, until `CSI 4 i` in 7-bit or 8-bit form, found across reads), print cursor line, auto print (each line as the cursor leaves it). Each becomes a print job, which the window writes as a PDF in the printer folder (docs/printing.md). 🔎 The other `CSI ? … i` functions — composed display, all pages, printer-to-host — are ignored until checked against EK-VT420-RM and EK-VT520-RM |
 
 ## VT220 / VT320 / VT420 (M2)
 

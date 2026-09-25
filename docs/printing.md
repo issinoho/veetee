@@ -73,6 +73,18 @@ paper; the boundaries are veetee's, chosen so that each thing printed becomes on
 
 ### P2. Printing to PDF, in the window
 
+**Done** (25 September 2026), in `veetee/src/printing.rs`. Each job is a PDF in the printer
+folder — Documents until *Print to Folder…* chooses another, kept in `printer.conf` — named for
+the session and the time and never overwriting; a message says where it went, with *Open*. The
+host is told a printer is ready while there is a folder. A job from the host is read as a plain
+printer reads it: line feeds, form feeds, carriage returns that overprint, tabs every eight, the
+upper half as Latin-1, and escape sequences for a particular printer passed over. Drawn with
+cairo's own text in a monospaced font at six lines to the inch on the locale's paper, landscape
+past 80 columns. F2 and *Print Screen* in the window menu print the screen, and the indicator
+status line says *Printer: Ready*. Seen working in the window: a controller job and a print
+screen each became a PDF holding what they should; the message and its *Open* button were not
+seen, the check being made from outside the window.
+
 A job becomes a PDF, drawn with cairo — already part of the GTK stack veetee uses, so no new
 dependency — in a monospaced font, at 66 lines a page, form feeds starting a new page, and 132
 columns in landscape. Each job is a file in a folder the user picks (Documents to begin with),
