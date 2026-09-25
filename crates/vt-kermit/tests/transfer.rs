@@ -879,4 +879,45 @@ fn a_senders_packets_grow_while_they_get_through_and_shrink_when_they_do_not() {
         before,
         next.len()
     );
+    // And it never grows back past half the packet that failed.
+    let mut out = next;
+    for seq in 10..20 {
+        assert!(
+            out.len() <= before / 2 + 20,
+            "{} against a ceiling of about {}",
+            out.len(),
+            before / 2
+        );
+        out = sender.feed(&packet(seq, Kind::Ack, b""), start, &mut source);
+    }
+}
+
+#[test]
+fn both_ends_receiving_or_both_sending_says_which_to_change() {
+    let start = Instant::now();
+    // What C-Kermit sends while it waits in RECEIVE, which showed on the
+    // screen as `# N3` before a transfer began.
+    let waiting = b"\x01# N3\r";
+    let mut receiver = Receiver::new(binary(), start);
+    let mut store = Received::default();
+    receiver.feed(waiting, start, &mut store);
+    let Status::Failed(why) = receiver.status() else {
+        panic!("{:?}", receiver.status())
+    };
+    assert!(
+        why.contains("waiting to receive too") && why.contains("Send File"),
+        "{why}"
+    );
+
+    let mut sender = Sender::new(binary());
+    let mut source = Files::new(&[("A.DAT", b"a".to_vec())]);
+    sender.start(start);
+    sender.feed(&packet(0, Kind::SendInit, &far()), start, &mut source);
+    let Status::Failed(why) = sender.status() else {
+        panic!("{:?}", sender.status())
+    };
+    assert!(
+        why.contains("sending too") && why.contains("Receive File"),
+        "{why}"
+    );
 }

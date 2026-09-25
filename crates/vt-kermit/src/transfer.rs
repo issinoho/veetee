@@ -131,6 +131,13 @@ pub struct Progress {
     pub size: Option<u64>,
 }
 
+/// Said when both ends were told to receive, or both to send: the user
+/// needs to know which to change, not that a packet was unexpected.
+pub const BOTH_RECEIVING: &str =
+    "the other end is waiting to receive too: to send it a file, choose Send File";
+pub const BOTH_SENDING: &str =
+    "the other end is sending too: to take its files, choose Receive File";
+
 /// Sequence numbers count to 63 and begin again.
 fn next(seq: u8) -> u8 {
     (seq + 1) % 64
@@ -597,6 +604,10 @@ impl Receiver {
                 self.state = Receiving::File;
                 self.ack(seq, b"", now)
             }
+            // A Kermit told RECEIVE naks packet 0 while it waits. Hearing
+            // that while waiting to receive means both ends are receiving,
+            // which is easily done from two menu items side by side.
+            (Receiving::SendInit, Kind::Nak) => self.fail(store, BOTH_RECEIVING),
             (_, kind) => self.fail(
                 store,
                 &format!(
@@ -669,6 +680,13 @@ pub struct Sender {
     /// 9600 baud, which is most of a host's timeout, and at 2400 could never
     /// arrive in time. C-Kermit does the same, from 253 up.
     size: usize,
+    /// The most a packet may carry for the rest of the transfer: half of any
+    /// packet that had to be sent again. Growing straight back to a size
+    /// that has just failed finds the same limit again — an OpenVMS process
+    /// out of quota for reads of 4000 bytes did, until C-Kermit gave up.
+    ceiling: usize,
+    /// How much data the packet waiting for an answer carries.
+    in_flight: usize,
     cancelling: bool,
     status: Status,
     progress: Progress,
@@ -689,6 +707,8 @@ impl Sender {
             eof: false,
             discarding: false,
             size: FIRST_SIZE,
+            ceiling: usize::MAX,
+            in_flight: 0,
             cancelling: false,
             status: Status::Running,
             progress: Progress::default(),
@@ -763,6 +783,8 @@ impl Sender {
                 Vec::new()
             }
             Kind::Ack if p.seq == self.seq => self.acknowledged(&p.data, now, source),
+            // A send-init answering a send-init: both ends are sending.
+            Kind::SendInit if self.state == Sending::SendInit => self.fail(BOTH_SENDING),
             // A nak for the packet after this one means this one arrived:
             // the receiver is asking for what comes next. Except for the
             // send-init, whose answer carries the receiver's parameters: a
@@ -779,7 +801,10 @@ impl Sender {
     }
 
     fn again(&mut self, now: Instant) -> Vec<u8> {
-        self.size = (self.size / 2).max(LEAST_SIZE);
+        if self.state == Sending::Data && self.in_flight > LEAST_SIZE {
+            self.ceiling = self.ceiling.min((self.in_flight / 2).max(LEAST_SIZE));
+        }
+        self.size = (self.size / 2).max(LEAST_SIZE).min(self.ceiling);
         if self.link.retry(now) {
             return self.link.last.clone();
         }
@@ -890,8 +915,8 @@ impl Sender {
 
     fn send_data(&mut self, now: Instant, source: &mut dyn Source) -> Vec<u8> {
         let room = if self.link.long.is_some() {
-            let room = self.link.room().min(self.size);
-            self.size = (self.size * 2).min(self.link.room());
+            let room = self.link.room().min(self.size).min(self.ceiling);
+            self.size = (self.size * 2).min(self.link.room()).min(self.ceiling);
             room
         } else {
             self.link.room()
@@ -921,6 +946,7 @@ impl Sender {
             return self.fail("the other end's packets are too short to carry anything");
         }
         self.pending.drain(..used);
+        self.in_flight = encoded.len();
         self.packet(Kind::Data, &encoded, now)
     }
 

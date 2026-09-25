@@ -35,7 +35,9 @@ pub use data::{decode, encode};
 pub use init::{Params, ours};
 pub use names::{Names, local_name};
 pub use text::LineEnding;
-pub use transfer::{Mode, Progress, Receiver, Sender, Settings, Source, Status, Store};
+pub use transfer::{
+    BOTH_RECEIVING, BOTH_SENDING, Mode, Progress, Receiver, Sender, Settings, Source, Status, Store,
+};
 
 /// A value carried as a printable character, which is how Kermit passes
 /// numbers through a line that may not be eight bits clean.
