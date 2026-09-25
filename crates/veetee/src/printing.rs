@@ -304,6 +304,7 @@ const FONT: &str = "monospace";
 
 /// The locale's paper as CUPS names it (`A4`, `Letter`), to go with a PDF
 /// drawn on [`paper`]. Needs GTK running.
+#[cfg(not(windows))]
 pub fn paper_name() -> String {
     let name = gtk::PaperSize::new(Some(&gtk::PaperSize::default()))
         .ppd_name()
