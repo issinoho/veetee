@@ -407,9 +407,30 @@ it holds the password typed into the session**, in clear, exactly as the wire ca
 - **`0x3c`**, sent by both nodes, carrying a node address and the same version and frame size as an
   announcement. It answers a solicit, on position alone.
 - **Much of the start message**, including fourteen bytes before the address.
-- **The 80 ms circuit timer, and retransmission.** Nothing was ever lost in a captured session,
-  so no retransmission was ever seen, and veetee does none of its own: it keeps no copy of what it
-  has sent, so typing lost on the wire is lost. What it does do is survive the host's losses. A
+- **The 80 ms circuit timer.** Unread.
+- **Retransmission.** veetee now does its own (25 September 2026). Until then it kept no copy of
+  what it sent, and a frame lost on the way to the host was fatal: OpenVMS takes a circuit's
+  messages only in order, so it acknowledged — alive, every second — the last it had and
+  discarded everything after the gap. Over Wi-Fi that stopped a session within minutes of a
+  login (`ack=22` for ever, with veetee at 49). Every trace that failed that way was on the
+  wireless interface and every one that worked on the wired, the kernel having dropped nothing
+  inbound. Now each message with slots is kept until acknowledged, everything unacknowledged is
+  sent again, in order, after a second with no progress — the interval MYI64 uses for its own —
+  and after thirty tries with nothing new acknowledged the session ends saying the host stopped
+  accepting what veetee sends. No more than sixteen messages are left unacknowledged at once,
+  under MYI64's queue limit of 24: past a full window typing waits, as it does for credit, because
+  a sender that runs on reuses a sequence number still in the air and the host takes an old
+  message for a new one, which the soak test showed before the window was added.
+
+  **veetee also takes the host's messages in order now.** It used to read past a gap in the
+  host's numbering and acknowledge beyond it, for fear of a host that never repeats, and so lost
+  whatever the missing message carried — text for the screen, and the credit in it. The host
+  granting credit a message at a time, a long transfer lost its whole allowance that way (`missed`
+  and `credit` summing to 62 at every minute of an 87-minute trace). A message after a gap is now
+  held, its credit counted at once, until the missing one comes again, and everything is read in
+  order when it does; after eight held messages the gap is given up as before.
+
+  veetee also survives the host's losses. A
   gap in the host's numbering is counted as credit the host spent on a message that never arrived
   — without that, every loss leaves veetee's reckoning of the host's allowance one too high for
   good, and after eight or so the host runs out of credit and goes quiet with nothing said by

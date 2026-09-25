@@ -45,6 +45,9 @@ struct Host {
     granted: i32,
     /// What veetee has sent, to compare with what was typed.
     typed: Vec<u8>,
+    /// Take veetee's messages only in order, as OpenVMS does: once one has
+    /// gone missing, everything after it is discarded until it arrives.
+    strict: bool,
 }
 
 impl Host {
@@ -64,6 +67,7 @@ impl Host {
             credit: 0,
             granted: 0,
             typed: Vec::new(),
+            strict: false,
         };
         let reply = Start {
             calling: false,
@@ -85,6 +89,25 @@ impl Host {
             Ok(Message::Run(run)) => {
                 assert_eq!(run.ours, self.theirs, "veetee names its own end");
                 assert_eq!(run.theirs, self.ours, "and this one second");
+                if watch::newer(run.acknowledged, self.acknowledged) {
+                    self.acknowledged = run.acknowledged;
+                }
+                // Out of order, or already taken: its slots are not read and
+                // its credit not counted. A sender that does not send the
+                // missing message again is discarded from here on.
+                //
+                // Nor does it take an acknowledgement's number as a message
+                // received: veetee's acknowledgements take no number of their
+                // own, and a host that acknowledged whatever number they
+                // carried would acknowledge messages it had discarded.
+                if self.strict {
+                    if run.slots.is_empty() {
+                        return;
+                    }
+                    if run.sequence != self.acked.wrapping_add(1) {
+                        return;
+                    }
+                }
                 if watch::newer(run.sequence, self.heard) {
                     self.heard = run.sequence;
                 }
@@ -453,7 +476,8 @@ fn a_lost_message_does_not_wedge_the_session() {
     let (mut session, mut host, mut data) = opened();
     let mut dropped = 0;
 
-    // Nothing retransmits here, so a dropped frame is simply gone. A loss
+    // Nothing retransmits here, so a dropped frame is simply gone, and the
+    // session has to give each gap up rather than wait for it for ever. A loss
     // still spends the far end's credit, though, and the only sign of it is
     // the gap left in the numbering: a session that does not read that gap
     // grants one too little for every loss, and stops dead once the shortfall
@@ -475,16 +499,160 @@ fn a_lost_message_does_not_wedge_the_session() {
 
     let stats = session.stats();
     assert!(dropped > MESSAGES / 8, "a seventh of them: {dropped}");
-    assert_eq!(
-        stats.missed,
-        dropped as u64,
-        "every loss accounted for: {}",
+    // A gap is waited on until eight messages have come after it, this host
+    // never sending the missing one again; the last loss or two are still
+    // being waited on when the messages stop.
+    let pending = dropped as u64 - stats.missed;
+    assert!(
+        pending <= 2,
+        "every loss accounted for but the last few still awaited: {pending}; {}",
         stats.summary()
     );
     assert!(!session.is_closed(), "still open: {}", stats.summary());
     assert!(
         stats.rewinds == 0 && stats.duplicates == 0,
         "a loss is neither of those: {}",
+        stats.summary()
+    );
+}
+
+#[test]
+fn a_message_of_ours_lost_on_the_way_is_sent_again() {
+    let (mut session, mut host, mut data) = opened();
+    host.strict = true;
+    let mut typed = Vec::new();
+    let mut frames = 0usize;
+    let mut lost = 0usize;
+    // One of veetee's frames in seven never arrives. Without sending again
+    // the host would take nothing after the first of them, which is what
+    // happened over Wi-Fi within minutes of a login.
+    let mut deliver = |session: &mut Session, host: &mut Host| {
+        for frame in session.take_outgoing() {
+            frames += 1;
+            if frames.is_multiple_of(7) {
+                lost += 1;
+                continue;
+            }
+            host.hear(&frame);
+        }
+    };
+    for i in 0..20_000usize {
+        if let Some(frame) = host.speak(b"x", 2) {
+            session.receive(&frame, &mut data);
+        }
+        let key = [b'a' + u8::try_from(i % 26).unwrap()];
+        session.write(&key);
+        typed.push(key[0]);
+        deliver(&mut session, &mut host);
+        let ack = host.ack();
+        session.receive(&ack, &mut data);
+        // The transport's timer: a second without progress, in the real
+        // thing. Here, every few messages.
+        if i % 4 == 0 {
+            session.retransmit();
+        }
+        deliver(&mut session, &mut host);
+        assert!(
+            !session.is_closed(),
+            "the session gave up at {i}: {}",
+            session.stats().summary()
+        );
+    }
+    // Whatever is still in the air is sent again until it is taken.
+    for _ in 0..100 {
+        if !session.awaiting() && !session.holding() {
+            break;
+        }
+        if let Some(frame) = host.speak(b"x", 2) {
+            session.receive(&frame, &mut data);
+        }
+        session.retransmit();
+        deliver(&mut session, &mut host);
+        let ack = host.ack();
+        session.receive(&ack, &mut data);
+    }
+    let stats = session.stats();
+    assert!(lost > 1000, "a seventh of veetee's frames lost: {lost}");
+    assert!(stats.retransmitted > 0, "{}", stats.summary());
+    assert_eq!(
+        host.typed.len(),
+        typed.len(),
+        "every keystroke arrived: {} of {}; {}",
+        host.typed.len(),
+        typed.len(),
+        stats.summary()
+    );
+    if let Some(at) = host.typed.iter().zip(&typed).position(|(a, b)| a != b) {
+        panic!(
+            "first difference at {at}: arrived {:?}, typed {:?}",
+            String::from_utf8_lossy(&host.typed[at.saturating_sub(5)..(at + 10).min(typed.len())]),
+            String::from_utf8_lossy(&typed[at.saturating_sub(5)..(at + 10).min(typed.len())])
+        );
+    }
+}
+
+#[test]
+fn a_host_that_takes_nothing_more_ends_the_session_rather_than_freezing_it() {
+    let (mut session, mut host, mut data) = opened();
+    host.strict = true;
+    // The host prompts, so veetee will send what is typed.
+    let prompt = host.speak(b"$ ", 2).expect("credit at the start");
+    session.receive(&prompt, &mut data);
+    session.take_outgoing();
+    session.write(b"lost");
+    // The message never arrives, and nothing sent again ever does either.
+    session.take_outgoing();
+    let mut tries = 0;
+    while !session.is_closed() {
+        session.retransmit();
+        session.take_outgoing();
+        let ack = host.ack();
+        session.receive(&ack, &mut data);
+        tries += 1;
+        assert!(tries < 1000, "it never gave up");
+    }
+    assert_eq!(
+        session.ending(),
+        "the host stopped accepting what veetee sends"
+    );
+}
+
+#[test]
+fn a_message_of_the_hosts_that_goes_missing_is_waited_for_and_read_in_its_place() {
+    let (mut session, mut host, mut data) = opened();
+    let mut expected = Vec::new();
+    let mut held_back: Option<Vec<u8>> = None;
+    // Every tenth message of the host's is lost the first time, and arrives
+    // three messages later, sent again, as a host sends what has not been
+    // acknowledged. Each grants one credit, which is how OpenVMS answers.
+    for i in 0..MESSAGES {
+        let line = format!("line {i}\r\n");
+        expected.extend_from_slice(line.as_bytes());
+        let frame = host
+            .speak(line.as_bytes(), 1)
+            .unwrap_or_else(|| panic!("the host ran out of credit at message {i}"));
+        if i % 10 == 5 {
+            held_back = Some(frame);
+        } else {
+            session.receive(&frame, &mut data);
+        }
+        if i % 10 == 8
+            && let Some(frame) = held_back.take()
+        {
+            session.receive(&frame, &mut data);
+        }
+        flush(&mut session, &mut host);
+        // Typing spends what the host grants, as a transfer does.
+        session.write(b"k");
+        flush(&mut session, &mut host);
+    }
+    let stats = session.stats();
+    assert_eq!(stats.missed, 0, "nothing given up: {}", stats.summary());
+    assert_eq!(data.len(), expected.len(), "{}", stats.summary());
+    assert!(data == expected, "every line, once, in order");
+    assert!(
+        stats.credit_ours >= 0 && !session.holding(),
+        "the credit in the late messages was read, and typing never ran dry: {}",
         stats.summary()
     );
 }

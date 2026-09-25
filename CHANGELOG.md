@@ -8,6 +8,33 @@ Before 1.0 the minor version followed the project milestones (0.3 = M3). The for
 
 ## [Unreleased]
 
+- **Fixed: a LAT session froze when one frame to the host was lost.** OpenVMS takes a circuit's
+  messages only in order, so after a loss it went on acknowledging, alive, and discarded
+  everything veetee sent. veetee never sent anything again, so the session stopped — within
+  minutes over Wi-Fi, where frames go missing. Now what the host has not acknowledged is sent
+  again after a second, no more than sixteen messages are left unacknowledged at once, and a host
+  that takes nothing for half a minute ends the session with a message rather than a frozen
+  screen.
+- **Fixed: a message from the host that went missing was lost, with its text and its credit.**
+  veetee read past any gap in the host's numbering, so the text on the screen had a hole in it,
+  and the credit the missing message carried never arrived. Over a long Kermit transfer that
+  drained veetee's allowance a credit at a time — 69 losses, 62 credits — until the transfer
+  crawled at one slot every three seconds. OpenVMS sends again what is not acknowledged, every
+  second, so veetee now holds what arrives after a gap and waits for the missing message, reading
+  everything in order once it comes. A host that never sends it is given up on after eight
+  messages, as every gap used to be.
+- **Fixed: a LAT session sent held data without credit all at once.** Typing that waits too long
+  for the host's allowance is sent anyway, so a host that stops granting cannot take the keyboard
+  with it; but everything held went, which during a file transfer was sixteen slots at a time and
+  took one session 104 past what the host had granted. One slot goes now.
+- **Kermit: a packet size that fails is not tried again.** After a packet has to be sent again,
+  packets stay at most half its size for the rest of the transfer, rather than doubling straight
+  back to the size that failed.
+- **Kermit: both ends receiving, or both sending, says so** — choose Send File, or Receive File —
+  rather than reporting an unexpected packet. The `# N3` that appeared on the screen before a
+  transfer to C-Kermit is its Kermit waiting in RECEIVE, not an error.
+- The LAT trace shows the bytes of any slot that is nothing but control characters, such as XOFF,
+  which cannot include a password.
 - **Kermit transfers are much faster: long packets.** Where the other Kermit offers them, as
   C-Kermit and G-Kermit both do, packets are up to 9 KB rather than 94 bytes, so each exchange
   carries about a hundred times as much. Against C-Kermit on the same machine, 20 MB took 1.5 to

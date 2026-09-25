@@ -52,6 +52,45 @@ const SLOT_END: u8 = 0xd0;
 /// largest slot before that was 97 bytes.
 const MAX_SLOT: usize = 254;
 
+/// How many times in a row everything unacknowledged may be sent again with
+/// nothing acknowledged in between before the session is given up. At one
+/// retransmission a second that is half a minute of the host acknowledging,
+/// alive, and taking nothing veetee sends.
+const RETRANSMIT_LIMIT: u32 = 30;
+
+/// The most messages sent and not yet acknowledged before what is typed is
+/// held back. MYI64's queue limit is 24, and it takes nothing past it; and a
+/// sequence number is one byte, so a sender that ran on regardless would, a
+/// host having stalled on one lost message, soon reuse a number still in the
+/// air — which the soak did, and the host took an old message for a new one.
+const WINDOW: usize = 16;
+
+/// How many messages may arrive after a gap while the missing one is waited
+/// for. Past this the gap is given up as lost, which is what veetee did with
+/// every gap before: a far end that never repeated a message would otherwise
+/// stop the session dead, and losing a message is the lesser failure.
+const GAP_PATIENCE: usize = 8;
+
+/// The more telling of two things that happened while reading.
+fn combine(a: Event, b: Event) -> Event {
+    match (a, b) {
+        (Event::Closed, _) | (_, Event::Closed) => Event::Closed,
+        (Event::Data, _) | (_, Event::Data) => Event::Data,
+        (a, _) => a,
+    }
+}
+
+/// A message that carried slots, kept until the far end acknowledges it, so
+/// that it can be sent again: the far end takes messages only in order, and
+/// once one has gone missing it discards everything after it until the
+/// missing one arrives.
+#[derive(Debug, Clone)]
+struct Kept {
+    sequence: u8,
+    /// Each slot's addresses, control byte and data.
+    slots: Vec<(u8, u8, u8, Vec<u8>)>,
+}
+
 /// As much credit as the low nibble of a control byte will hold.
 ///
 /// A slot spends one of the credits the far end has been given, and a node
@@ -218,6 +257,16 @@ pub struct Session {
     /// What has been seen, for a trace to write out. Counted and never acted
     /// on; see [`crate::watch`].
     stats: Stats,
+    /// Messages sent and not yet acknowledged, oldest first.
+    kept: std::collections::VecDeque<Kept>,
+    /// Messages the far end sent after one that has not arrived, held until
+    /// it does, by sequence number and as they came.
+    early: Vec<(u8, Vec<u8>)>,
+    /// Counts up whenever the far end acknowledges something new, so a
+    /// caller can tell a circuit making progress from one that is not.
+    progress: u64,
+    /// Retransmissions since the far end last acknowledged anything new.
+    stalled: u32,
 }
 
 impl Session {
@@ -241,6 +290,10 @@ impl Session {
             heard_any: false,
             since_grant: 0,
             stats: Stats::default(),
+            kept: std::collections::VecDeque::new(),
+            early: Vec::new(),
+            progress: 0,
+            stalled: 0,
         }
     }
 
@@ -278,7 +331,7 @@ impl Session {
         };
         let event = match message {
             Message::Start(reply) => self.agreed(&reply),
-            Message::Run(run) => self.run(&run, data),
+            Message::Run(run) => self.run(&run, payload, data),
             Message::Stop(stop) => self.stopped(stop),
             // Announcements, solicits and the types nobody has read are no
             // part of a session. The far end solicits whoever calls it, which
@@ -320,8 +373,20 @@ impl Session {
         if self.state != State::Open {
             return;
         }
+        // Forcing sends one slot and no more: enough that typing is never
+        // held for ever, and no more than that, because what is held may be
+        // far more than typing. A Kermit packet of 4000 bytes is sixteen
+        // slots; releasing all of them every few seconds with no allowance
+        // took one transfer 104 slots past what MYI64 had granted, and the
+        // host stopped acknowledging anything at all.
+        let mut forced = force;
         while !self.typed.is_empty() {
-            if self.allowance < 1 && !force {
+            // A full window holds even a forced send: past it the far end
+            // takes nothing anyway.
+            if self.kept.len() >= WINDOW {
+                return;
+            }
+            if self.allowance < 1 && !std::mem::take(&mut forced) {
                 return;
             }
             let take = self.typed.len().min(MAX_SLOT);
@@ -331,7 +396,8 @@ impl Session {
         }
     }
 
-    /// Sends what is held whatever the allowance says.
+    /// Sends one slot of what is held whatever the allowance says, for a
+    /// caller that has waited long enough for a grant that is not coming.
     pub fn release_typing(&mut self) {
         self.send_typed(true);
     }
@@ -340,6 +406,69 @@ impl Session {
     #[must_use]
     pub fn holding(&self) -> bool {
         !self.typed.is_empty() && self.state == State::Open
+    }
+
+    /// Whether anything sent is still waiting to be acknowledged.
+    #[must_use]
+    pub fn awaiting(&self) -> bool {
+        !self.kept.is_empty() && self.is_open()
+    }
+
+    /// A number that changes whenever the far end acknowledges something new.
+    /// A caller retransmits when it has stayed the same for too long.
+    #[must_use]
+    pub fn progress(&self) -> u64 {
+        self.progress
+    }
+
+    /// Sends again everything the far end has not acknowledged, in order.
+    ///
+    /// LAT leaves it to the sender to notice a message went missing, and
+    /// veetee never did: it kept no copy, so a frame lost on the way to the
+    /// host was lost for good, and the host — which takes messages only in
+    /// order — then acknowledged, alive, for ever, and took nothing more.
+    /// Over Wi-Fi that happened within minutes of a login. What is sent again
+    /// carries the current acknowledgement; its slots, credit included, are as
+    /// they were, and they spend nothing a second time, the far end having
+    /// counted nothing it did not take.
+    ///
+    /// Given up after [`RETRANSMIT_LIMIT`] tries in a row with nothing new
+    /// acknowledged, and the session ends, saying so, rather than leaving a
+    /// terminal that has stopped for no visible reason.
+    pub fn retransmit(&mut self) {
+        if !self.awaiting() {
+            return;
+        }
+        self.stalled += 1;
+        if self.stalled > RETRANSMIT_LIMIT {
+            self.ended = Some("the host stopped accepting what veetee sends");
+            self.state = State::Closed;
+            return;
+        }
+        for kept in &self.kept {
+            let slots: Vec<Slot<'_>> = kept
+                .slots
+                .iter()
+                .map(|(to, from, control, data)| Slot {
+                    to: *to,
+                    from: *from,
+                    control: *control,
+                    data,
+                })
+                .collect();
+            let frame = Run {
+                flags: CALLER_FLAGS,
+                theirs: self.theirs,
+                ours: self.ours,
+                sequence: kept.sequence,
+                acknowledged: self.heard,
+                slots,
+            }
+            .build();
+            self.outgoing.push(frame);
+            self.stats.frames_out += 1;
+            self.stats.retransmitted += 1;
+        }
     }
 
     /// Nothing has been heard from the far end for long enough to call it
@@ -458,7 +587,7 @@ impl Session {
     }
 
     /// A message on the circuit. Everything after the start arrives in these.
-    fn run(&mut self, run: &Run<'_>, data: &mut Vec<u8>) -> Event {
+    fn run(&mut self, run: &Run<'_>, payload: &[u8], data: &mut Vec<u8>) -> Event {
         // Each end names the other's identifier first and its own second, so
         // a message of ours has them the other way round. That is what tells
         // another node's circuit on the same wire from the traffic this
@@ -472,8 +601,97 @@ impl Session {
         // sits at nought or one.
         self.stats.unacked = self.sequence.wrapping_sub(run.acknowledged);
         self.stats.max_unacked = self.stats.max_unacked.max(self.stats.unacked);
+        // What it has acknowledged need not be kept for sending again.
+        let before = self.kept.len();
+        while self
+            .kept
+            .front()
+            .is_some_and(|kept| !watch::newer(kept.sequence, run.acknowledged))
+        {
+            self.kept.pop_front();
+        }
+        if self.kept.len() < before {
+            self.progress += 1;
+            self.stalled = 0;
+            // Room in the window again: what was held for it can go.
+            self.send_typed(false);
+        }
         self.stats.slots_in += run.slots.len() as u64;
 
+        // A message after a gap is held rather than read. The far end takes
+        // this end's messages only in order and sends its own again when they
+        // go unacknowledged — every second, as MYI64 does — so the missing
+        // one will come, and with it whatever it carried: text for the
+        // screen, and credit. Reading past the gap lost both. Credit lost
+        // that way never comes back, the far end having granted it; over a
+        // long Kermit transfer 69 such losses took all 62 of veetee's
+        // allowance, and the transfer crawled to one slot every three seconds
+        // with both ends certain they were right.
+        if self.heard_any
+            && watch::newer(run.sequence, self.heard)
+            && run.sequence != self.heard.wrapping_add(1)
+        {
+            self.early.retain(|(seq, _)| *seq != run.sequence);
+            self.early.push((run.sequence, payload.to_vec()));
+            // Its slots spent the far end's credit when it sent them, read or
+            // not, so they are counted now: waiting to count them would leave
+            // the far end short of a grant and silent, with the one message
+            // that would fill the gap unable to come.
+            self.spend(run.slots.len());
+            if self.early.len() < GAP_PATIENCE {
+                // Saying where this end has got to is what asks for the
+                // missing one; an acknowledgement is not answered, as ever.
+                if !run.slots.is_empty() {
+                    let frame = self.acknowledge();
+                    self.outgoing.push(frame);
+                }
+                return Event::Housekeeping;
+            }
+            // It has not come. Give up on it, as veetee always used to: the
+            // earliest held message is read as if the gap were not there,
+            // which counts the gap as missed.
+            return self.drain(data, true);
+        }
+        let event = self.take(run, data, false);
+        combine(event, self.drain(data, false))
+    }
+
+    /// Reads held messages that are now next in order — or, `give_up`, the
+    /// earliest of them whether it is next or not — and any that follow it.
+    fn drain(&mut self, data: &mut Vec<u8>, give_up: bool) -> Event {
+        let mut event = Event::Housekeeping;
+        let mut skip = give_up;
+        loop {
+            // Anything no longer newer than what has been read is stale.
+            let heard = self.heard;
+            self.early.retain(|(seq, _)| watch::newer(*seq, heard));
+            let next = self.heard.wrapping_add(1);
+            let at = if std::mem::take(&mut skip) {
+                self.early
+                    .iter()
+                    .enumerate()
+                    .min_by_key(|(_, (seq, _))| seq.wrapping_sub(heard))
+                    .map(|(i, _)| i)
+            } else {
+                self.early.iter().position(|(seq, _)| *seq == next)
+            };
+            let Some(at) = at else {
+                return event;
+            };
+            let (_, payload) = self.early.remove(at);
+            if let Ok(Message::Run(run)) = crate::parse(&payload) {
+                event = combine(event, self.take(&run, data, true));
+            }
+            if self.state == State::Closed {
+                return event;
+            }
+        }
+    }
+
+    /// Reads a message that is next in order, or one read in spite of a gap
+    /// before it. `counted` is a message held while its gap was waited on,
+    /// whose credit was counted when it arrived.
+    fn take(&mut self, run: &Run<'_>, data: &mut Vec<u8>, counted: bool) -> Event {
         // Follow the far end's numbering across *everything* it sends, its
         // own acknowledgements included: they carry a sequence number like
         // any other message, and two quite different things hang on it.
@@ -493,12 +711,13 @@ impl Session {
         // acknowledged and whether a frame is sent back are separate
         // questions, and only the second one is answered below.
         //
-        // 🔎 Advancing past a gap tells the far end a message arrived when it
-        // did not, so anything lost stays lost. The alternative — holding the
-        // number until the missing one is repeated — is the stricter reading
-        // and risks the same deadlock when what went missing is never
-        // repeated. Deadlock being the worse failure, this is the way round
-        // veetee takes it.
+        // A message reaches here either in order or, the far end having never
+        // repeated what went missing before it, in spite of a gap
+        // ([`GAP_PATIENCE`]). Only then is the number advanced past the gap,
+        // telling the far end a message arrived that did not; until 25
+        // September 2026 veetee did that at every gap, for fear of a far end
+        // that never repeats, and lost the text and the credit each one
+        // carried. MYI64 does repeat, every second.
         let fresh = !self.heard_any || watch::newer(run.sequence, self.heard);
         let missed = if self.heard_any && fresh {
             usize::from(run.sequence.wrapping_sub(self.heard)) - 1
@@ -578,7 +797,7 @@ impl Session {
                 _ => {}
             }
         }
-        self.spend(run.slots.len() + missed);
+        self.spend(if counted { 0 } else { run.slots.len() } + missed);
         if ended {
             self.ended = Some("the host ended the session");
             // Whatever came with it is still the terminal's: OpenVMS says
@@ -707,6 +926,15 @@ impl Session {
             }
         }
         self.stats.slots_out += slots.len() as u64;
+        if !slots.is_empty() {
+            self.kept.push_back(Kept {
+                sequence: self.sequence,
+                slots: slots
+                    .iter()
+                    .map(|slot| (slot.to, slot.from, slot.control, slot.data.to_vec()))
+                    .collect(),
+            });
+        }
         // Only session data with something in it spends the allowance, and
         // both halves of that matter. The slot asking for a service goes
         // before the far end has granted anything, so a session could never
@@ -1130,6 +1358,7 @@ mod tests {
         // it has waited long enough for a grant that is not coming.
         assert!(session.holding(), "the rest of it is waiting on credit");
         session.release_typing();
+        assert!(!session.holding());
         let out = session.take_outgoing();
         assert_eq!(out.len(), 2, "one length byte counts a slot of data");
         let lengths: Vec<usize> = out
@@ -1143,6 +1372,24 @@ mod tests {
     }
 
     #[test]
+    fn a_release_sends_one_slot_whatever_is_held() {
+        let (mut session, mut data) = agreed();
+        session.receive(PROMPT, &mut data);
+        session.take_outgoing();
+        // A Kermit packet's worth, far more than the allowance.
+        session.write(&[b'x'; 4000]);
+        let first = session.take_outgoing().len();
+        assert!(session.holding());
+        session.release_typing();
+        assert_eq!(
+            session.take_outgoing().len(),
+            1,
+            "one slot, not the {first}-odd held"
+        );
+        assert!(session.holding(), "the rest still waits on credit");
+    }
+
+    #[test]
     fn no_slot_carries_more_than_openvms_sends() {
         // 255 took a real circuit down; 254 is the most OpenVMS sends.
         assert_eq!(MAX_SLOT, 254);
@@ -1150,6 +1397,7 @@ mod tests {
         session.receive(PROMPT, &mut data);
         session.take_outgoing();
         session.write(&[b'x'; 300]);
+        session.release_typing();
         session.release_typing();
         let lengths: Vec<usize> = session
             .take_outgoing()
@@ -1311,6 +1559,14 @@ mod tests {
         );
     }
 
+    /// The number the host gives the message after its prompt.
+    fn after_prompt() -> u8 {
+        match crate::parse(PROMPT) {
+            Ok(Message::Run(run)) => run.sequence.wrapping_add(1),
+            _ => panic!("the prompt is a run message"),
+        }
+    }
+
     #[test]
     fn the_host_ending_the_session_ends_it_here() {
         let (mut session, mut data) = agreed();
@@ -1324,7 +1580,9 @@ mod tests {
             flags: 0,
             theirs: 0x7001,
             ours: 0xe001,
-            sequence: 9,
+            // Next after the prompt, as a host numbers it: a gap would be
+            // held, waiting for the message missing from it.
+            sequence: after_prompt(),
             acknowledged: 8,
             slots: vec![
                 Slot {
@@ -1394,7 +1652,9 @@ mod tests {
             flags: 0,
             theirs: 0x7001,
             ours: 0xe001,
-            sequence: 9,
+            // Next after the prompt, as a host numbers it: a gap would be
+            // held, waiting for the message missing from it.
+            sequence: after_prompt(),
             acknowledged: 8,
             slots: vec![Slot {
                 to: 1,

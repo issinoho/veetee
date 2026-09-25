@@ -92,6 +92,8 @@ pub struct Stats {
     /// most of what arrives and is not a fault.
     pub ignored: u64,
     pub stops: u64,
+    /// Messages sent again because the far end had not acknowledged them.
+    pub retransmitted: u64,
 }
 
 impl Stats {
@@ -101,7 +103,7 @@ impl Stats {
         format!(
             "in={} out={} acks={}/{} slots={}/{} bytes={}/{} \
              dup={} rewind={} missed={} wrap={}/{} credit={}/{} granted={}/{} \
-             unacked={} max_unacked={} ignored={} stops={}",
+             unacked={} max_unacked={} ignored={} stops={} resent={}",
             self.frames_in,
             self.frames_out,
             self.acks_in,
@@ -123,6 +125,7 @@ impl Stats {
             self.max_unacked,
             self.ignored,
             self.stops,
+            self.retransmitted,
         )
     }
 }
@@ -205,6 +208,16 @@ fn describe_slot(slot: &Slot<'_>, data: bool) -> String {
         slot.control & 0x0f,
         slot.data.len(),
     );
+    // A slot of nothing but control characters is shown even without the
+    // data: it cannot hold a password, which is typed in printable
+    // characters, and it is how a host says XOFF and XON, which matters
+    // when a transfer stalls.
+    let controls = !slot.data.is_empty() && slot.data.iter().all(|&b| b < 0x20 || b == 0x7f);
+    if controls && !data {
+        described.push_str(" controls=");
+        let codes: Vec<String> = slot.data.iter().map(|b| format!("{b:02x}")).collect();
+        described.push_str(&codes.join(","));
+    }
     if data && !slot.data.is_empty() {
         described.push(' ');
         described.push('"');
@@ -285,6 +298,29 @@ mod tests {
             "unreadable 0 bytes",
             "and something too short to hold a type is not"
         );
+    }
+
+    #[test]
+    fn a_slot_of_control_characters_is_shown_without_the_data() {
+        let xoff = Slot {
+            to: 1,
+            from: 1,
+            control: 0x00,
+            data: &[0x13],
+        };
+        assert_eq!(
+            describe_slot(&xoff, false),
+            "1->1 data credit=0 len=1 controls=13"
+        );
+        let typed = Slot {
+            data: b"secret",
+            ..xoff
+        };
+        assert!(
+            !describe_slot(&typed, false).contains("secret"),
+            "typing stays out"
+        );
+        assert!(!describe_slot(&typed, false).contains("controls"));
     }
 
     #[test]

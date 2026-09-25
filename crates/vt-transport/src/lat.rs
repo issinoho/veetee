@@ -614,6 +614,10 @@ const DEAD: Duration = Duration::from_secs(60);
 /// sends a slot too many.
 const HOLD: Duration = Duration::from_secs(3);
 
+/// How long the far end may leave what was sent unacknowledged before it is
+/// sent again. MYI64 repeats its own unacknowledged messages every second.
+const RETRANSMIT: Duration = Duration::from_secs(1);
+
 /// Every frame a session sent and received, written to a file, for working
 /// out afterwards why one stopped.
 ///
@@ -730,6 +734,10 @@ struct Shared {
     heard: Instant,
     /// Since when typing has been waiting on an allowance.
     held: Option<Instant>,
+    /// The session's progress count when last looked at, and since when it
+    /// has stood still with something still unacknowledged.
+    progress: u64,
+    stalled: Option<Instant>,
     /// Where every frame is written, if the environment asked for that.
     trace: Option<Trace>,
 }
@@ -786,6 +794,8 @@ impl Lat {
             sent: Instant::now(),
             heard: Instant::now(),
             held: None,
+            progress: 0,
+            stalled: None,
             trace: Trace::open(&config.node, &config.interface),
         };
         flush(&mut listener, peer, &mut shared)?;
@@ -894,6 +904,27 @@ impl Lat {
             }
         } else {
             shared.held = None;
+        }
+
+        // What the far end has not acknowledged goes again, a second after it
+        // last acknowledged anything new.
+        if shared.session.awaiting() {
+            let progress = shared.session.progress();
+            if progress != shared.progress {
+                shared.progress = progress;
+                shared.stalled = None;
+            }
+            let since = *shared.stalled.get_or_insert_with(Instant::now);
+            if since.elapsed() >= RETRANSMIT {
+                if let Some(trace) = shared.trace.as_mut() {
+                    trace.note("sending again what the host has not acknowledged");
+                }
+                shared.session.retransmit();
+                shared.stalled = Some(Instant::now());
+                flush(&mut self.listener, self.peer, &mut shared)?;
+            }
+        } else {
+            shared.stalled = None;
         }
 
         // Nothing heard for long enough is a circuit that is no longer there.
