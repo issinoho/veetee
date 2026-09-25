@@ -46,6 +46,12 @@ paints its print job over the screen. Fixing that is the first step.
 
 ### P1. The printer functions, in `vt-core`
 
+**Done** (25 September 2026), in `vt-core/src/terminal/printer.rs`, tested in
+`vt-core/tests/printer.rs`: printer controller mode, print screen, print cursor line and auto
+print, in their ANSI and VT52 forms, and the printer status report. Print data no longer reaches
+the screen; what is printed is handed out as `Event::Print`, which the window does not yet take
+anywhere — that is P2. The 🔎 functions below are ignored until checked.
+
 Headless and testable like the rest of the core. The terminal keeps a print buffer and hands out
 **print jobs** as an event, the way it hands out replies: `Event::Print(Job)`, a job being the
 text, as the lines and form feeds a printer would get, plus the raw bytes where the host sent

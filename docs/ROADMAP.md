@@ -197,9 +197,9 @@ rather than fixes; none of it was judged a reason to hold the release.
   line (TD/SMP, SSU).
 - **Indicator status line** field layout not yet checked against hardware; DECTST resets without a
   visible self-test.
-- **Printing**: not yet available, and printer controller data is not swallowed as this said until
-  25 September 2026 but shown on the screen, because `CSI 5 i` is ignored. The plan is
-  [`printing.md`](printing.md).
+- **Printing**: under way ([`printing.md`](printing.md)). The terminal's printer functions are
+  done, so printer controller data no longer reaches the screen, as it did until 25 September
+  2026; nothing is printed to PDF or paper yet.
 - **Hardware nobody here has.** RFC 2217 is proved against `ser2net`, and whether a DECserver,
   Lantronix or Moxa answers the option at all is unknown —
   [`rfc2217-testing.md`](rfc2217-testing.md) is written for whoever has one. Several details of

@@ -8,6 +8,13 @@ Before 1.0 the minor version followed the project milestones (0.3 = M3). The for
 
 ## [Unreleased]
 
+- **Fixed: what a host sent for the terminal's printer appeared on the screen.** veetee
+  ignored printer controller mode (`CSI 5 i` … `CSI 4 i`), so a report or form an OpenVMS
+  application printed on the user's printer — which OpenVMS believes veetee has, and lists as
+  *Printer port* — was painted over the display. It now goes to the printer port and not the
+  screen, as do print screen, print cursor line and auto print, in both their ANSI and VT52
+  forms. Nothing is printed on paper or to PDF yet; that comes next (`docs/printing.md`).
+
 - **XOFF from the host stops what veetee sends**, until XON, as a DEC terminal's does. OpenVMS
   sends XOFF when its type-ahead buffer fills, and a paste of a few hundred characters at the DCL
   prompt used to go on regardless and end in `DATAOVERUN`, the rest of it lost. Typing, pastes,

@@ -194,6 +194,10 @@ pub struct Config {
     /// Saved Set-Up features applied at power-up and by RIS; `None` for the
     /// factory settings (see [`crate::setup`]).
     pub setup: Option<crate::setup::Features>,
+    /// Something stands in for a printer on the printer port, so the printer
+    /// status report (`CSI ? 15 n`) says ready rather than none. What is
+    /// printed is handed out as [`crate::Event::Print`] either way.
+    pub printer: bool,
 }
 
 impl Default for Config {
@@ -213,6 +217,7 @@ impl Default for Config {
             udk_locked: false,
             extensions: Extensions::default(),
             setup: None,
+            printer: false,
         }
     }
 }

@@ -659,6 +659,9 @@ fn handle_step(
                 let _ = tx.try_send(Notice::Activate);
             }
             Event::ScreenLinesChanged(_) | Event::IconNameChanged(_) => {}
+            // Nothing stands in for a printer yet (docs/printing.md, P2):
+            // what is printed goes nowhere, but no longer to the screen.
+            Event::Print(_) => {}
             Event::LedsChanged(_) => {}
         }
     }

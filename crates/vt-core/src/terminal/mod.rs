@@ -16,6 +16,7 @@ mod crm;
 mod dcs;
 mod history;
 pub(crate) mod paste;
+mod printer;
 mod rect;
 mod reports;
 mod setup;
@@ -53,7 +54,11 @@ pub enum Event {
         duration_ms: u32,
         note: u8,
     },
+    /// Something for the printer: from the host, or from the screen.
+    Print(PrintJob),
 }
+
+pub use printer::PrintJob;
 
 /// One line of smooth scrolling (DECSCLM), for the display to animate.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -142,6 +147,13 @@ impl Terminal {
     fn advance_nested(&mut self, bytes: &[u8], depth: usize) {
         let mut rest = bytes;
         while !rest.is_empty() {
+            // Printer controller mode takes everything, before the parser
+            // or anything else sees it.
+            if self.emu.printer.controller {
+                let n = self.emu.printer_controller(rest);
+                rest = &rest[n..];
+                continue;
+            }
             if self.emu.stored.display_controls {
                 let n = self.emu.show_controls(rest);
                 rest = &rest[n..];
@@ -172,7 +184,9 @@ impl Terminal {
     fn advance_paced_inner(&mut self, bytes: &[u8]) -> usize {
         let mut used = 0;
         while used < bytes.len() {
-            let n = if self.emu.stored.display_controls {
+            let n = if self.emu.printer.controller {
+                self.emu.printer_controller(&bytes[used..])
+            } else if self.emu.stored.display_controls {
                 self.emu.show_controls(&bytes[used..])
             } else {
                 self.parser
@@ -640,6 +654,8 @@ struct Emulator {
     macros: Vec<Vec<u8>>,
     /// Macro text waiting to be processed as input (DECINVM).
     pending_input: Vec<u8>,
+    /// The printer port (see [`printer`]).
+    printer: printer::Printer,
     /// VT500 Set-Up selections and modes.
     setup: vt520::SetUp,
     /// VT525 colour map and colour assignments.
@@ -786,6 +802,7 @@ impl Emulator {
             dcs: dcs::DcsState::None,
             macros: vec![Vec::new(); 64],
             pending_input: Vec::new(),
+            printer: printer::Printer::default(),
             setup: vt520::SetUp::default(),
             colors: crate::color::ColorTable::default(),
             osc: Vec::new(),
@@ -1148,6 +1165,7 @@ impl Emulator {
         if self.status.active {
             return;
         }
+        self.auto_print_line();
         if self.cursor.row == self.bottom {
             // Outside the left/right margins nothing scrolls.
             if self.within_lr_margins() {
@@ -1925,7 +1943,12 @@ impl Emulator {
             b'=' => self.modes.keypad_application = true,
             b'>' => self.modes.keypad_application = false,
             b'<' => self.exit_vt52(),
-            // Printer functions (ESC ^ _ W X ] V) are handled with printer support.
+            // The VT52's printer functions (EK-VT420-RM, VT52 mode).
+            b']' => self.print_screen(),
+            b'V' => self.print_cursor_line(),
+            b'^' => self.auto_print(true),
+            b'_' => self.auto_print(false),
+            b'W' => self.controller_on(),
             _ => {}
         }
     }
@@ -2163,6 +2186,18 @@ impl Perform for Emulator {
         }
         match (seq.private, seq.intermediates, seq.final_byte) {
             (None, [], b'@') if vt220 => self.insert_chars(n(0)),
+            // MC, media copy: the printer port (see `printer`).
+            (None, [], b'i') if vt102 => match p.get_or(0, 0) {
+                0 => self.print_screen(),
+                5 => self.controller_on(),
+                _ => {}
+            },
+            (Some(b'?'), [], b'i') if vt102 => match p.get_or(0, 0) {
+                1 => self.print_cursor_line(),
+                4 => self.auto_print(false),
+                5 => self.auto_print(true),
+                _ => {}
+            },
             (Some(b'?'), [], b'W') if vt510 && p.get_or(0, 0) == 5 => self.tab_every_8(),
             // DECSR: EK-VT420-RM chapter 13 and EK-VT520-RM.
             (None, [b'+'], b'p') if self.config.model.max_level() >= 4 => self.secure_reset(p),

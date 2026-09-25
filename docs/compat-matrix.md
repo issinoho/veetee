@@ -53,7 +53,8 @@ conformance scripts in `tests/conformance/vttest`.
 | IL DL DCH | `CSI L M P` | ✅ | VT102 and later; ignored outside scroll region |
 | ICH | `CSI @` | ✅ | **VT220 and later** — the VT102 does not have it (vttest, UG102) |
 | VT52 mode | `ESC A–K Y Z = > < F G` | ✅ | Out-of-range `ESC Y` line **or column** leaves that coordinate unchanged (VT100 family; a real VT52 clamps) |
-| VT52 printer functions | `ESC ^ _ W X ] V` | ⬜ | Post-1.0 printing |
+| VT52 printer functions | `ESC ^ _ W X ] V` | ✅ | Auto print on and off, printer controller on and off, print screen, print cursor line, as the ANSI forms below |
+| MC, media copy | `CSI 0/5 i`, `CSI ? 1/4/5 i` | 🟡 | Print screen (scrolling region, or the page with DECPEX; a form feed with DECPFF), printer controller (everything to the printer, nothing to the screen, until `CSI 4 i` in 7-bit or 8-bit form, found across reads), print cursor line, auto print (each line as the cursor leaves it). Each becomes a print job for the window (docs/printing.md). 🔎 The other `CSI ? … i` functions — composed display, all pages, printer-to-host — are ignored until checked against EK-VT420-RM and EK-VT520-RM |
 
 ## VT220 / VT320 / VT420 (M2)
 
@@ -75,7 +76,7 @@ conformance scripts in `tests/conformance/vttest`.
 | DECUDK | `DCS Pc;Pl \|` | ✅ | Shifted F6–F20; default Pl locks; 804-byte capacity; invalid definition ends loading |
 | DECSSDT DECSASD | `CSI Ps $ ~`, `CSI Ps $ }` | ✅ | VT320+. Status line: only column positioning applies; vertical motion ignored; RIS/DECSTR/DECSCL/DECCOLM exit it. Factory default: indicator |
 | DA2 / DA3 | `CSI > c`, `CSI = c` | ✅ | DA3 (VT420+) reports unit ID `00000000` |
-| DSR printer / UDK / keyboard | `CSI ? 15/25/26 n` | ✅ | No printer; keyboard type 1 = LK401 on VT420, 4 = LK411/LK450 on VT5xx (EK-VT420-RM p.277) |
+| DSR printer / UDK / keyboard | `CSI ? 15/25/26 n` | ✅ | Printer ready where something stands in for one, no printer where not; keyboard type 1 = LK401 on VT420, 4 = LK411/LK450 on VT5xx (EK-VT420-RM p.277) |
 | DECXCPR | `CSI ? 6 n` | ✅ | VT420+ |
 | DSR data integrity / sessions | `CSI ? 75/85 n` | ✅ | VT420+ |
 | DECRQM / DECRPM | `CSI [?] Ps $ p` | ✅ | VT320+. ISO modes 1,3,5,7,10,11,13–19 permanently reset |

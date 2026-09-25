@@ -67,8 +67,12 @@ impl Emulator {
                 let page = self.page + 1;
                 self.reply_csi(&format!("?{row};{col};{page}R"));
             }
-            // Printer: no printer attached.
-            (Some(b'?'), 15) if level >= 2 => self.reply_csi("?13n"),
+            // Printer: ready where something stands in for one, none where
+            // not.
+            (Some(b'?'), 15) if level >= 2 => {
+                let status = self.printer_status();
+                self.reply_csi(status);
+            }
             (Some(b'?'), 25) if level >= 2 => {
                 let locked = if self.udk.locked { 21 } else { 20 };
                 self.reply_csi(&format!("?{locked}n"));
