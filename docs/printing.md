@@ -126,8 +126,11 @@ anyone who has the printer the host expects. Only after P2 and P3, and only if w
 
 ### P5. Acceptance on OpenVMS
 
-On MYI64, run by the user. The first is done: a line printed by DCL in printer controller mode
-came out on paper and not on the screen (25 September 2026).
+On MYI64, run by the user. Done so far (25 September 2026):
+
+- A line printed by DCL in printer controller mode came out on paper and not on the screen.
+- A whole file, printed with `LPRINT.COM` — `TYPE/NOPAGE` wrapped in `ESC [5i` … `ESC [4i`, the
+  terminal set `/NOWRAP/NOBROADCAST` around it — the procedure on the wiki's Printing page.
 
 - Printer controller from DCL: `WRITE SYS$OUTPUT` with `ESC [5i`, some lines, `ESC [4i` — the
   lines reach the PDF and not the screen.
