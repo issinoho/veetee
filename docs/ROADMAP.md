@@ -5,7 +5,7 @@ The working roadmap: what is done, what 1.0 ships with, and what is parked. The 
 every control function are in [compat-matrix.md](compat-matrix.md), and released changes in
 [CHANGELOG.md](../CHANGELOG.md).
 
-Latest release: **1.3.0** (24 September 2026); 1.0.0 was released on 17 September 2026 (see
+Latest release: **1.4.0** (25 September 2026); 1.0.0 was released on 17 September 2026 (see
 [Since 1.0](#since-10)). From 1.0 the version follows Semantic Versioning:
 a breaking change to the crates' public API or to saved settings takes the major, new terminal
 behaviour takes the minor, fixes take the patch. Before 1.0 the minor version followed the
@@ -261,6 +261,12 @@ line, and fixed LAT for any paste longer than 255 characters: veetee filled a sl
 OpenVMS, which never sends more than 254, dropped the circuit. That was found through Kermit, the
 first time a transfer over LAT had to recover.
 
+**1.4.0** (25 September 2026) made LAT survive lost frames: veetee sends again what the host has
+not acknowledged and takes the host's messages in order, where before one lost frame froze the
+session and a lost host message left a hole on the screen. With long packets for Kermit and five
+slots to a LAT message, 20 MB to OpenVMS over LAT, which 1.3.0 could not finish, took 16 minutes
+over Wi-Fi. All of it was found and proved against MYI64 with `VEETEE_LAT_TRACE`.
+
 ## After 1.0
 
 VT340 Sixel and ReGIS graphics, Tektronix 4010/4014, printer controller output to CUPS or PDF,
@@ -286,11 +292,12 @@ C-Kermit are GPL, so they are counterparties to test against and never a referen
 - **Acceptance on OpenVMS (K4), under way**: against C-Kermit 9.0.300 on MYI64, everything passes
   over Telnet and LAT — text and binary both ways, a mixed batch, cancelling from either end.
   Still to try: SSH, serial, C-Kermit 8.0.211, and KERMIT-32 where a system has it.
-- **Open**: long packets, done since 1.3.0 and to be proved against OpenVMS; a `# N3` that C-Kermit on
-  OpenVMS shows on every transfer veetee sends, not yet explained; and pasting faster than
-  OpenVMS reads, which overruns its type-ahead buffer where veetee should honour XOFF.
-- **Not supported**: long packets and sliding windows, so a far end offering them gets short
-  packets, one at a time — slower on a fast link, which a serial console is not.
+- **Long packets** (1.4.0): up to 9 KB where both ends offer them. 20 MB to OpenVMS over LAT takes
+  16 minutes over Wi-Fi and 31 on the cable, the pace now the host's; over Telnet it is still to
+  be timed.
+- **Open**: pasting faster than OpenVMS reads overruns its type-ahead buffer, where veetee should
+  honour XOFF.
+- **Not supported**: sliding windows, so a far end offering them gets one packet at a time.
 
 The lesson of LAT applies: a peer written here is too well behaved to find anything. The real
 Kermits found three faults the simulated line did not; KERMIT-32 on OpenVMS is the one left.

@@ -32,7 +32,7 @@ to test against and never a reference.
 | `vt-headless kermit` and interop (K2) | Released in 1.3.0; both ways against C-Kermit and G-Kermit, text and binary, check 1 and the CRC |
 | Attribute packets: file type and size | Released in 1.3.0; brought forward from K5, proved against both |
 | The capability field | Carried, not read |
-| Long packets | Done, unreleased: up to 9024 bytes where both ends offer them, the size ramped up and down by what gets through; proved against C-Kermit and G-Kermit |
+| Long packets | Released in 1.4.0: up to 9024 bytes where both ends offer them, the size ramped up and down by what gets through; proved against C-Kermit and G-Kermit |
 | Sliding windows | Not supported; a far end offering them gets one packet at a time |
 
 ## The plan

@@ -8,44 +8,47 @@ Before 1.0 the minor version followed the project milestones (0.3 = M3). The for
 
 ## [Unreleased]
 
-- **LAT sends up to five slots in a message**, as OpenVMS does, rather than one. At most sixteen
-  messages are left unacknowledged at once, so with one slot each no more than four kilobytes was
-  ever in flight, and a 20 MB Kermit transfer over LAT took 74 minutes.
+## [1.4.0] - 2026-09-25
+
+**Upgrade if you use LAT.** A LAT session in 1.3.0 froze for good the moment one frame to the
+host went missing, which over Wi-Fi was within minutes, and a message *from* the host that went
+missing left a hole in the text on the screen. veetee now sends again what the host has not
+acknowledged, takes the host's messages in order, and packs its data five slots to a message. A
+20 MB Kermit transfer to OpenVMS over LAT, which 1.3.0 could not finish, took 31 minutes on the
+cable and 16 over Wi-Fi, intact both times. Kermit also gains long packets, which make transfers
+over a network many times faster.
+
 - **Fixed: a LAT session froze when one frame to the host was lost.** OpenVMS takes a circuit's
   messages only in order, so after a loss it went on acknowledging, alive, and discarded
-  everything veetee sent. veetee never sent anything again, so the session stopped — within
-  minutes over Wi-Fi, where frames go missing. Now what the host has not acknowledged is sent
-  again after a second, no more than sixteen messages are left unacknowledged at once, and a host
-  that takes nothing for half a minute ends the session with a message rather than a frozen
-  screen.
+  everything veetee sent, and veetee never sent anything again. Now what the host has not
+  acknowledged is sent again after a second, no more than sixteen messages are left
+  unacknowledged at once, and a host that takes nothing for half a minute ends the session with a
+  message rather than a frozen screen.
 - **Fixed: a message from the host that went missing was lost, with its text and its credit.**
   veetee read past any gap in the host's numbering, so the text on the screen had a hole in it,
-  and the credit the missing message carried never arrived. Over a long Kermit transfer that
-  drained veetee's allowance a credit at a time — 69 losses, 62 credits — until the transfer
-  crawled at one slot every three seconds. OpenVMS sends again what is not acknowledged, every
-  second, so veetee now holds what arrives after a gap and waits for the missing message, reading
-  everything in order once it comes. A host that never sends it is given up on after eight
-  messages, as every gap used to be.
+  and the credit the missing message carried never arrived — over a long transfer, all of it, a
+  credit at a time, until the transfer crawled at one slot every three seconds. OpenVMS sends
+  again what is not acknowledged, every second, so veetee now holds what arrives after a gap and
+  reads everything in order once the missing message comes. A host that never sends it is given
+  up on after eight messages, as every gap used to be.
+- **LAT sends up to five slots in a message**, as OpenVMS does, rather than one: at most sixteen
+  messages are in flight, and with one slot each that was never more than four kilobytes. A 20 MB
+  transfer went from 74 minutes to 31.
 - **Fixed: a LAT session sent held data without credit all at once.** Typing that waits too long
   for the host's allowance is sent anyway, so a host that stops granting cannot take the keyboard
-  with it; but everything held went, which during a file transfer was sixteen slots at a time and
-  took one session 104 past what the host had granted. One slot goes now.
-- **Kermit: a packet size that fails is not tried again.** After a packet has to be sent again,
-  packets stay at most half its size for the rest of the transfer, rather than doubling straight
-  back to the size that failed.
-- **Kermit: both ends receiving, or both sending, says so** — choose Send File, or Receive File —
-  rather than reporting an unexpected packet. The `# N3` that appeared on the screen before a
-  transfer to C-Kermit is its Kermit waiting in RECEIVE, not an error.
-- The LAT trace shows the bytes of any slot that is nothing but control characters, such as XOFF,
-  which cannot include a password.
+  with it; but everything held went, which during a file transfer took one session 104 slots past
+  what the host had granted. One slot goes now.
 - **Kermit transfers are much faster: long packets.** Where the other Kermit offers them, as
   C-Kermit and G-Kermit both do, packets are up to 9 KB rather than 94 bytes, so each exchange
   carries about a hundred times as much. Against C-Kermit on the same machine, 20 MB took 1.5 to
-  2 seconds rather than 9 or 10; over a network, where every exchange waits on the other end, the
-  gain is larger. The size starts small and doubles while packets get through, halving whenever
-  one has to be sent again, so a slow serial line settles on what it can carry rather than timing
-  out on packets it never could. A Kermit that does not offer long packets gets short ones, as
-  before.
+  2 seconds rather than 9 or 10. The size starts small and doubles while packets get through,
+  halving whenever one has to be sent again and never growing back to a size that failed, so a
+  slow serial line settles on what it can carry rather than timing out on packets it never could.
+- **Kermit: both ends receiving, or both sending, says so** — choose Send File, or Receive File —
+  rather than reporting an unexpected packet. The `# N3` that appeared on the screen before a
+  transfer to C-Kermit is its Kermit waiting in RECEIVE, not an error.
+- The LAT trace (`VEETEE_LAT_TRACE`) counts retransmissions, and shows the bytes of any slot that
+  is nothing but control characters, such as XOFF, which cannot include a password.
 
 ## [1.3.0] - 2026-09-24
 
@@ -722,7 +725,8 @@ The first release: VT100 through VT420 emulation with local, Telnet, SSH and ser
   `cargo deny` licence checks and parser fuzzing.
 - `cargo xtask dist` builds the release tarball and Debian package.
 
-[Unreleased]: https://github.com/issinoho/veetee/compare/v1.3.0...HEAD
+[Unreleased]: https://github.com/issinoho/veetee/compare/v1.4.0...HEAD
+[1.4.0]: https://github.com/issinoho/veetee/compare/v1.3.0...v1.4.0
 [1.3.0]: https://github.com/issinoho/veetee/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/issinoho/veetee/compare/v1.1.2...v1.2.0
 [1.1.2]: https://github.com/issinoho/veetee/compare/v1.1.1...v1.1.2
