@@ -122,7 +122,7 @@ impl Session {
         // The host is told a printer is ready where print jobs have somewhere
         // to go (docs/printing.md).
         let config = Config {
-            printer: crate::printing::load().folder.is_some(),
+            printer: crate::printing::load().attached(),
             ..config
         };
         let mut term = Terminal::new(config);

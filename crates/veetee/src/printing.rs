@@ -1,5 +1,6 @@
 //! What stands in for the printer on the terminal's printer port: each print
-//! job becomes a PDF in a folder (docs/printing.md, P2).
+//! job becomes a PDF in a folder, or goes to a real printer through GTK
+//! (docs/printing.md, P2 and P3).
 //!
 //! The terminal decides what is printed and when ([`vt_core::PrintJob`]);
 //! this turns a job into pages and draws them. A job from the screen is
@@ -16,10 +17,14 @@ use vt_core::PrintJob;
 
 /// Where print jobs go.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Printer {
-    /// The folder PDFs are written to; `None` is no printer at all, and the
-    /// host is told so.
-    pub folder: Option<PathBuf>,
+pub enum Printer {
+    /// A PDF for each job, in this folder.
+    Folder(PathBuf),
+    /// The printer chosen in the print dialog, whose settings are kept in
+    /// `print-settings.ini`.
+    System,
+    /// Nowhere, and the host is told there is no printer.
+    None,
 }
 
 impl Default for Printer {
@@ -27,43 +32,143 @@ impl Default for Printer {
     /// that Print Screen works from the first and the host is told a printer
     /// is ready — it cannot tell a PDF from paper.
     fn default() -> Printer {
-        Printer {
-            folder: Some(
-                glib::user_special_dir(glib::UserDirectory::Documents)
-                    .unwrap_or_else(glib::home_dir),
-            ),
-        }
+        Printer::Folder(
+            glib::user_special_dir(glib::UserDirectory::Documents).unwrap_or_else(glib::home_dir),
+        )
     }
 }
 
+impl Printer {
+    /// Whether anything stands in for a printer.
+    pub fn attached(&self) -> bool {
+        *self != Printer::None
+    }
+}
+
+fn dir() -> PathBuf {
+    glib::user_config_dir().join("veetee")
+}
+
 fn path() -> PathBuf {
-    glib::user_config_dir().join("veetee").join("printer.conf")
+    dir().join("printer.conf")
+}
+
+thread_local! {
+    /// The printer chosen in the print dialog this session, which every job
+    /// after goes to without asking. The desktop's print portal will not
+    /// print without a dialog on the strength of saved settings alone, so a
+    /// session asks once, at its first job or at Print to Printer.
+    pub static SETUP: std::cell::RefCell<Option<gtk::PrintSetup>> =
+        const { std::cell::RefCell::new(None) };
+}
+
+/// The command line that sends a PDF to a CUPS printer: `lp`, or through
+/// `flatpak-spawn --host` where veetee is a Flatpak and CUPS is the host's.
+///
+/// The paper is always named — `media` is the size the PDF was drawn at, as
+/// CUPS knows it (`A4`, `Letter`), and the type is plain paper. Left to the
+/// printer's defaults a job took them: a Canon set to 4×6 photo paper stopped
+/// with a paper size error on every page veetee sent it.
+#[cfg(not(windows))]
+pub fn lp_command(
+    printer: &str,
+    title: &str,
+    pdf: &Path,
+    media: &str,
+    flatpak: bool,
+) -> Vec<std::ffi::OsString> {
+    let mut args: Vec<std::ffi::OsString> = Vec::new();
+    if flatpak {
+        args.extend(["flatpak-spawn".into(), "--host".into()]);
+    }
+    args.extend([
+        "lp".into(),
+        "-d".into(),
+        printer.into(),
+        "-t".into(),
+        title.into(),
+        "-o".into(),
+        format!("media={media}").into(),
+        "-o".into(),
+        "media-type=stationery".into(),
+        "--".into(),
+        pdf.into(),
+    ]);
+    args
+}
+
+/// Sends a PDF to the CUPS printer chosen in the print dialog, with no
+/// dialog: the desktop's print portal asks again for every job, which will
+/// not do for a host that prints unasked, and `lp` is how a job reaches a
+/// named CUPS printer directly. Blocks until CUPS has the job.
+#[cfg(not(windows))]
+pub fn send_to_cups(printer: &str, title: &str, pdf: &Path, media: &str) -> io::Result<()> {
+    let args = lp_command(printer, title, pdf, media, vt_transport::pty::in_flatpak());
+    let out = std::process::Command::new(&args[0])
+        .args(&args[1..])
+        .output()?;
+    if out.status.success() {
+        Ok(())
+    } else {
+        Err(io::Error::other(
+            String::from_utf8_lossy(&out.stderr).trim().to_string(),
+        ))
+    }
+}
+
+/// Where a PDF waits to be handed to CUPS: somewhere the host can read it,
+/// which in a Flatpak the private `/tmp` is not.
+#[cfg(not(windows))]
+pub fn spool_dir() -> PathBuf {
+    if vt_transport::pty::in_flatpak() {
+        glib::user_cache_dir()
+    } else {
+        glib::tmp_dir()
+    }
+}
+
+/// Where the chosen printer's settings are kept, as GTK writes them.
+pub fn settings_path() -> PathBuf {
+    dir().join("print-settings.ini")
 }
 
 pub fn load() -> Printer {
     let Ok(text) = std::fs::read_to_string(path()) else {
         return Printer::default();
     };
-    let mut printer = Printer::default();
+    let mut destination = "pdf";
+    let mut folder = None;
     for line in text.lines() {
         match line.split_once('=').map(|(k, v)| (k.trim(), v.trim())) {
-            Some(("destination", "none")) => printer.folder = None,
-            Some(("folder", folder)) if !folder.is_empty() && printer.folder.is_some() => {
-                printer.folder = Some(PathBuf::from(folder));
+            Some(("destination", d)) => {
+                destination = if d == "none" {
+                    "none"
+                } else if d == "printer" {
+                    "printer"
+                } else {
+                    "pdf"
+                }
             }
+            Some(("folder", f)) if !f.is_empty() => folder = Some(PathBuf::from(f)),
             _ => {}
         }
     }
-    printer
+    match (destination, folder) {
+        ("none", _) => Printer::None,
+        ("printer", _) if settings_path().exists() => Printer::System,
+        (_, Some(folder)) => Printer::Folder(folder),
+        _ => Printer::default(),
+    }
 }
 
 pub fn save(printer: &Printer) {
-    let text = match &printer.folder {
-        Some(folder) => format!(
-            "# veetee printer: where print jobs go\ndestination=pdf\nfolder={}\n",
-            folder.display()
-        ),
-        None => "# veetee printer: where print jobs go\ndestination=none\n".to_string(),
+    let header = "# veetee printer: where print jobs go\n";
+    let text = match printer {
+        Printer::Folder(folder) => {
+            format!("{header}destination=pdf\nfolder={}\n", folder.display())
+        }
+        Printer::System => format!("{header}destination=printer\n"),
+        Printer::None => format!("{header}destination=none\n"),
     };
     let path = path();
     if let Some(dir) = path.parent() {
@@ -197,6 +302,15 @@ const FONT: &str = "Consolas";
 #[cfg(not(windows))]
 const FONT: &str = "monospace";
 
+/// The locale's paper as CUPS names it (`A4`, `Letter`), to go with a PDF
+/// drawn on [`paper`]. Needs GTK running.
+pub fn paper_name() -> String {
+    let name = gtk::PaperSize::new(Some(&gtk::PaperSize::default()))
+        .ppd_name()
+        .to_string();
+    if name.is_empty() { "A4".into() } else { name }
+}
+
 /// A4, in points, for where nothing better is known.
 pub const A4: (f64, f64) = (595.28, 841.89);
 
@@ -211,42 +325,93 @@ pub fn paper() -> (f64, f64) {
     if w > 0.0 && h > 0.0 { (w, h) } else { A4 }
 }
 
-/// Writes the text as a PDF on `paper` (width and height in points):
-/// portrait for up to 80 columns, landscape past that, the font made smaller
-/// if even landscape is too narrow. Returns how many pages it took.
-pub fn write_pdf(text: &str, path: &Path, paper: (f64, f64)) -> io::Result<usize> {
-    let widest = text.lines().map(|l| l.chars().count()).max().unwrap_or(0);
-    let (short, long) = paper;
-    let (width, height) = if widest > 80 {
-        (long, short)
-    } else {
-        (short, long)
-    };
-    let surface = cairo::PdfSurface::new(width, height, path).map_err(io::Error::other)?;
-    let cr = cairo::Context::new(&surface).map_err(io::Error::other)?;
+/// The longest line, in characters.
+pub fn widest(text: &str) -> usize {
+    text.lines().map(|l| l.chars().count()).max().unwrap_or(0)
+}
+
+/// Whether a job wants the paper turned: past 80 columns it does.
+pub fn landscape(text: &str) -> bool {
+    widest(text) > 80
+}
+
+/// How many lines fit between the margins of a page this tall.
+pub fn lines_per_page(height: f64, margin: f64) -> usize {
+    ((height - 2.0 * margin) / LINE_HEIGHT).floor().max(1.0) as usize
+}
+
+/// Draws one page's lines: the monospaced font at ten points, made smaller
+/// where the widest line of the job would not otherwise fit `width`.
+/// Shared by the PDF and the printer, so the two print alike.
+pub fn draw_page(
+    cr: &cairo::Context,
+    lines: &[String],
+    widest: usize,
+    width: f64,
+    margin: f64,
+) -> Result<(), cairo::Error> {
     cr.select_font_face(FONT, cairo::FontSlant::Normal, cairo::FontWeight::Normal);
     cr.set_font_size(FONT_SIZE);
     let advance = cr
         .text_extents("M")
         .map(|e| e.x_advance())
         .unwrap_or(FONT_SIZE * 0.6);
-    let usable = width - 2.0 * MARGIN;
+    let usable = width - 2.0 * margin;
     if widest > 0 && advance * widest as f64 > usable {
         cr.set_font_size(FONT_SIZE * usable / (advance * widest as f64));
     }
-    let lines_per_page = ((height - 2.0 * MARGIN) / LINE_HEIGHT).floor() as usize;
-    let pages = paginate(text, lines_per_page);
+    cr.set_source_rgb(0.0, 0.0, 0.0);
+    for (i, line) in lines.iter().enumerate() {
+        cr.move_to(margin, margin + LINE_HEIGHT * (i as f64 + 0.8));
+        cr.show_text(line)?;
+    }
+    Ok(())
+}
+
+/// Writes the text as a PDF on `paper` (width and height in points):
+/// portrait for up to 80 columns, landscape past that, the font made smaller
+/// if even landscape is too narrow. Returns how many pages it took.
+pub fn write_pdf(text: &str, path: &Path, paper: (f64, f64)) -> io::Result<usize> {
+    let widest = widest(text);
+    let (short, long) = paper;
+    let (width, height) = if landscape(text) {
+        (long, short)
+    } else {
+        (short, long)
+    };
+    let surface = cairo::PdfSurface::new(width, height, path).map_err(io::Error::other)?;
+    let cr = cairo::Context::new(&surface).map_err(io::Error::other)?;
+    let pages = paginate(text, lines_per_page(height, MARGIN));
     for page in &pages {
-        cr.set_source_rgb(0.0, 0.0, 0.0);
-        for (i, line) in page.iter().enumerate() {
-            cr.move_to(MARGIN, MARGIN + LINE_HEIGHT * (i as f64 + 0.8));
-            cr.show_text(line).map_err(io::Error::other)?;
-        }
+        draw_page(&cr, page, widest, width, MARGIN).map_err(io::Error::other)?;
         cr.show_page().map_err(io::Error::other)?;
     }
     drop(cr);
     surface.finish();
     Ok(pages.len())
+}
+
+/// A quarter of an inch inside what the printer can print, which is already
+/// inside the paper's edge.
+#[cfg(windows)]
+pub const PRINTER_MARGIN: f64 = 18.0;
+
+/// A page to print when choosing a printer, as a DEC terminal's Set-Up could
+/// print a test page: a ruler, and the character sets a host might send.
+pub fn test_page() -> String {
+    let mut text = String::from("veetee printer test\n\n");
+    text.push_str(
+        "         1         2         3         4         5         6         7         8\n",
+    );
+    text.push_str(&"1234567890".repeat(8));
+    text.push_str("\n\n");
+    text.push_str(" !\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_\n");
+    text.push_str("`abcdefghijklmnopqrstuvwxyz{|}~\n");
+    text.push_str("¡¢£¤¥¦§¨©ª«¬\u{AD}®¯°±²³´µ¶·¸¹º»¼½¾¿ÀÁÂÃÄÅÆÇÈÉÊËÌÍÎÏÐÑÒÓÔÕÖ×ØÙÚÛÜÝÞß\n");
+    text.push_str("àáâãäåæçèéêëìíîïðñòóôõö÷øùúûüýþÿ\n\n");
+    text.push_str("┌──┬──┐  ◆▒␉␌␍␊°±␤␋┘┐┌└┼⎺⎻─⎼⎽├┤┴┬│≤≥π≠£·\n");
+    text.push_str("│  │  │\n├──┼──┤\n└──┴──┘\n");
+    text
 }
 
 /// A name for a job's PDF in `folder` that nothing has yet: the session and
@@ -313,6 +478,36 @@ mod tests {
         assert_eq!(controller(b"\x1bcreset\r\n"), "reset\n");
         assert_eq!(controller(b"\x9b4;1mcsi\r\n"), "csi\n", "8-bit CSI");
         assert_eq!(controller(b"end\x1b["), "end\n", "cut short at the end");
+    }
+
+    #[cfg(not(windows))]
+    #[test]
+    fn a_job_goes_to_the_chosen_cups_printer_by_name() {
+        let pdf = Path::new("/tmp/job.pdf");
+        let args = lp_command("Canon_MX470_series", "veetee: vms1", pdf, "A4", false);
+        assert_eq!(
+            args,
+            [
+                "lp",
+                "-d",
+                "Canon_MX470_series",
+                "-t",
+                "veetee: vms1",
+                "-o",
+                "media=A4",
+                "-o",
+                "media-type=stationery",
+                "--",
+                "/tmp/job.pdf"
+            ],
+            "the paper named, whatever the printer's defaults"
+        );
+        let args = lp_command("Canon_MX470_series", "veetee", pdf, "A4", true);
+        assert_eq!(
+            &args[..3],
+            ["flatpak-spawn", "--host", "lp"],
+            "the host's CUPS"
+        );
     }
 
     #[test]

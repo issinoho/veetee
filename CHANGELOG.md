@@ -19,8 +19,12 @@ Before 1.0 the minor version followed the project milestones (0.3 = M3). The for
   PDF in your Documents folder, or wherever *Print to Folder…* says, and a message says where,
   with a button to open it. The host is told a printer is ready, and the indicator status line
   says so. What the host sends for a particular printer is read as a plain printer would read
-  it, its escape sequences passed over. Printing to a real printer comes next
-  (`docs/printing.md`).
+  it, its escape sequences passed over.
+- **Added: printing to a real printer.** *Print to Printer…* in the window menu shows the system
+  print dialog once, prints a test page, and keeps the printer chosen; from then on every print
+  job goes straight to it, with no dialog, as to a printer on the terminal's port — including
+  after veetee is restarted. On Linux jobs go through CUPS, and each names its paper so a printer
+  whose default is photo paper does not refuse it. On Windows, GTK's own printing is used.
 
 - **XOFF from the host stops what veetee sends**, until XON, as a DEC terminal's does. OpenVMS
   sends XOFF when its type-ahead buffer fills, and a paste of a few hundred characters at the DCL

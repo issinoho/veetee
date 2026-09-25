@@ -96,6 +96,22 @@ line shows the printer as it does on the VT420.
 
 ### P3. Printing to a real printer
 
+**Done** (25 September 2026), and seen on paper: the test page, Print Screen, and a job printed
+by OpenVMS on the terminal's printer, on a Canon MX470 over CUPS. *Print to Printer…* shows the
+system print dialog once, with a test page, and keeps the chosen printer; every job after goes
+straight to it as a PDF through `lp`, with no dialog, across restarts. On Windows, GTK's print
+operation does the same, compiled and not yet run. What printing on real paper found:
+
+- **The desktop's print portal asks for every job.** GTK's `PrintDialog` hands over a setup the
+  portal will honour once: the job after it showed the dialog again, and printed the host's job
+  as a blank page. So the dialog only chooses the printer, and `lp` does the printing.
+- **Bypassing the portal, GTK printed to whatever printer it found** when the one named was not
+  there: a test meant for *Print to File* came out on the Canon. Jobs therefore go only to the
+  printer chosen in the dialog, by its CUPS name.
+- **A job has to name its paper.** Left to the printer's defaults, which here were 4×6 photo
+  paper, every page stopped with a paper size error. Each job now says its size — the one the PDF
+  was drawn at, from the locale — and plain paper.
+
 The same drawing, sent through `GtkPrintOperation`, which is CUPS on Linux and the Windows print
 system on Windows: the first print asks which printer, and after that jobs go straight to it, as
 they would to a printer on the terminal's port. The destination — PDF folder, printer, or none —
@@ -110,7 +126,8 @@ anyone who has the printer the host expects. Only after P2 and P3, and only if w
 
 ### P5. Acceptance on OpenVMS
 
-On MYI64, run by the user:
+On MYI64, run by the user. The first is done: a line printed by DCL in printer controller mode
+came out on paper and not on the screen (25 September 2026).
 
 - Printer controller from DCL: `WRITE SYS$OUTPUT` with `ESC [5i`, some lines, `ESC [4i` — the
   lines reach the PDF and not the screen.

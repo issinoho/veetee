@@ -115,6 +115,7 @@ fn build_window(app: &adw::Application, config: Config, options: Options) {
     session_section.append(Some("Timestamp Log Lines"), Some("win.log-timestamps"));
     session_section.append(Some("Print Screen"), Some("win.print-screen"));
     session_section.append(Some("Print to Folder…"), Some("win.print-folder"));
+    session_section.append(Some("Print to Printer…"), Some("win.print-printer"));
     session_section.append(Some("Send File…"), Some("win.send-file"));
     session_section.append(Some("Receive File…"), Some("win.receive-file"));
     session_section.append(Some("Keyboard Map…"), Some("win.keymap"));
@@ -359,6 +360,16 @@ fn add_session_actions(window: &adw::ApplicationWindow, workspace: &Rc<workspace
         }
     });
     window.add_action(&print_folder);
+    let print_printer = gio::SimpleAction::new("print-printer", None);
+    print_printer.connect_activate({
+        let workspace = Rc::downgrade(workspace);
+        move |_, _| {
+            if let Some(ws) = workspace.upgrade() {
+                ws.choose_printer();
+            }
+        }
+    });
+    window.add_action(&print_printer);
 
     // Kermit, over whatever the session's connection is.
     let send_file = gio::SimpleAction::new("send-file", None);

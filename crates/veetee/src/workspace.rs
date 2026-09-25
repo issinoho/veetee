@@ -630,11 +630,23 @@ impl Workspace {
         self.notify(&message);
     }
 
-    /// A print job, from the host or the screen: written as a PDF into the
-    /// printer folder, off the main thread, and a message says where.
+    /// A print job, from the host or the screen: to the chosen printer, or
+    /// written as a PDF into the printer folder off the main thread; either
+    /// way a message says where it went.
     fn print(self: &Rc<Self>, id: u64, job: vt_core::PrintJob) {
-        let Some(folder) = crate::printing::load().folder else {
-            return;
+        let folder = match crate::printing::load() {
+            crate::printing::Printer::Folder(folder) => folder,
+            crate::printing::Printer::System => {
+                let text = crate::printing::text_of(&job);
+                let name = self
+                    .options
+                    .profile
+                    .clone()
+                    .unwrap_or_else(|| "veetee".into());
+                self.print_on_printer(&text, &name, false);
+                return;
+            }
+            crate::printing::Printer::None => return,
         };
         let name = self
             .panes
@@ -696,11 +708,269 @@ impl Workspace {
         let Some(pane) = self.active_pane() else {
             return;
         };
-        if crate::printing::load().folder.is_none() {
-            self.notify("No printer: choose Print to Folder in the window menu");
+        if !crate::printing::load().attached() {
+            self.notify(
+                "No printer: choose Print to Folder or Print to Printer in the window menu",
+            );
             return;
         }
         pane.view.session().print_screen();
+    }
+
+    /// Sends text to the chosen printer with GTK's print dialog, which works
+    /// through the desktop's print portal: the first job of a session, or
+    /// `choosing`, shows the dialog; every job after goes straight to the
+    /// printer chosen there. A job is written as a PDF to a temporary file and
+    /// that is printed, so paper and PDF print alike.
+    ///
+    /// The desktop portal would not print silently from saved settings, and
+    /// with it bypassed GTK printed to whatever printer it found when the one
+    /// named was missing — the wrong one, for a host that prints unasked. So
+    /// nothing is printed until a printer has been chosen in this session.
+    #[cfg(not(windows))]
+    fn print_on_printer(self: &Rc<Self>, text: &str, job_name: &str, choosing: bool) {
+        static JOBS: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+        // Once a printer has been chosen, jobs go straight to it through
+        // CUPS: the portal would ask again for every one, and printed the
+        // host's job as a blank page when handed a setup it had already used.
+        let chosen = gtk::PrintSettings::from_file(crate::printing::settings_path())
+            .ok()
+            .and_then(|s| s.printer())
+            .map(|p| p.to_string());
+        if let (false, Some(printer)) = (choosing, chosen) {
+            let text = text.to_string();
+            let title = format!("veetee: {job_name}");
+            let paper = crate::printing::paper();
+            let media = crate::printing::paper_name();
+            let path = crate::printing::spool_dir().join(format!(
+                "veetee-print-{}-{}.pdf",
+                std::process::id(),
+                JOBS.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+            ));
+            let (tx, rx) = async_channel::bounded(1);
+            std::thread::spawn({
+                let printer = printer.clone();
+                move || {
+                    let sent = crate::printing::write_pdf(&text, &path, paper).and_then(|pages| {
+                        crate::printing::send_to_cups(&printer, &title, &path, &media)
+                            .map(|()| pages)
+                    });
+                    let _ = std::fs::remove_file(&path);
+                    let _ = tx.send_blocking(sent);
+                }
+            });
+            let weak = Rc::downgrade(self);
+            glib::spawn_future_local(async move {
+                let (Ok(sent), Some(ws)) = (rx.recv().await, weak.upgrade()) else {
+                    return;
+                };
+                match sent {
+                    Ok(pages) => ws.notify(&format!(
+                        "Sent to {printer}{}",
+                        if pages == 1 {
+                            String::new()
+                        } else {
+                            format!(", {pages} pages")
+                        }
+                    )),
+                    Err(e) => ws.notify(&format!("Cannot print to {printer}: {e}")),
+                }
+            });
+            return;
+        }
+        let text = text.to_string();
+        let weak = Rc::downgrade(self);
+        glib::spawn_future_local(async move {
+            let Some(ws) = weak.upgrade() else { return };
+            let dialog = gtk::PrintDialog::builder().modal(true).build();
+            if let Ok(saved) = gtk::PrintSettings::from_file(crate::printing::settings_path()) {
+                dialog.set_print_settings(&saved);
+            }
+            let known = if choosing {
+                None
+            } else {
+                crate::printing::SETUP.with(|s| s.borrow().clone())
+            };
+            let setup = match known {
+                Some(setup) => setup,
+                None => {
+                    let Ok(setup) = dialog.setup_future(Some(&ws.window)).await else {
+                        return; // the dialog was cancelled
+                    };
+                    let path = crate::printing::settings_path();
+                    if let Some(dir) = path.parent() {
+                        let _ = std::fs::create_dir_all(dir);
+                    }
+                    let _ = setup.print_settings().to_file(&path);
+                    crate::printing::SETUP.with(|s| *s.borrow_mut() = Some(setup.clone()));
+                    if choosing {
+                        crate::printing::save(&crate::printing::Printer::System);
+                        for pane in ws.panes.borrow().iter() {
+                            pane.view.session().terminal().set_printer(true);
+                        }
+                    }
+                    setup
+                }
+            };
+            let size = setup.page_setup().paper_size();
+            let paper = (
+                size.width(gtk::Unit::Points),
+                size.height(gtk::Unit::Points),
+            );
+            let paper = if paper.0 > 0.0 && paper.1 > 0.0 {
+                paper
+            } else {
+                crate::printing::paper()
+            };
+            let path = glib::tmp_dir().join(format!(
+                "veetee-print-{}-{}.pdf",
+                std::process::id(),
+                JOBS.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+            ));
+            let (tx, rx) = async_channel::bounded(1);
+            {
+                let path = path.clone();
+                std::thread::spawn(move || {
+                    let _ = tx.send_blocking(crate::printing::write_pdf(&text, &path, paper));
+                });
+            }
+            let pages = match rx.recv().await {
+                Ok(Ok(pages)) => pages,
+                Ok(Err(e)) => return ws.notify(&format!("Cannot print: {e}")),
+                Err(_) => return,
+            };
+            let printed = dialog
+                .print_file_future(
+                    Some(&ws.window),
+                    Some(&setup),
+                    &gtk::gio::File::for_path(&path),
+                )
+                .await;
+            let _ = std::fs::remove_file(&path);
+            let printer = setup
+                .print_settings()
+                .printer()
+                .map(|p| p.to_string())
+                .unwrap_or_else(|| "the printer".into());
+            match printed {
+                Ok(()) if choosing => {
+                    ws.notify(&format!("Printing to {printer}; a test page is on its way"))
+                }
+                Ok(()) => ws.notify(&format!(
+                    "Sent to {printer}{}",
+                    if pages == 1 {
+                        String::new()
+                    } else {
+                        format!(", {pages} pages")
+                    }
+                )),
+                Err(e) => ws.notify(&format!("Cannot print: {e}")),
+            }
+        });
+    }
+
+    /// Sends text to the chosen printer through GTK's print operation — CUPS
+    /// on Linux, the Windows print system on Windows, the print portal in the
+    /// Flatpak — with no dialog, as to a printer on the terminal's port.
+    /// `choosing` shows the print dialog instead, to pick the printer, and
+    /// keeps what was chosen for every job after. The Windows path: there is
+    /// no portal there, and GTK's print dialog is not known to work.
+    #[cfg(windows)]
+    fn print_on_printer(self: &Rc<Self>, text: &str, job_name: &str, choosing: bool) {
+        let op = gtk::PrintOperation::new();
+        op.set_unit(gtk::Unit::Points);
+        op.set_job_name(job_name);
+        let settings = gtk::PrintSettings::from_file(crate::printing::settings_path()).ok();
+        let page_setup = gtk::PageSetup::new();
+        if let Some(paper) = settings.as_ref().and_then(gtk::PrintSettings::paper_size) {
+            page_setup.set_paper_size(&paper);
+        }
+        if crate::printing::landscape(text) {
+            page_setup.set_orientation(gtk::PageOrientation::Landscape);
+        }
+        op.set_default_page_setup(Some(&page_setup));
+        if let Some(settings) = &settings {
+            op.set_print_settings(Some(settings));
+        }
+        let text = text.to_string();
+        let widest = crate::printing::widest(&text);
+        let pages = Rc::new(RefCell::new(Vec::new()));
+        op.connect_begin_print({
+            let (pages, text) = (pages.clone(), text.clone());
+            move |op, context| {
+                let lines = crate::printing::lines_per_page(
+                    context.height(),
+                    crate::printing::PRINTER_MARGIN,
+                );
+                let paged = crate::printing::paginate(&text, lines);
+                op.set_n_pages(paged.len() as i32);
+                *pages.borrow_mut() = paged;
+            }
+        });
+        op.connect_draw_page({
+            let pages = pages.clone();
+            move |_, context, n| {
+                let cr = context.cairo_context();
+                if let Some(page) = pages.borrow().get(n as usize) {
+                    let _ = crate::printing::draw_page(
+                        &cr,
+                        page,
+                        widest,
+                        context.width(),
+                        crate::printing::PRINTER_MARGIN,
+                    );
+                }
+            }
+        });
+        let action = if choosing || settings.is_none() {
+            gtk::PrintOperationAction::PrintDialog
+        } else {
+            gtk::PrintOperationAction::Print
+        };
+        match op.run(action, Some(&self.window)) {
+            Ok(gtk::PrintOperationResult::Apply) => {
+                if let Some(chosen) = op.print_settings() {
+                    let _ = std::fs::create_dir_all(
+                        crate::printing::settings_path()
+                            .parent()
+                            .unwrap_or(std::path::Path::new(".")),
+                    );
+                    if let Err(e) = chosen.to_file(crate::printing::settings_path()) {
+                        self.notify(&format!("Cannot keep the printer's settings: {e}"));
+                    }
+                }
+                let printer = op
+                    .print_settings()
+                    .and_then(|s| s.printer())
+                    .map(|p| p.to_string())
+                    .unwrap_or_else(|| "the printer".into());
+                if choosing {
+                    crate::printing::save(&crate::printing::Printer::System);
+                    for pane in self.panes.borrow().iter() {
+                        pane.view.session().terminal().set_printer(true);
+                    }
+                    self.notify(&format!("Printing to {printer}; a test page is on its way"));
+                } else {
+                    let count = pages.borrow().len();
+                    self.notify(&format!(
+                        "Sent to {printer}{}",
+                        if count == 1 {
+                            String::new()
+                        } else {
+                            format!(", {count} pages")
+                        }
+                    ));
+                }
+            }
+            Ok(_) => {}
+            Err(e) => self.notify(&format!("Cannot print: {e}")),
+        }
+    }
+
+    /// Print to Printer: the print dialog, with a test page, to choose the
+    /// printer every job goes to after it.
+    pub fn choose_printer(self: &Rc<Self>) {
+        self.print_on_printer(&crate::printing::test_page(), "veetee printer test", true);
     }
 
     /// Print to Folder: where print jobs go from now on. Choosing one also
@@ -710,7 +980,7 @@ impl Workspace {
             .title("Print to Folder")
             .accept_label("Print Here")
             .build();
-        if let Some(folder) = crate::printing::load().folder {
+        if let crate::printing::Printer::Folder(folder) = crate::printing::load() {
             dialog.set_initial_folder(Some(&gtk::gio::File::for_path(folder)));
         }
         let weak = Rc::downgrade(self);
@@ -722,9 +992,7 @@ impl Workspace {
                     return;
                 };
                 let Some(folder) = chosen.path() else { return };
-                crate::printing::save(&crate::printing::Printer {
-                    folder: Some(folder.clone()),
-                });
+                crate::printing::save(&crate::printing::Printer::Folder(folder.clone()));
                 for pane in ws.panes.borrow().iter() {
                     pane.view.session().terminal().set_printer(true);
                 }

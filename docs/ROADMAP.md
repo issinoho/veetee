@@ -197,9 +197,9 @@ rather than fixes; none of it was judged a reason to hold the release.
   line (TD/SMP, SSU).
 - **Indicator status line** field layout not yet checked against hardware; DECTST resets without a
   visible self-test.
-- **Printing**: under way ([`printing.md`](printing.md)). The terminal's printer functions and
-  printing to PDF are done; a real printer through GTK, and passing a host's printer data
-  through untouched, are still to come.
+- **Printing**: under way ([`printing.md`](printing.md)). The terminal's printer functions,
+  printing to PDF and printing to a real printer are done; passing a host's printer data through
+  untouched, and acceptance against OpenVMS applications, are still to come.
 - **Hardware nobody here has.** RFC 2217 is proved against `ser2net`, and whether a DECserver,
   Lantronix or Moxa answers the option at all is unknown —
   [`rfc2217-testing.md`](rfc2217-testing.md) is written for whoever has one. Several details of
