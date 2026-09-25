@@ -5,7 +5,7 @@ The working roadmap: what is done, what 1.0 ships with, and what is parked. The 
 every control function are in [compat-matrix.md](compat-matrix.md), and released changes in
 [CHANGELOG.md](../CHANGELOG.md).
 
-Latest release: **1.4.0** (25 September 2026); 1.0.0 was released on 17 September 2026 (see
+Latest release: **1.5.0** (25 September 2026); 1.0.0 was released on 17 September 2026 (see
 [Since 1.0](#since-10)). From 1.0 the version follows Semantic Versioning:
 a breaking change to the crates' public API or to saved settings takes the major, new terminal
 behaviour takes the minor, fixes take the patch. Before 1.0 the minor version followed the
@@ -268,6 +268,11 @@ not acknowledged and takes the host's messages in order, where before one lost f
 session and a lost host message left a hole on the screen. With long packets for Kermit and five
 slots to a LAT message, 20 MB to OpenVMS over LAT, which 1.3.0 could not finish, took 16 minutes
 over Wi-Fi. All of it was found and proved against MYI64 with `VEETEE_LAT_TRACE`.
+
+**1.5.0** (25 September 2026) added **printing**: the printer port, so printer controller data no
+longer lands on the screen, and each print job — from the host or the Print Screen key — as a PDF
+or on a real printer, seen on paper including a job printed from OpenVMS. It also honours XOFF
+from the host, so a long paste into OpenVMS with HOSTSYNC set no longer overruns.
 
 ## After 1.0
 

@@ -8,6 +8,14 @@ Before 1.0 the minor version followed the project milestones (0.3 = M3). The for
 
 ## [Unreleased]
 
+## [1.5.0] - 2026-09-25
+
+**Printing.** veetee now has the printer port a DEC terminal has, and OpenVMS already believed it
+had: what a host prints on the terminal's printer, and the screen from the Print Screen key, go
+to a PDF or to a real printer — and no longer onto the display, where printer controller data
+used to land. Seen on paper on a Canon over CUPS, including a job printed from OpenVMS. And
+XOFF from the host now stops what veetee sends, so a long paste into OpenVMS no longer overruns.
+
 - **Fixed: what a host sent for the terminal's printer appeared on the screen.** veetee
   ignored printer controller mode (`CSI 5 i` … `CSI 4 i`), so a report or form an OpenVMS
   application printed on the user's printer — which OpenVMS believes veetee has, and lists as
@@ -25,7 +33,6 @@ Before 1.0 the minor version followed the project milestones (0.3 = M3). The for
   job goes straight to it, with no dialog, as to a printer on the terminal's port — including
   after veetee is restarted. On Linux jobs go through CUPS, and each names its paper so a printer
   whose default is photo paper does not refuse it. On Windows, GTK's own printing is used.
-
 - **XOFF from the host stops what veetee sends**, until XON, as a DEC terminal's does. OpenVMS
   sends XOFF when its type-ahead buffer fills, and a paste of a few hundred characters at the DCL
   prompt used to go on regardless and end in `DATAOVERUN`, the rest of it lost. Typing, pastes,
@@ -33,7 +40,8 @@ Before 1.0 the minor version followed the project milestones (0.3 = M3). The for
   host" while they do. It applies over Telnet, SSH and LAT, where the host's XON and XOFF come in
   the data; a serial line's driver already does it, and a local shell is left alone, since a
   program printing a binary file would otherwise stop the keyboard. Set-Up's transmit flow
-  control (XON/XOFF from the factory) turns it off with *none*.
+  control (XON/XOFF from the factory) turns it off with *none*. OpenVMS sends XOFF only with
+  `SET TERMINAL/HOSTSYNC`; with it, 200 lines pasted into `CREATE` over LAT arrived whole.
 
 ## [1.4.0] - 2026-09-25
 
@@ -752,7 +760,8 @@ The first release: VT100 through VT420 emulation with local, Telnet, SSH and ser
   `cargo deny` licence checks and parser fuzzing.
 - `cargo xtask dist` builds the release tarball and Debian package.
 
-[Unreleased]: https://github.com/issinoho/veetee/compare/v1.4.0...HEAD
+[Unreleased]: https://github.com/issinoho/veetee/compare/v1.5.0...HEAD
+[1.5.0]: https://github.com/issinoho/veetee/compare/v1.4.0...v1.5.0
 [1.4.0]: https://github.com/issinoho/veetee/compare/v1.3.0...v1.4.0
 [1.3.0]: https://github.com/issinoho/veetee/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/issinoho/veetee/compare/v1.1.2...v1.2.0
