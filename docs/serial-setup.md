@@ -2,7 +2,8 @@
 
 A plan, written 25 September 2026, for the 1.6.0 feature: the Communications Set-Up settings
 drive the serial line, as they do on the terminal. The decisions were settled as recommended the
-same day, and S1 to S3 are built; S4's tests are written, and the hardware test is to come.
+same day, and S1 to S4 are done: built, tested, proved against `ser2net`, and on real hardware on
+26 September 2026.
 
 ## Why
 
@@ -77,8 +78,34 @@ line; which wins at connect; and a session that sets the line on leaving Set-Up 
 keeps a speed Set-Up cannot show, and leaves line and Set-Up alone when the port refuses. RFC 2217
 against `ser2net` 4.6.5 on 26 September 2026: four changes of line while connected, each answered
 as asked, after one-way XON/XOFF was changed to be asked for both ways, since ser2net takes
-the inbound direction as the whole setting ([`rfc2217-testing.md`](rfc2217-testing.md)). Still to
-do: real hardware.
+the inbound direction as the whole setting ([`rfc2217-testing.md`](rfc2217-testing.md)).
+
+On hardware, 26 September 2026, run by the user: a Prolific PL2303 USB adapter on
+`/dev/ttyUSB0` to MYI64's terminal port `_TTA0:` (OpenVMS IA64, 9600, `Autobaud`, `Set_speed`):
+
+| Test | Result |
+|---|---|
+| `--serial /dev/ttyUSB0`, no options | Opened at the saved Set-Up's 9600 8N1; subtitle and Comm Set-Up agreed |
+| LOGIN.COM's `SET TERMINAL/INQUIRE` | Worked over serial: VT400_Series, Eightbit, Soft Characters, Printer port, Hostsync |
+| `SET TERMINAL/SPEED=19200`, then Set-Up Transmit=19200 | Readable again; `SHOW TERMINAL` 19200 both ways |
+| `LOGOUT` at 19200, Set-Up to 9600, Return | OpenVMS autobauded to 9600 at `Username:` |
+| DECSCS from the host (`--model vt520`) | Ignored at first — see below — and then, after `CSI 65;1 " p`, set the line to 19200 with no Set-Up |
+
+**OpenVMS puts the terminal in VT200 mode.** A recording of the DECSCS attempt showed why it was
+ignored: `SET TERMINAL/INQUIRE` sends DA, DECRQDE and then `CSI 62 " p` (DECSCL, VT200 mode) and
+S7C1T, and every OpenVMS recording in `tests/conformance/openvms` has the same `CSI 62 " p`,
+over Telnet and LAT alike. veetee acts on DECSCS, DECSPP and DECSFC only at VT500 level, as DEC
+STD 070's conformance levels have a terminal not recognise a higher level's functions; EK-VT510-RM
+lists DECSCS without saying which levels it works in (🔎). So a host changing the line from
+OpenVMS selects VT500 level first:
+
+```
+$ esc[0,8]=27
+$ write sys$output esc+"[65;1""p"+esc+"[1;7*r"
+$ set terminal/speed=19200
+```
+
+`CSI 65;1 " p` is a hard reset as well, which clears the screen.
 
 
 Planned: the computed termios and DCB for every Set-Up combination, as the serial tests already

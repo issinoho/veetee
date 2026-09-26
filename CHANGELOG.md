@@ -25,8 +25,10 @@ Before 1.0 the minor version followed the project milestones (0.3 = M3). The for
   opens with the saved Set-Up (DEC's factory 9600 8N1 XON/XOFF where nothing is saved); the
   line options, and a saved connection's own settings, still win for that connection, and Set-Up
   shows the line as it is. Leaving Set-Up with new settings changes the line at once, and so do
-  the host's DECSCS, DECSPP and DECSFC on the VT500 models; a setting the port refuses leaves the
-  line as it was, with a message. Telnet to a terminal server with COM Port Control (RFC 2217)
+  the host's DECSCS, DECSPP and DECSFC on the VT500 models, at VT500 level (OpenVMS's
+  `SET TERMINAL/INQUIRE` selects VT200 mode, so a procedure sends `CSI 65;1 " p` first); a
+  setting the port refuses leaves the line as it was, with a message. Proved on a USB serial
+  adapter to an OpenVMS terminal port, autobaud included. Telnet to a terminal server with COM Port Control (RFC 2217)
   follows Set-Up the same way, proved against `ser2net`. A VT420 set to *No XOFF* still stops at
   the host's XOFF, as the terminal does; over RFC 2217 that is asked for as XON/XOFF both ways,
   since `ser2net` does not keep the directions apart. Set-Up's DSR and DTR flow control are RTS/CTS on the port; the receive speed and
