@@ -106,8 +106,9 @@ cargo run -p veetee -- --record session.vtrec --telnet vms1  # record for replay
 cargo run -p veetee -- --sessions 2 --telnet vms1   # two sessions in a split window; F4 switches
 ```
 
-`cargo run -p veetee -- --help` lists every option. More documentation, including OpenVMS
-tips, is in the [wiki](https://github.com/issinoho/veetee/wiki).
+`cargo run -p veetee -- --help` lists every option, `--version` (`-v`) prints the version, and
+the installed packages have manual pages, `man veetee` and `man vt-headless` ([data](data)). More
+documentation, including OpenVMS tips, is in the [wiki](https://github.com/issinoho/veetee/wiki).
 
 Telnet negotiates terminal type (`VT420`, or the selected model), window size and
 suppress-go-ahead; F5 sends a BREAK. BINARY, for 8-bit controls, is offered only with

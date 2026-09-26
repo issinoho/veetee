@@ -1,0 +1,320 @@
+.\" veetee(1) - the manual page for veetee.
+.\" Every option in `veetee --help` is described here; a test in
+.\" crates/veetee/src/cli.rs checks it.
+.TH VEETEE 1 "September 2026" "veetee" "User Commands"
+.SH NAME
+veetee \- DEC VT terminal emulator for OpenVMS and other DEC hosts
+.SH SYNOPSIS
+.B veetee
+.RB [ \-\-profile
+.IR NAME ]
+.RB [ \-\-model
+.IR MODEL ]
+.RB [ \-\-record
+.IR FILE ]
+.RI [ OPTION ...]
+.RI [ CONNECTION ]
+.br
+.B veetee \-\-list\-profiles
+.br
+.B veetee
+.BR \-v | \-\-version
+.br
+.B veetee
+.BR \-h | \-\-help
+.SH DESCRIPTION
+.B veetee
+emulates the DEC video terminals from the VT52 to the VT525, built from DEC's own programmer
+references: the VT420 by default, with its LK401 keyboard, Set-Up screens, status line, fonts
+drawn on DEC's character cells, and printer port.
+Its defaults are DEC's factory Set-Up and OpenVMS conventions rather than xterm's.
+.PP
+It connects over Telnet, SSH (through the system's OpenSSH client), a serial line, LAT (DEC's own
+protocol, on Linux), or runs a local shell or command.
+Files are transferred with Kermit, from the window menu.
+.PP
+Set-Up (F3) is the terminal's own configuration, saved per model; the window menu holds what a
+terminal on a desk would not have, such as saved connections, logs and where print jobs go.
+.SH CONNECTIONS
+With no connection named,
+.B veetee
+opens the saved connection marked as the default, or else your login shell.
+.TP
+.BI \-\-profile " NAME"
+A saved connection, from the Connections window.
+Options given with it override what it saved.
+.TP
+.B \-\-list\-profiles
+List the saved connections, marking the default, and exit.
+.TP
+.B \-\-shell
+Your login shell, even where a default connection is set.
+.TP
+.BI \-\-telnet " HOST\fR[\fP:PORT\fR]"
+Telnet, veetee's own client, with BREAK, NAWS and RFC 2217 COM Port Control.
+Also written
+.BR telnet:// \fIHOST\fR[ :\fIPORT\fR].
+.TP
+.BI \-\-ssh " \fR[\fPUSER@\fR]\fPHOST"
+SSH through the system's OpenSSH client, so
+.I ~/.ssh/config
+and agents apply.
+Also written
+.BR ssh:// [\fIUSER\fB@\fR]\fIHOST\fR.
+.TP
+.BI \-\-serial " DEVICE"
+A serial line:
+.I /dev/ttyUSB0
+on Linux,
+.I COM3
+on Windows.
+Its speed, data format and flow control come from Communications Set-Up (see
+.BR "LINE OPTIONS" ).
+The port is opened for exclusive use; on Linux, join the
+.I dialout
+group to open it without root.
+.TP
+.BI \-\-lat " NODE"
+LAT to a node on the local Ethernet segment (Linux only), as the node announces itself.
+.TP
+.BI \-\-command " COMMAND"
+Run
+.I COMMAND
+through the system shell
+.RB ( "sh \-c" ,
+or
+.B cmd /C
+on Windows).
+.SH OPTIONS
+.TP
+.BI \-\-model " MODEL"
+The terminal:
+.BR vt100 ,
+.BR vt102 ,
+.BR vt220 ,
+.BR vt320 ,
+.B vt420
+(the default),
+.BR vt510 ,
+.B vt520
+or
+.BR vt525 .
+It decides the identity reported to the host, the Set-Up screens or menus, and what the terminal
+can do.
+.TP
+.BI \-\-port " PORT"
+The TCP port for
+.B \-\-telnet
+or
+.BR \-\-ssh .
+.TP
+.BI \-\-interface " NAME"
+The Ethernet interface
+.B \-\-lat
+speaks on; needed only where more than one is up.
+.TP
+.BI \-\-service " NAME"
+The LAT service to ask for; by default, the node's own name.
+.TP
+.B \-\-telnet\-binary
+Negotiate 8-bit Telnet (BINARY).
+OpenVMS answers it by setting the terminal PASSALL, where DELETE stops erasing, so it is off
+unless asked for.
+.TP
+.BI \-\-record " FILE"
+Record the session to
+.I FILE
+(a
+.I .vtrec
+recording) for replay and tests; Ctrl+Shift+M marks a checkpoint.
+What the host sends is recorded, but not what is typed.
+.TP
+.B \-\-record\-keys
+Record typed keys as well, passwords included.
+.TP
+.BI \-\-log " FILE"
+Add the session's text to
+.IR FILE ;
+.B ~
+and
+.BR %Y ,
+.BR %m ,
+.BR %d ,
+.BR %H ,
+.B %M
+and
+.B %S
+are expanded.
+.TP
+.B \-\-log\-timestamps
+Start each logged line with the date and time.
+.TP
+.B \-\-log\-raw
+Log the host's bytes as received, rather than the text.
+.TP
+.BI \-\-sessions " N"
+Open 1 or 2 sessions; 2 splits the window, and F4 switches between them.
+.TP
+.BI \-\-phosphor " COLOUR"
+.B white
+(P4, the default),
+.B green
+(P1) or
+.B amber
+(P3).
+.TP
+.BI \-\-keymap " FILE"
+The PC-to-DEC keymap to use, instead of the one saved from the Keyboard Map window or the
+built-in LK401 map.
+.TP
+.BR \-v ", " \-\-version
+Print veetee's version and exit.
+.TP
+.BR \-h ", " \-\-help
+Print a summary of the options and exit.
+.SH LINE OPTIONS
+Given with
+.BR \-\-serial ,
+these set the port; given with
+.BR \-\-telnet ,
+they ask a terminal server for those settings with RFC 2217 COM Port Control.
+What they leave out comes from the saved Communications Set-Up, else DEC's factory settings,
+shown in brackets; a saved connection keeps its own.
+Set-Up then shows what the line is doing, and leaving it with new settings changes the line while
+connected, as the host can on the VT500 models with DECSCS, DECSPP and DECSFC.
+.TP
+.BI \-b ", " \-\-baud " RATE"
+Bits per second (9600).
+.TP
+.BI \-d ", " \-\-databits " N"
+5, 6, 7 or 8 (8).
+.TP
+.BI \-p ", " \-\-parity " P"
+.B n
+none,
+.B e
+even,
+.B o
+odd,
+.B m
+mark,
+.B s
+space
+.RB ( n ).
+.TP
+.BI \-s ", " \-\-stopbits " N"
+1 or 2 (1).
+.TP
+.BI \-f ", " \-\-flow " F"
+.B x
+XON/XOFF,
+.B h
+RTS/CTS,
+.B n
+none
+.RB ( x ).
+.SH KEYS
+The PC keyboard stands in for the LK401; the Keyboard Map window changes the mapping.
+.TP
+.B F1
+Hold Screen: stops reading from the host, which flow-controls it.
+.TP
+.B F2
+Print Screen: the page on a VT420, the scrolling region on a VT500 model, as Printer Set-Up's
+Print Extent says.
+.TP
+.B Ctrl+F2
+Auto print on or off.
+.TP
+.B F3
+Set-Up.
+.TP
+.B F4
+Session: moves the keyboard to the other session.
+.TP
+.B F5
+Break.
+.TP
+.B Ctrl+F5
+Answerback.
+.TP
+.B F6\-F12, Shift+F1\-F10
+F6 to F20; Shift+F5 is Help and Shift+F6 is Do.
+.TP
+.B Num Lock, keypad /
+PF1 (Gold) and PF2 (Help) in EDT and EVE.
+.SH FILES
+Settings are kept in the user's configuration directory,
+.IR ~/.config/veetee :
+.TP
+.I setup\-MODEL\-sessionN.conf
+Saved Set-Up for each model and session: the terminal's power-up settings, written by Save in
+the Set-Up Directory.
+.TP
+.I profiles.toml
+Saved connections, and which is the default.
+.TP
+.I keymap.toml
+The keymap saved from the Keyboard Map window.
+.TP
+.I appearance.conf
+The screen effects, visible bell and log timestamps chosen in the window menu.
+.TP
+.I printer.conf
+Where print jobs go: a folder of PDFs, or a printer.
+.TP
+.I print\-settings.ini
+The printer chosen with Print to Printer.
+.SH ENVIRONMENT
+.TP
+.B VEETEE_LAT_TRACE
+A file to write a trace of LAT messages to;
+.B VEETEE_LAT_TRACE_DATA
+adds what each carried, typed characters included.
+.TP
+.B VEETEE_LAT_HELPER
+The LAT helper to use, where it is not beside
+.B veetee
+or in its
+.I libexec
+directory.
+.SH EXAMPLES
+.TP
+.B veetee \-\-telnet vms1
+Telnet to vms1 as a VT420.
+.TP
+.B veetee \-\-ssh system@vms1 \-\-model vt520
+SSH as a VT520.
+.TP
+.B veetee \-\-serial /dev/ttyUSB0 \-b 19200
+A serial line at 19200 baud, the rest from Set-Up.
+.TP
+.B veetee \-\-telnet decserver:2001 \-\-baud 19200 \-\-parity e \-\-flow h
+A terminal server's line by RFC 2217.
+.TP
+.B veetee \-\-lat MYNODE
+LAT to the node MYNODE.
+.TP
+.B veetee \-\-profile vms1 \-\-log '~/logs/vms1\-%Y%m%d.log' \-\-log\-timestamps
+A saved connection, logged with timestamps.
+.SH NOTES
+On OpenVMS,
+.B SET TERMINAL/INQUIRE
+lets the host identify the terminal over Telnet, LAT, DECnet and serial lines; over SSH set the
+device type instead, and add
+.B /HOSTSYNC
+so a long paste waits for the host.
+The wiki's OpenVMS page has a LOGIN.COM for all of them.
+.SH SEE ALSO
+.BR vt-headless (1),
+.BR ssh (1),
+.BR ssh_config (5),
+.BR kermit (1),
+.BR lp (1)
+.PP
+The wiki: https://github.com/issinoho/veetee/wiki
+.SH AUTHOR
+Iain Smith and contributors; https://github.com/issinoho/veetee
+.SH COPYRIGHT
+veetee is free software under the MIT or Apache-2.0 licence; its fonts are under the SIL Open
+Font License.

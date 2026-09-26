@@ -498,6 +498,8 @@ fn dist(args: &[String]) -> Result<()> {
         "data/icons/com.issinoho.Veetee.svg",
         "share/icons/hicolor/scalable/apps/com.issinoho.Veetee.svg",
     )?;
+    copy("data/veetee.1", "share/man/man1/veetee.1")?;
+    copy("data/vt-headless.1", "share/man/man1/vt-headless.1")?;
     for doc in [
         "README.md",
         "CHANGELOG.md",

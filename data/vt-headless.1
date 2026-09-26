@@ -1,0 +1,231 @@
+.\" vt-headless(1) - the manual page for vt-headless.
+.\" Every option in `vt-headless --help` and `vt-headless kermit` is described
+.\" here; a test in crates/vt-headless/src/main.rs checks it.
+.TH VT-HEADLESS 1 "September 2026" "veetee" "User Commands"
+.SH NAME
+vt-headless \- veetee's emulator without a window: Kermit transfers, recordings and traces
+.SH SYNOPSIS
+.B vt-headless kermit receive
+.RB [ \-\-into
+.IR DIR ]
+.I CONNECTION
+.RI [ OPTION ...]
+.br
+.B vt-headless kermit send
+.IR FILE ...
+.I CONNECTION
+.RI [ OPTION ...]
+.br
+.B vt-headless replay
+.I FILE.vtrec
+.RB [ \-\-golden
+.IR DIR ]
+.RB [ \-\-bless ]
+.br
+.B vt-headless run
+.I SCRIPT
+.RB [ \-\-golden
+.IR DIR ]
+.RB [ \-\-bless ]
+.RB [ \-\-record
+.IR FILE ]
+.br
+.B vt-headless trace
+.RB [ \-\-7bit " | " \-\-8bit " | " \-\-no\-c1 " | " \-\-utf8 ]
+.RB [ \-\-vt52 ]
+.RI [ FILE ]
+.br
+.B vt-headless lat
+.I INTERFACE
+.RI [ SECONDS ]
+.RB [ \-\-connect
+.I NODE
+.RB [ \-\-service
+.IR NAME ]
+.RB [ \-\-type
+.IR TEXT ]]
+.br
+.B vt-headless
+.BR \-v | \-\-version
+.br
+.B vt-headless
+.BR \-h | \-\-help
+.SH DESCRIPTION
+.B vt-headless
+runs the emulator at the heart of
+.BR veetee (1)
+with no window: to transfer files with Kermit from a script, to replay session recordings and
+test scripts against the screens they should produce, and to look at what a host sends.
+.SH KERMIT
+.B vt-headless kermit
+transfers files with the Kermit protocol over a connection, as
+.BR veetee 's
+Send File and Receive File do.
+Start the other end first, with SEND or RECEIVE at the host's Kermit prompt.
+.B vt-headless kermit
+alone lists its options.
+.TP
+.BI "receive \fR[\fP\-\-into " DIR \fR]\fP
+Receive what the host sends, into
+.I DIR
+(the current directory by default).
+A received name is made safe and never overwrites a file:
+.I LOGIN.COM;3
+arrives as
+.IR login.com ,
+or
+.I login.1.com
+if that is taken.
+.TP
+.BI send " FILE..."
+Send the files.
+.PP
+The connection is one of:
+.TP
+.BI \-\-command " COMMAND"
+Run
+.I COMMAND
+on a pty, through
+.BR "sh \-c" ;
+for example
+.BR "gkermit \-s notes.txt" .
+.TP
+.BI \-\-telnet " HOST\fR[\fP:PORT\fR]"
+Telnet.
+.TP
+.BI \-\-ssh " \fR[\fPUSER@\fR]\fPHOST"
+SSH, through the system's OpenSSH client.
+.TP
+.BI \-\-serial " DEVICE"
+A serial line, with
+.B \-b
+.IR RATE ,
+.B \-d
+.IR BITS ,
+.B \-p
+.IR PARITY ,
+.B \-s
+.I STOP
+and
+.B \-f
+.I FLOW
+as for
+.BR veetee (1).
+With no window there is no Set-Up: what they leave out is DEC's factory setting, 9600 8N1 with
+XON/XOFF.
+.PP
+The options:
+.TP
+.B \-\-binary
+Send the bytes exactly.
+The default is text, with CR LF on the line, and the host's Kermit is told which with attribute
+packets where it takes them.
+.TP
+.B "\-\-names as\-sent"
+Keep a received name as sent, version and case included.
+.TP
+.BR \-\-check " 1|2|3"
+The block check to ask for: 3, the CRC, by default.
+A Kermit that cannot do it answers otherwise, and both then use 1.
+.TP
+.BI \-\-retries " N"
+Tries before giving up on a packet (10).
+.TP
+.B \-\-verbose
+Print every packet to standard error.
+.PP
+The exit status is 0 when every file arrived, and 1 otherwise.
+.SH REPLAY
+.B vt-headless replay
+plays a recording made with
+.B veetee \-\-record
+through the emulator and compares the screen at each checkpoint, and at the end as
+.IR final ,
+with the snapshots in
+.I DIR
+(by default, the recording's name without
+.IR .vtrec ).
+.TP
+.BI \-\-golden " DIR"
+Where the snapshots are.
+.TP
+.B \-\-bless
+Write the snapshots from this replay, in place of comparing.
+.SH RUN
+.B vt-headless run
+runs a session script against the emulator on a pty and compares its snapshots with
+.IR DIR / NAME .screen.
+.TP
+.BI \-\-golden " DIR"
+Where the snapshots are.
+.TP
+.B \-\-bless
+Rewrite them.
+.TP
+.BI \-\-record " FILE"
+Record the session as well.
+.SH TRACE
+.B vt-headless trace
+prints each action the parser takes on
+.I FILE
+(standard input when there is none), one to a line.
+.TP
+.B \-\-7bit
+A 7-bit line: the eighth bit of every byte is stripped.
+.TP
+.B \-\-8bit
+An 8-bit line, the default: 0x80 to 0x9F are C1 controls and 0xA0 to 0xFF graphics.
+.TP
+.B \-\-no\-c1
+An 8-bit line whose 0x80 to 0x9F are not controls, and are discarded.
+.TP
+.B \-\-utf8
+UTF-8, whose encoded U+0080 to U+009F act as C1 controls.
+.TP
+.B \-\-vt52
+The VT52's escape sequences.
+.SH LAT
+.B vt-headless lat
+prints the LAT messages heard on
+.I INTERFACE
+for
+.I SECONDS
+(until interrupted, where there are none).
+Linux only; it needs CAP_NET_RAW, since LAT is raw Ethernet rather than IP.
+.TP
+.BI \-\-connect " NODE"
+Ask
+.I NODE
+for a circuit once it has announced itself, and open a session.
+.TP
+.BI \-\-service " NAME"
+The service to ask for; by default, the node's own name.
+.TP
+.BI \-\-type " TEXT"
+A line to send to the session.
+.SH OPTIONS
+.TP
+.BR \-v ", " \-\-version
+Print the version and exit.
+.TP
+.BR \-h ", " \-\-help
+Print a summary of the commands and exit.
+.SH EXAMPLES
+.TP
+.B vt-headless kermit receive \-\-into ~/incoming \-\-telnet vms1
+Receive what SEND at vms1's Kermit prompt sends.
+.TP
+.B vt-headless kermit send LOGIN.COM \-\-serial /dev/ttyUSB0 \-b 9600
+Send a file down a serial line.
+.TP
+.B vt-headless replay edt\-keypad.vtrec
+Check a recording's screens against its snapshots.
+.SH SEE ALSO
+.BR veetee (1),
+.BR kermit (1)
+.PP
+The wiki: https://github.com/issinoho/veetee/wiki
+.SH AUTHOR
+Iain Smith and contributors; https://github.com/issinoho/veetee
+.SH COPYRIGHT
+vt-headless is part of veetee, free software under the MIT or Apache-2.0 licence.

@@ -8,6 +8,14 @@ Before 1.0 the minor version followed the project milestones (0.3 = M3). The for
 
 ## [Unreleased]
 
+- **Added: `-v` (`--version`)** prints the version and exits, for `veetee` and `vt-headless`
+  alike; `vt-headless -h` (`--help`) prints its usage.
+- **Added: manual pages**, `man veetee` and `man vt-headless`, installed by the .deb, .rpm, PPA
+  package and tarball. They describe every option the help texts list, which tests keep true.
+- **The author is named**: the About box says Iain Smith (https://github.com/issinoho), and the
+  AppStream metadata Iain Smith, in place of "The veetee Authors"; the About box's licence is now
+  MIT or Apache-2.0, as it is, rather than MIT alone, with the fonts' SIL Open Font License.
+
 ## [1.6.0] - 2026-09-26
 
 **Set-Up drives the line and the printer.** Communications Set-Up now sets a serial line — its

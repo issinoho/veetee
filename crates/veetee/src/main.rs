@@ -50,6 +50,10 @@ fn main() -> glib::ExitCode {
             println!("{}", cli::USAGE);
             return glib::ExitCode::SUCCESS;
         }
+        Ok(Parsed::Version) => {
+            println!("veetee {}", env!("CARGO_PKG_VERSION"));
+            return glib::ExitCode::SUCCESS;
+        }
         Ok(Parsed::ListProfiles) => {
             return match profiles::load() {
                 Ok(list) => {
@@ -457,10 +461,15 @@ fn add_window_actions(window: &adw::ApplicationWindow) {
         move |_, _| {
             let dialog = adw::AboutDialog::builder()
                 .application_name("veetee")
-                .developer_name("The veetee Authors")
+                .developer_name("Iain Smith (https://github.com/issinoho)")
                 .version(env!("CARGO_PKG_VERSION"))
                 .comments("A DEC VT terminal for the Linux desktop")
-                .license_type(gtk::License::MitX11)
+                .license_type(gtk::License::Custom)
+                .license(
+                    "veetee is licensed under either of the MIT License or the Apache License, \
+                     Version 2.0, at your option.\n\n\
+                     Its fonts are original designs under the SIL Open Font License 1.1.",
+                )
                 .build();
             if let Some(w) = window.upgrade() {
                 dialog.present(Some(&w));

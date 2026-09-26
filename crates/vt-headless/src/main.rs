@@ -32,7 +32,10 @@ usage:
   vt-headless replay FILE.vtrec [--golden DIR] [--bless]
       Play a veetee session recording through the emulator and compare the
       screen at each checkpoint, and at the end as `final`, with DIR (default:
-      the recording's name without .vtrec).";
+      the recording's name without .vtrec).
+
+  vt-headless -v | --version
+  vt-headless -h | --help";
 
 fn main() -> ExitCode {
     let mut args = std::env::args().skip(1);
@@ -42,6 +45,14 @@ fn main() -> ExitCode {
         Some("lat") => lat::lat(args).map(|()| true),
         Some("replay") => replay::replay(args),
         Some("kermit") => kermit::kermit(args).map_err(std::io::Error::other),
+        Some("-v" | "--version") => {
+            println!("vt-headless {}", env!("CARGO_PKG_VERSION"));
+            return ExitCode::SUCCESS;
+        }
+        Some("-h" | "--help") => {
+            println!("{USAGE}");
+            return ExitCode::SUCCESS;
+        }
         _ => {
             eprintln!("{USAGE}");
             return ExitCode::from(2);
@@ -53,6 +64,27 @@ fn main() -> ExitCode {
         Err(e) => {
             eprintln!("vt-headless: {e}");
             ExitCode::FAILURE
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    /// The manual page describes every option the help texts list.
+    #[test]
+    fn the_manual_page_has_every_option() {
+        let page = include_str!("../../../data/vt-headless.1").replace("\\-", "-");
+        for usage in [super::USAGE, super::kermit::USAGE] {
+            for word in usage.split_whitespace() {
+                let option = word
+                    .trim_matches(|c| matches!(c, '[' | ']' | ',' | '|' | '.' | '"' | '(' | ')'));
+                if option.starts_with('-') && option.len() > 1 {
+                    assert!(
+                        page.contains(option),
+                        "{option} is not in data/vt-headless.1"
+                    );
+                }
+            }
         }
     }
 }

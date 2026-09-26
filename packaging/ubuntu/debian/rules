@@ -58,6 +58,10 @@ override_dh_auto_install:
 	    debian/veetee/usr/share/metainfo/com.issinoho.Veetee.metainfo.xml
 	install -Dm644 data/icons/com.issinoho.Veetee.svg \
 	    debian/veetee/usr/share/icons/hicolor/scalable/apps/com.issinoho.Veetee.svg
+	install -Dm644 data/veetee.1 \
+	    debian/veetee/usr/share/man/man1/veetee.1
+	install -Dm644 data/vt-headless.1 \
+	    debian/veetee/usr/share/man/man1/vt-headless.1
 	install -Dm644 crates/vt-fonts/fonts/OFL.txt \
 	    debian/veetee/usr/share/doc/veetee/fonts-OFL.txt
 

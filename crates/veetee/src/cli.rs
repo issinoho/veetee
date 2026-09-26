@@ -41,6 +41,8 @@ options:
   --phosphor COLOUR      white (P4, default), green (P1) or amber (P3)
   --keymap FILE          PC-to-DEC keymap (default: the one saved from the Keyboard
                          Map window, else the built-in LK401 map)
+  -v, --version          print veetee's version and exit
+  -h, --help             print this help and exit
 
 line options (picocom style). With --serial they set the port; with --telnet they ask
 a terminal server for those settings (RFC 2217). What they leave out comes from the
@@ -135,6 +137,7 @@ pub struct Options {
 pub enum Parsed {
     Run(Config, Options),
     Help,
+    Version,
     ListProfiles,
 }
 
@@ -183,6 +186,8 @@ fn names_a_connection(args: &[String]) -> bool {
                 | "--lat"
                 | "-h"
                 | "--help"
+                | "-v"
+                | "--version"
                 | "--list-profiles"
         ) || a.starts_with("telnet://")
             || a.starts_with("ssh://")
@@ -332,6 +337,7 @@ pub fn parse_args_with(
                 None
             }
             "-h" | "--help" => return Ok(Parsed::Help),
+            "-v" | "--version" => return Ok(Parsed::Version),
             "--list-profiles" => return Ok(Parsed::ListProfiles),
             url if url.starts_with("telnet://") => Some(telnet(
                 url.trim_start_matches("telnet://").trim_end_matches('/'),
@@ -770,6 +776,34 @@ mod tests {
             ),
             Ok(Parsed::Help)
         ));
+    }
+
+    #[test]
+    fn version_needs_no_connection() {
+        // Not even the default one, which may not be there to find.
+        for flag in ["-v", "--version"] {
+            assert!(matches!(
+                parse_args_with(
+                    [flag.to_string()].into_iter(),
+                    |_| Err("no such profile".into()),
+                    || Some("gone".into()),
+                    |_| Line::default()
+                ),
+                Ok(Parsed::Version)
+            ));
+        }
+    }
+
+    /// The manual page describes every option `--help` lists.
+    #[test]
+    fn the_manual_page_has_every_option() {
+        let page = include_str!("../../../data/veetee.1").replace("\\-", "-");
+        for word in USAGE.split_whitespace() {
+            let option = word.trim_end_matches(',');
+            if option.starts_with('-') && option.len() > 1 {
+                assert!(page.contains(option), "{option} is not in data/veetee.1");
+            }
+        }
     }
 
     #[test]

@@ -4,7 +4,7 @@
   <name>veetee</name>
   <summary>DEC VT terminal for OpenVMS and other DEC hosts</summary>
   <developer id="com.issinoho">
-    <name>The veetee Authors</name>
+    <name>Iain Smith</name>
   </developer>
   <metadata_license>CC0-1.0</metadata_license>
   <project_license>MIT OR Apache-2.0</project_license>
