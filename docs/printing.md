@@ -26,7 +26,8 @@ with `CSI ? 15 n`; the answer is `CSI ? 10 n` ready, `? 11 n` not ready, `? 13 n
 and cited in the code: the full list of `CSI ? … i` functions (print composed display, print all
 pages, the VT500 printer-to-host session), what controller mode passes through untouched (the
 7-bit and 8-bit forms of the terminator, and whether XON/XOFF are still acted on), and what the
-Printer Set-Up screens' *print mode*, *print extent*, *print terminator* and *printer type* do.
+Printer Set-Up screens' *printer type* does. (Print mode, print extent and print terminator were
+settled from Installing and Using the VT420, table 8-1, and EK-VT510-RM 2.11, in 1.6.0.)
 
 ## Where it stands
 

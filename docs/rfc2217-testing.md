@@ -340,8 +340,9 @@ part of what this testing is for.
   carrier or a break *from* the far end go unnoticed.
 - **It does not send `SIGNATURE`, `PURGE-DATA` or `SET-LINESTATE-MASK`**, and does not ask the
   server for its current settings before setting them.
-- **It sets the line once**, when the connection opens. There is no way to change the speed
-  mid-session without reconnecting.
+- **It sets the line when the connection opens, and again when Set-Up changes it** (from
+  1.6.0): leaving Communications Set-Up, or DECSCS, DECSPP or DECSFC from the host, sends the new
+  settings mid-session. XON/XOFF one way only is sent as XON/XOFF both ways (see above).
 - **Only RTS/CTS is offered as hardware flow control** — DTR/DSR is not.
 
 ## Reporting back

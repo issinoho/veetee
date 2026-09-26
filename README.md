@@ -194,7 +194,7 @@ serial line, unless Set-Up's flow control is off. OpenVMS sends them only to a t
 ### Serial lines
 
 ```sh
-cargo run -p veetee -- --serial /dev/ttyUSB0                          # 9600 8N1, XON/XOFF
+cargo run -p veetee -- --serial /dev/ttyUSB0                          # saved Set-Up, else 9600 8N1
 cargo run -p veetee -- --serial /dev/ttyUSB0 -b 9600 -d 8 -p n -s 1 -f n   # picocom-style options
 ```
 
@@ -283,7 +283,9 @@ once, prints a test page, and from then on sends every job to it without a dialo
 on Linux, GTK printing on Windows. While either is chosen, the host is told a printer is ready
 (`CSI ? 15 n` answers `CSI ? 10 n`) and the indicator status line says *Printer: Ready*.
 
-F2 (*Print Screen*) prints the scrolling region, or the page with DECPEX set. The host can print
+F2 (*Print Screen*) prints the whole page on a VT420 and the scrolling region on a VT500 model,
+their factory Print Extent, which Printer Set-Up or the host's DECPEX changes; Ctrl+F2 turns auto
+print on and off, and Printer Set-Up also has the print mode and terminator. The host can print
 the screen (`CSI i`), the cursor line (`CSI ? 1 i`), turn auto print on and off (`CSI ? 5 i`,
 `CSI ? 4 i`) and send text straight to the printer in printer controller mode (`CSI 5 i` …
 `CSI 4 i`), with the VT52 forms of each. From OpenVMS, a file prints on the printer at your desk
@@ -309,6 +311,7 @@ The PC keyboard is mapped to LK401 key positions:
 |--------|---------|
 | F1 F2 F3 F4 F5 | Hold Screen, Print Screen, Set-Up, Session, Break |
 | F6–F12, Shift+F1–F10 | F6–F12, F11–F20 (Shift+F5 = Help, Shift+F6 = Do) |
+| Ctrl+F2 | Auto print on or off |
 | Ctrl+F5 | Answerback |
 | Ctrl+F6–F12, Ctrl+Shift+F1–F10 | User-defined keys (DEC Shift+F6–F20) |
 | Insert Home PgUp / Delete End PgDn | Find, Insert Here, Remove / Select, Prev Screen, Next Screen |
