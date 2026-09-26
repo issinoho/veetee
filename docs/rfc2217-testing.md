@@ -115,7 +115,8 @@ The second `stty` should report `speed 19200 baud`, `cs7`, `parenb -parodd`, `cs
 ser2net set differently is test 8 answered on the spot.
 
 Work through the settings one at a time — `-b 1200`, `-b 115200`, `-p o`, `-d 8 -s 1`, `-f x`,
-`-f n` — reconnecting each time, since veetee sets the line once when the connection opens.
+`-f n`. From 1.6.0 there is no need to reconnect: leaving Communications Set-Up with new settings
+sends them again, as does DECSCS, DECSPP or DECSFC from the host (docs/serial-setup.md).
 
 A capture is easy here too, the whole conversation being on the loopback interface:
 
@@ -158,6 +159,28 @@ Two things worth taking from it beyond "it works":
   terminal server would answer is a different question: whether it speaks the option at all.
 
 Tests 5 and 6 — flow control and break — were not done, having no far end to feel them.
+
+### Changing the line while connected
+
+Against `ser2net` 4.6.5 on 26 September 2026, with no adapter at all: a `socat` pseudo-terminal
+pair stood in for the serial port (`connector: serialdev,<pty>,9600n81,local`), and a second
+`socat -x -v` between veetee and the server logged the conversation, so no `sudo` was needed.
+veetee's Telnet transport connected at the factory 9600 8N1 and then changed the line four times
+without reconnecting, as leaving Set-Up does:
+
+| Asked for | ser2net answered |
+|---|---|
+| 19200 7E2, RTS/CTS | 19200, 7, even, 2, hardware |
+| 1200 8O1, XON/XOFF transmit only | 1200, 8, odd, 1, XON/XOFF |
+| 115200 8N1, XON/XOFF receive only | 115200, 8, none, 1, XON/XOFF |
+| 9600 8N1, XON/XOFF | 9600, 8, none, 1, XON/XOFF |
+
+Every setting was taken while connected. The one-way flow controls — a VT420 set to *No XOFF*
+stops at the host's XOFF but sends none — are asked for as XON/XOFF both ways, because the first
+attempt found that ser2net does not keep the directions apart: asked for XON/XOFF and then the
+RFC's *inbound* none (`SET-CONTROL 14`), it answered `CONTROL IS none`, both ways off; asked for
+none and then inbound XON/XOFF (`15`), it left none. A local serial port sets each direction
+exactly, through termios.
 
 ### What to plug the cable into
 

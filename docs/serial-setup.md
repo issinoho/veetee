@@ -74,8 +74,11 @@ Written: the termios and DCB computed for the one-way flow controls; `set_line` 
 (a pty standing in) and refused for a data format no port has; RFC 2217 settings sent again while
 connected, and refused without COM Port Control; the mapping both ways between Set-Up and the
 line; which wins at connect; and a session that sets the line on leaving Set-Up and on DECSCS,
-keeps a speed Set-Up cannot show, and leaves line and Set-Up alone when the port refuses. Still
-to do: `ser2net`, and real hardware.
+keeps a speed Set-Up cannot show, and leaves line and Set-Up alone when the port refuses. RFC 2217
+against `ser2net` 4.6.5 on 26 September 2026: four changes of line while connected, each answered
+as asked, after one-way XON/XOFF was changed to be asked for both ways, since ser2net takes
+the inbound direction as the whole setting ([`rfc2217-testing.md`](rfc2217-testing.md)). Still to
+do: real hardware.
 
 
 Planned: the computed termios and DCB for every Set-Up combination, as the serial tests already

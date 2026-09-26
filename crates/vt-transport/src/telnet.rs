@@ -53,10 +53,6 @@ const FLOW_XON_XOFF: u8 = 2;
 const FLOW_HARDWARE: u8 = 3;
 const BREAK_ON: u8 = 4;
 const BREAK_OFF: u8 = 5;
-// The same for the inbound direction alone: the server sending XOFF to the
-// host when its buffer fills.
-const INBOUND_FLOW_NONE: u8 = 14;
-const INBOUND_FLOW_XON_XOFF: u8 = 15;
 
 const IS: u8 = 0;
 const SEND: u8 = 1;
@@ -127,21 +123,22 @@ fn com_port_settings(o: &Options, replies: &mut Vec<u8>) {
     );
     // 1 and 2 stop bits share their numbers with RFC 2217; 3 would be 1.5.
     send(SET_STOPSIZE, &[port.stop_bits]);
-    // Outbound, or both ways; a flow control one way only sets outbound and
-    // then inbound on its own.
+    // XON/XOFF one way only is asked for as XON/XOFF both ways. RFC 2217 has
+    // inbound values of its own (13 to 16), but ser2net 4.6 takes them as the
+    // whole setting: asked for XON/XOFF and then inbound none, it answered
+    // CONTROL IS none, and asked for none and then inbound XON/XOFF, it left
+    // none (docs/rfc2217-testing.md, 26 September 2026). Both ways keeps what
+    // a VT420 with No XOFF needs, stopping at the host's XOFF.
     send(
         SET_CONTROL,
         &[match port.flow {
-            FlowControl::None | FlowControl::XonXoffReceive => FLOW_NONE,
-            FlowControl::XonXoff | FlowControl::XonXoffTransmit => FLOW_XON_XOFF,
+            FlowControl::None => FLOW_NONE,
+            FlowControl::XonXoff | FlowControl::XonXoffTransmit | FlowControl::XonXoffReceive => {
+                FLOW_XON_XOFF
+            }
             FlowControl::RtsCts => FLOW_HARDWARE,
         }],
     );
-    match port.flow {
-        FlowControl::XonXoffTransmit => send(SET_CONTROL, &[INBOUND_FLOW_NONE]),
-        FlowControl::XonXoffReceive => send(SET_CONTROL, &[INBOUND_FLOW_XON_XOFF]),
-        _ => {}
-    }
 }
 
 /// Serial line settings for a terminal server, sent with RFC 2217 COM Port
@@ -797,32 +794,24 @@ mod tests {
     }
 
     #[test]
-    fn flow_control_one_way_sets_inbound_on_its_own() {
-        let options = Options {
-            com_port: Some(ComPort {
-                flow: FlowControl::XonXoffTransmit,
-                ..ComPort::default()
-            }),
-            ..Options::default()
-        };
-        let mut replies = Vec::new();
-        com_port_settings(&options, &mut replies);
-        assert!(replies.ends_with(&[
-            IAC,
-            SB,
-            COM_PORT,
-            SET_CONTROL,
-            FLOW_XON_XOFF,
-            IAC,
-            SE,
-            IAC,
-            SB,
-            COM_PORT,
-            SET_CONTROL,
-            INBOUND_FLOW_NONE,
-            IAC,
-            SE
-        ]));
+    fn flow_control_one_way_is_asked_for_both_ways() {
+        for flow in [FlowControl::XonXoffTransmit, FlowControl::XonXoffReceive] {
+            let options = Options {
+                com_port: Some(ComPort {
+                    flow,
+                    ..ComPort::default()
+                }),
+                ..Options::default()
+            };
+            let mut replies = Vec::new();
+            com_port_settings(&options, &mut replies);
+            assert!(replies.ends_with(&[IAC, SB, COM_PORT, SET_CONTROL, FLOW_XON_XOFF, IAC, SE]));
+            assert_eq!(
+                replies.iter().filter(|&&b| b == SET_CONTROL).count(),
+                1,
+                "{flow:?}: one SET-CONTROL"
+            );
+        }
     }
 
     #[test]

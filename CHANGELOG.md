@@ -27,8 +27,9 @@ Before 1.0 the minor version followed the project milestones (0.3 = M3). The for
   shows the line as it is. Leaving Set-Up with new settings changes the line at once, and so do
   the host's DECSCS, DECSPP and DECSFC on the VT500 models; a setting the port refuses leaves the
   line as it was, with a message. Telnet to a terminal server with COM Port Control (RFC 2217)
-  follows Set-Up the same way. A VT420 set to *No XOFF* still stops at the host's XOFF, as the
-  terminal does. Set-Up's DSR and DTR flow control are RTS/CTS on the port; the receive speed and
+  follows Set-Up the same way, proved against `ser2net`. A VT420 set to *No XOFF* still stops at
+  the host's XOFF, as the terminal does; over RFC 2217 that is asked for as XON/XOFF both ways,
+  since `ser2net` does not keep the directions apart. Set-Up's DSR and DTR flow control are RTS/CTS on the port; the receive speed and
   XOFF threshold stay stored only (docs/serial-setup.md).
 
 ## [1.5.0] - 2026-09-25
