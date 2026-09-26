@@ -105,6 +105,10 @@ enum Field {
     Conceal,
     ModemHigh,
     ModemLow,
+    // Printer
+    PrintMode,
+    PrintExtent,
+    PrintTerminator,
     // Keyboard
     Typewriter,
     Lock,
@@ -188,7 +192,14 @@ fn rows(screen: Screen) -> Vec<Vec<Field>> {
             vec![F::AutoAnswerback, F::Answerback, F::Conceal],
             vec![F::ModemHigh, F::ModemLow],
         ],
-        Screen::Printer => vec![nav()],
+        // The three that act on veetee's print jobs; speed, flow control
+        // and data format are for a printer's cable, which veetee has none
+        // of. 🔎 Their places on the screen are from Table 8-1's order, not
+        // the figure.
+        Screen::Printer => vec![
+            with_nav(&[F::PrintMode]),
+            vec![F::PrintExtent, F::PrintTerminator],
+        ],
         Screen::Keyboard => vec![
             with_nav(&[F::Typewriter, F::Lock]),
             vec![F::AutoRepeat, F::Keyclick, F::MarginBell, F::WarningBell],
@@ -271,6 +282,15 @@ fn label(field: Field, f: &Features, model: Model) -> String {
             _ => "Printer Shared",
         }
         .into(),
+        // Installing and Using the VT420, table 8-1.
+        F::PrintMode => match f.print_mode {
+            PrintMode::Normal => "Normal Print Mode",
+            PrintMode::Auto => "Auto Print Mode",
+            PrintMode::Controller => "Controller Mode",
+        }
+        .into(),
+        F::PrintExtent => on_off(f.print_full_page, "Print Full Page", "Print Scroll Region"),
+        F::PrintTerminator => on_off(f.print_form_feed, "Terminator = FF", "No Terminator"),
         F::Columns => on_off(f.columns_132, "132 Columns", "80 Columns"),
         F::Controls => on_off(f.display_controls, "Display Controls", "Interpret Controls"),
         F::AutoWrap => on_off(f.autowrap, "Auto Wrap", "No Auto Wrap"),
@@ -464,6 +484,15 @@ fn cycle(field: Field, f: &mut Features, model: Model) -> bool {
         F::CommPort => f.comm1_dec423 = !f.comm1_dec423,
         F::Refresh => f.refresh_60hz = !f.refresh_60hz,
         F::PrinterAssignment => f.printer_session = (f.printer_session + 1) % 3,
+        F::PrintMode => {
+            f.print_mode = match f.print_mode {
+                PrintMode::Normal => PrintMode::Auto,
+                PrintMode::Auto => PrintMode::Controller,
+                PrintMode::Controller => PrintMode::Normal,
+            }
+        }
+        F::PrintExtent => f.print_full_page = !f.print_full_page,
+        F::PrintTerminator => f.print_form_feed = !f.print_form_feed,
         F::Columns => {
             f.columns_132 = !f.columns_132;
             let cols = if f.columns_132 { 132 } else { 80 };
@@ -904,8 +933,8 @@ impl Screens {
         if self.screen == Screen::Printer {
             let _ = write!(
                 out,
-                "\x1b[{};3HPrinting is not available in this version of veetee.",
-                row_line(1)
+                "\x1b[{};3HPrint jobs go to a PDF or a printer, chosen in the window menu.",
+                row_line(2)
             );
         }
         if let Some(typed) = &self.entry {
@@ -989,6 +1018,27 @@ mod tests {
         assert!(text[4].contains("Clear Display") && text[4].contains("Save"));
         assert!(text[6].contains("North American Keyboard"));
         assert!(text[8].contains("Screen Align"));
+    }
+
+    #[test]
+    fn printer_set_up_has_print_mode_extent_and_terminator() {
+        let mut m = menu();
+        for _ in 0..4 {
+            m.input(Input::Right);
+        }
+        m.input(Input::Enter);
+        assert_eq!(m.screen(), Screen::Printer);
+        let text = screen_text(&m);
+        assert!(text[2].contains("Normal Print Mode"), "{}", text[2]);
+        assert!(text[4].contains("Print Full Page"), "{}", text[4]);
+        assert!(text[4].contains("No Terminator"), "{}", text[4]);
+        assert!(text[6].contains("chosen in the window menu"), "{}", text[6]);
+        // To Next Set-Up, To Directory, then the print mode.
+        m.input(Input::Right);
+        m.input(Input::Right);
+        m.input(Input::Enter);
+        assert_eq!(m.features().print_mode, PrintMode::Auto);
+        assert!(screen_text(&m)[2].contains("Auto Print Mode"));
     }
 
     #[test]

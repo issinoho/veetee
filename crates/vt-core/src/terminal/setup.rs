@@ -306,6 +306,9 @@ impl Emulator {
             local_keys: s.local_function_keys,
             keyboard_language: self.config.keyboard_language,
             tabs: self.tabs.clone(),
+            print_mode: self.print_mode(),
+            print_full_page: self.modes.print_extent_full,
+            print_form_feed: self.modes.print_form_feed,
             ..stored.clone()
         }
     }
@@ -434,6 +437,9 @@ impl Emulator {
         );
         self.modes.backarrow_sends_bs = f.backarrow_bs;
         self.setup.local_function_keys = f.local_keys;
+        self.modes.print_extent_full = f.print_full_page;
+        self.modes.print_form_feed = f.print_form_feed;
+        self.set_print_mode(f.print_mode);
         let cols = self.cols();
         self.tabs = (0..cols)
             .map(|c| c > 0 && f.tabs.get(c).copied().unwrap_or(c % 8 == 0))

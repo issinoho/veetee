@@ -22,6 +22,18 @@ mod screens;
 
 pub use screens::Screen;
 
+/// Printer Set-Up's print mode (Installing and Using the VT420, table 8-1).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum PrintMode {
+    /// Printing only when asked, from the keyboard or by the host.
+    #[default]
+    Normal,
+    /// Each line printed as the cursor leaves it (`CSI ? 5 i`).
+    Auto,
+    /// What the host sends goes to the printer and not the screen (`CSI 5 i`).
+    Controller,
+}
+
 /// Smooth or jump scrolling (Display Set-Up).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum Scroll {
@@ -131,6 +143,12 @@ pub struct Features {
     pub refresh_60hz: bool,
     /// Printer assignment: 0 shared, 1 session 1, 2 session 2.
     pub printer_session: u8,
+    // Printer
+    pub print_mode: PrintMode,
+    /// Print Extent: the full page (DECPEX set) or the scrolling region.
+    pub print_full_page: bool,
+    /// Print Terminator: a form feed at the end of a print (DECPFF).
+    pub print_form_feed: bool,
     // Display
     pub columns_132: bool,
     pub display_controls: bool,
@@ -276,6 +294,12 @@ impl Features {
             comm1_dec423: false,
             refresh_60hz: false,
             printer_session: 0,
+            print_mode: PrintMode::Normal,
+            // Print Full Page on the VT420 (Installing and Using the VT420,
+            // table 8-1); the scrolling region on the VT500 series, DECPEX's
+            // default in EK-VT510-RM. 🔎 Earlier models' guides unchecked.
+            print_full_page: model == Model::Vt420,
+            print_form_feed: false,
             columns_132: false,
             display_controls: false,
             // DEC's factory setting is No Auto Wrap; veetee differs, so that
@@ -378,6 +402,17 @@ impl Features {
         line("comm1-dec423", b(self.comm1_dec423).to_string());
         line("refresh-60hz", b(self.refresh_60hz).to_string());
         line("printer-session", self.printer_session.to_string());
+        line(
+            "print-mode",
+            match self.print_mode {
+                PrintMode::Normal => "normal",
+                PrintMode::Auto => "auto",
+                PrintMode::Controller => "controller",
+            }
+            .into(),
+        );
+        line("print-full-page", b(self.print_full_page).to_string());
+        line("print-form-feed", b(self.print_form_feed).to_string());
         line(
             "columns",
             if self.columns_132 { "132" } else { "80" }.into(),
@@ -577,6 +612,15 @@ impl Features {
                 "comm1-dec423" => f.comm1_dec423 = flag,
                 "refresh-60hz" => f.refresh_60hz = flag,
                 "printer-session" => f.printer_session = num().unwrap_or(0).min(2) as u8,
+                "print-mode" => {
+                    f.print_mode = match v {
+                        "auto" => PrintMode::Auto,
+                        "controller" => PrintMode::Controller,
+                        _ => PrintMode::Normal,
+                    }
+                }
+                "print-full-page" => f.print_full_page = flag,
+                "print-form-feed" => f.print_form_feed = flag,
                 "columns" => f.columns_132 = v == "132",
                 "display-controls" => f.display_controls = flag,
                 "autowrap" => f.autowrap = flag,

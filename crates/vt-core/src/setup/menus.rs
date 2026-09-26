@@ -58,6 +58,9 @@ enum Menu {
     ModemHigh,
     ModemLow,
     Printer,
+    PrintMode,
+    PrintExtent,
+    PrintTerminator,
     Language,
 }
 
@@ -734,19 +737,18 @@ fn items(menu: Menu, f: &Features, model: Model, session: u8) -> Vec<Item> {
                 })
                 .collect()
         }
+        // EK-VT510-RM 2.11: the three that act on veetee's print jobs; the
+        // rest describe a printer's port and cable, which veetee has none of.
         M::Printer => {
-            let mut v: Vec<Item> = [
-                "Port select...",
-                "Print mode",
-                "Printer type",
-                "DEC/ISO char sets",
-                "PC character sets",
-                "Print extent",
-                "Print terminator",
-            ]
-            .into_iter()
-            .map(unavailable)
-            .collect();
+            let mut v = vec![
+                unavailable("Port select..."),
+                sub("Print mode", M::PrintMode),
+                unavailable("Printer type"),
+                unavailable("DEC/ISO char sets"),
+                unavailable("PC character sets"),
+                sub("Print extent", M::PrintExtent),
+                sub("Print terminator", M::PrintTerminator),
+            ];
             v.push(separator());
             v.extend(
                 [
@@ -763,6 +765,24 @@ fn items(menu: Menu, f: &Features, model: Model, session: u8) -> Vec<Item> {
             );
             v
         }
+        M::PrintMode => [
+            ("Normal", PrintMode::Normal),
+            ("Autoprint", PrintMode::Auto),
+            ("Controller", PrintMode::Controller),
+        ]
+        .into_iter()
+        .map(|(label, m)| radio(label, f.print_mode == m, move |f| f.print_mode = m))
+        .collect(),
+        M::PrintExtent => vec![
+            radio("Full page", f.print_full_page, |f| f.print_full_page = true),
+            radio("Scroll region", !f.print_full_page, |f| {
+                f.print_full_page = false
+            }),
+        ],
+        M::PrintTerminator => vec![
+            radio("None", !f.print_form_feed, |f| f.print_form_feed = false),
+            radio("FF", f.print_form_feed, |f| f.print_form_feed = true),
+        ],
         M::Language => ["English", "French", "German", "Italian", "Spanish"]
             .into_iter()
             .map(|name| radio(name, name == "English", |_| {}).when(name == "English"))

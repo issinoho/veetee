@@ -21,6 +21,12 @@ dec = "print-screen"
 pc = "Print"
 dec = "print-screen"
 [[bind]]
+pc = "Ctrl+F2"
+dec = "auto-print"
+[[bind]]
+pc = "Ctrl+Print"
+dec = "auto-print"
+[[bind]]
 pc = "F3"
 dec = "set-up"
 [[bind]]

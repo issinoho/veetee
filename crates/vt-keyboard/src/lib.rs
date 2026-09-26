@@ -34,6 +34,9 @@ pub use vt_core::KeyMods as Mods;
 pub enum Local {
     HoldScreen,
     PrintScreen,
+    /// Ctrl+Print on the VT420: auto print mode on or off (Installing and
+    /// Using the VT420, 8.3).
+    AutoPrint,
     SetUp,
     /// Data/Talk on the VT420: switch sessions.
     SwitchSession,

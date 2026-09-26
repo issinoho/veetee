@@ -236,6 +236,18 @@ impl Terminal {
         self.emu.print_screen();
     }
 
+    /// Ctrl+Print on the VT420: auto print mode on, or back to normal print
+    /// mode (Installing and Using the VT420, 8.3). Returns whether it is on.
+    pub fn toggle_auto_print(&mut self) -> bool {
+        let on = self.emu.print_mode() != crate::setup::PrintMode::Auto;
+        self.emu.set_print_mode(if on {
+            crate::setup::PrintMode::Auto
+        } else {
+            crate::setup::PrintMode::Normal
+        });
+        on
+    }
+
     /// Whether something stands in for a printer, which decides what the
     /// printer status report says.
     pub fn set_printer(&mut self, attached: bool) {
@@ -830,6 +842,8 @@ impl Emulator {
             pause: false,
             config,
         };
+        // Printer Set-Up's factory Print Extent, where nothing is saved.
+        emu.modes.print_extent_full = emu.stored.print_full_page;
         if let Some(features) = emu.config.setup.clone() {
             emu.apply_features(&features);
             emu.events.clear();

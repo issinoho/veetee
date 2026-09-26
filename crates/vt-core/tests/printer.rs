@@ -1,7 +1,8 @@
 //! The printer port: what reaches the printer, and what does not reach the
 //! screen.
 
-use vt_core::{Config, Event, PrintJob, Terminal};
+use vt_core::setup::PrintMode;
+use vt_core::{Config, Event, Model, PrintJob, Terminal};
 
 fn terminal() -> Terminal {
     Terminal::new(Config::default())
@@ -92,8 +93,9 @@ fn the_eight_bit_terminator_ends_it_too() {
 #[test]
 fn print_screen_prints_the_scrolling_region_or_the_whole_page() {
     let mut term = terminal();
-    // Lines 1 to 5, then a scrolling region of lines 2 to 4.
-    term.advance(b"one\r\ntwo\r\nthree\r\nfour\r\nfive\x1b[2;4r");
+    // Lines 1 to 5, then a scrolling region of lines 2 to 4, and DECPEX
+    // reset: the VT420 prints the full page from the factory.
+    term.advance(b"one\r\ntwo\r\nthree\r\nfour\r\nfive\x1b[2;4r\x1b[?19l");
     term.advance(b"\x1b[i");
     assert_eq!(
         jobs(&mut term),
@@ -185,5 +187,83 @@ fn the_host_is_told_whether_there_is_a_printer() {
         term.take_output(),
         b"\x1b[?10n",
         "ready, where one stands in"
+    );
+}
+
+#[test]
+fn the_factory_print_extent_is_the_models() {
+    // Print Full Page on the VT420 (Installing and Using the VT420, table
+    // 8-1); DECPEX reset, the scrolling region, on the VT500 (EK-VT510-RM).
+    for (model, full) in [(Model::Vt420, true), (Model::Vt520, false)] {
+        let mut term = Terminal::new(Config {
+            model,
+            ..Config::default()
+        });
+        term.advance(b"\x1b[?19$p");
+        let expect = format!("\x1b[?19;{}$y", if full { 1 } else { 2 });
+        assert_eq!(term.take_output(), expect.as_bytes(), "{model:?}");
+        assert_eq!(term.setup_features().print_full_page, full);
+    }
+}
+
+#[test]
+fn printer_set_up_shows_and_sets_what_the_host_does() {
+    let mut term = terminal();
+    term.advance(b"\x1b[?19l\x1b[?18h\x1b[?5i");
+    let f = term.setup_features();
+    assert_eq!(
+        (f.print_mode, f.print_full_page, f.print_form_feed),
+        (PrintMode::Auto, false, true)
+    );
+
+    // Back to Normal Print Mode in Set-Up: auto print ends, and its lines print.
+    term.advance(b"line\r\n");
+    let mut f = term.setup_features();
+    f.print_mode = PrintMode::Normal;
+    f.print_full_page = true;
+    term.apply_setup_features(&f);
+    assert_eq!(jobs(&mut term), [PrintJob::Text("line\n".into())]);
+    term.advance(b"\x1b[?19$p");
+    assert_eq!(term.take_output(), b"\x1b[?19;1$y", "DECPEX set by Set-Up");
+}
+
+#[test]
+fn controller_mode_from_set_up_prints_what_it_had_when_it_ends() {
+    let mut term = terminal();
+    let mut f = term.setup_features();
+    f.print_mode = PrintMode::Controller;
+    term.apply_setup_features(&f);
+    term.advance(b"FOR THE PRINTER\r\n\x1b[4");
+    assert!(screen(&term).is_empty(), "none of it on the screen");
+    f.print_mode = PrintMode::Normal;
+    term.apply_setup_features(&f);
+    assert_eq!(
+        jobs(&mut term),
+        [PrintJob::Controller(b"FOR THE PRINTER\r\n\x1b[4".to_vec())]
+    );
+    term.advance(b"shown");
+    assert_eq!(screen(&term), ["shown"]);
+}
+
+#[test]
+fn ctrl_print_turns_auto_print_on_and_off() {
+    let mut term = terminal();
+    assert!(term.toggle_auto_print());
+    term.advance(b"one\r\n");
+    assert!(!term.toggle_auto_print());
+    assert_eq!(jobs(&mut term), [PrintJob::Text("one\n".into())]);
+    assert_eq!(term.setup_features().print_mode, PrintMode::Normal);
+}
+
+#[test]
+fn printer_set_up_is_saved() {
+    let mut f = vt_core::setup::Features::factory(Model::Vt420);
+    f.print_mode = PrintMode::Auto;
+    f.print_full_page = false;
+    f.print_form_feed = true;
+    let back = vt_core::setup::Features::from_text(Model::Vt420, &f.to_text());
+    assert_eq!(
+        (back.print_mode, back.print_full_page, back.print_form_feed),
+        (PrintMode::Auto, false, true)
     );
 }

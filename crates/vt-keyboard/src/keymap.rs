@@ -278,6 +278,7 @@ pub fn pc_key_name(pc: PcKey) -> String {
 const LOCAL_NAMES: &[(&str, Local)] = &[
     ("hold-screen", Local::HoldScreen),
     ("print-screen", Local::PrintScreen),
+    ("auto-print", Local::AutoPrint),
     ("set-up", Local::SetUp),
     ("session", Local::SwitchSession),
     ("break", Local::Break),

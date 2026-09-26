@@ -828,7 +828,7 @@ impl TerminalView {
         // DECLFKC and DECELF let the host reassign or disable local keys.
         let key_number = match local {
             Local::HoldScreen => Some(1),
-            Local::PrintScreen => Some(2),
+            Local::PrintScreen | Local::AutoPrint => Some(2),
             Local::SetUp => Some(3),
             Local::SwitchSession => Some(4),
             _ => None,
@@ -890,6 +890,18 @@ impl TerminalView {
             Local::PrintScreen => {
                 if st.session.terminal().config().printer {
                     st.session.print_screen();
+                } else {
+                    (st.callbacks.notify)("No printer: choose Print to Folder in the window menu");
+                }
+            }
+            Local::AutoPrint => {
+                if st.session.terminal().config().printer {
+                    let on = st.session.toggle_auto_print();
+                    (st.callbacks.notify)(if on {
+                        "Auto print on"
+                    } else {
+                        "Auto print off"
+                    });
                 } else {
                     (st.callbacks.notify)("No printer: choose Print to Folder in the window menu");
                 }

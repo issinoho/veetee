@@ -8,6 +8,18 @@ Before 1.0 the minor version followed the project milestones (0.3 = M3). The for
 
 ## [Unreleased]
 
+- **Printer Set-Up has its settings.** The VT420's Printer Set-Up screen, and the VT500 series'
+  Printer menu, now have Print Mode (normal, auto print, controller), Print Extent (full page or
+  scrolling region) and Print Terminator (a form feed after a print), as on the terminal: they
+  show what the host has set, change it, and are saved. The screen no longer says printing is not
+  available. The settings for a printer's own cable stay off, veetee having no cable.
+- **Ctrl+F2 (Ctrl+Print) turns auto print on and off**, as on the VT420 (Installing and Using the
+  VT420, 8.3).
+- **Changed: the VT420's F2 prints the full page by default**, its factory Print Extent (Print
+  Full Page, Installing and Using the VT420, table 8-1); before, it printed the scrolling region.
+  The VT500 models keep the scrolling region, DECPEX's default in EK-VT510-RM. Either is chosen in
+  Printer Set-Up, or by the host with DECPEX.
+
 - **Communications Set-Up sets the serial line**, as it does on the terminal, where before its
   speed, data format and flow control were saved and shown but acted on nothing. `--serial`
   opens with the saved Set-Up (DEC's factory 9600 8N1 XON/XOFF where nothing is saved); the

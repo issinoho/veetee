@@ -266,6 +266,11 @@ impl Session {
         set_line(&self.shared, &self.notices);
     }
 
+    /// Ctrl+Print: auto print on or off. Returns whether it is now on.
+    pub fn toggle_auto_print(&self) -> bool {
+        self.terminal().toggle_auto_print()
+    }
+
     pub fn print_screen(&self) {
         self.terminal().print_screen();
     }

@@ -36,7 +36,7 @@ Released in 1.5.0 (P1 to P3); what follows is how it stood before, and now.
 |---|---|---|
 | DSR printer status | Answered "no printer" (`CSI ? 13 n`) | "Ready" (`CSI ? 10 n`) while a folder or printer is chosen, "no printer" where not |
 | DECPFF, DECPEX | Kept and reported, acted on by nothing | A form feed after Print Screen; the page rather than the scrolling region |
-| Printer Set-Up screens and VT500 Printer menu | Settings kept and saved, acting on nothing | Unchanged: print mode, extent and terminator come from the host's sequences |
+| Printer Set-Up screens and VT500 Printer menu | Settings kept and saved, acting on nothing | From 1.6.0, Print Mode, Print Extent and Print Terminator: set there or by the host, and saved; the VT420's factory Print Extent is the full page. Ctrl+F2 turns auto print on and off |
 | Print Screen key (F2) | Showed "Printing is not available yet" | Prints the screen |
 | `CSI … i` (Media Copy) | **Ignored, so printer controller data appeared on the screen**: `CSI 5 i FOR THE PRINTER CSI 4 i` painted `FOR THE PRINTER` (checked 25 September 2026; the roadmap had said print data was swallowed) | Print screen, print cursor line, auto print and printer controller, each a print job; controller data never reaches the screen |
 | VT52 printer functions | Ignored, with the same result for `ESC W` | As the ANSI forms |

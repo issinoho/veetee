@@ -26,6 +26,7 @@
 //! are ignored.
 
 use super::{Emulator, Event};
+use crate::setup::PrintMode;
 
 /// Something to print.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -96,6 +97,52 @@ impl Emulator {
         self.printer.pending.clear();
         // Stop the parser here, so the very next byte is the printer's.
         self.pause = true;
+    }
+
+    /// Ends printer controller mode other than by the host's terminator —
+    /// from Printer Set-Up — printing what it had.
+    fn controller_off(&mut self) {
+        if !self.printer.controller {
+            return;
+        }
+        self.printer.controller = false;
+        let mut job = std::mem::take(&mut self.printer.job);
+        job.append(&mut self.printer.pending);
+        if !job.is_empty() {
+            self.events.push(Event::Print(PrintJob::Controller(job)));
+        }
+    }
+
+    /// Printer Set-Up's print mode, which the host also sets with MC.
+    pub(super) fn print_mode(&self) -> PrintMode {
+        if self.printer.controller {
+            PrintMode::Controller
+        } else if self.printer.auto {
+            PrintMode::Auto
+        } else {
+            PrintMode::Normal
+        }
+    }
+
+    /// Sets the print mode from Printer Set-Up. Leaving auto print or
+    /// controller mode prints what each had gathered.
+    pub(super) fn set_print_mode(&mut self, mode: PrintMode) {
+        match mode {
+            PrintMode::Normal => {
+                self.auto_print(false);
+                self.controller_off();
+            }
+            PrintMode::Auto => {
+                self.controller_off();
+                self.auto_print(true);
+            }
+            PrintMode::Controller => {
+                self.auto_print(false);
+                if !self.printer.controller {
+                    self.controller_on();
+                }
+            }
+        }
     }
 
     /// Print screen: the scrolling region, or the whole page with DECPEX.
