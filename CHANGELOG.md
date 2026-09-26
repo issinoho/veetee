@@ -8,6 +8,12 @@ Before 1.0 the minor version followed the project milestones (0.3 = M3). The for
 
 ## [Unreleased]
 
+## [1.7.0] - 2026-09-26
+
+**Manual pages and `--version`.** `man veetee` and `man vt-headless` now come with every Linux
+package, both programs answer `-v` with their version, and veetee's About box names its author
+and gives its licence as it is.
+
 - **Added: `-v` (`--version`)** prints the version and exits, for `veetee` and `vt-headless`
   alike; `vt-headless -h` (`--help`) prints its usage.
 - **Added: manual pages**, `man veetee` and `man vt-headless`, installed by the .deb, .rpm, PPA
@@ -801,7 +807,8 @@ The first release: VT100 through VT420 emulation with local, Telnet, SSH and ser
   `cargo deny` licence checks and parser fuzzing.
 - `cargo xtask dist` builds the release tarball and Debian package.
 
-[Unreleased]: https://github.com/issinoho/veetee/compare/v1.6.0...HEAD
+[Unreleased]: https://github.com/issinoho/veetee/compare/v1.7.0...HEAD
+[1.7.0]: https://github.com/issinoho/veetee/compare/v1.6.0...v1.7.0
 [1.6.0]: https://github.com/issinoho/veetee/compare/v1.5.0...v1.6.0
 [1.5.0]: https://github.com/issinoho/veetee/compare/v1.4.0...v1.5.0
 [1.4.0]: https://github.com/issinoho/veetee/compare/v1.3.0...v1.4.0

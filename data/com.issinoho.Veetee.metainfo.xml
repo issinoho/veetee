@@ -67,6 +67,11 @@
   </supports>
   <content_rating type="oars-1.1"/>
   <releases>
+    <release version="1.7.0" date="2026-09-26">
+      <description>
+        <p>Manual pages for veetee and vt-headless, a --version option, and the author and licence in the About box.</p>
+      </description>
+    </release>
     <release version="1.6.0" date="2026-09-26">
       <description>
         <p>Communications Set-Up sets the serial line, and Printer Set-Up gains print mode, extent and terminator.</p>
