@@ -5,7 +5,7 @@ The working roadmap: what is done, what 1.0 ships with, and what is parked. The 
 every control function are in [compat-matrix.md](compat-matrix.md), and released changes in
 [CHANGELOG.md](../CHANGELOG.md).
 
-Latest release: **1.5.0** (25 September 2026); 1.0.0 was released on 17 September 2026 (see
+Latest release: **1.6.0** (26 September 2026); 1.0.0 was released on 17 September 2026 (see
 [Since 1.0](#since-10)). From 1.0 the version follows Semantic Versioning:
 a breaking change to the crates' public API or to saved settings takes the major, new terminal
 behaviour takes the minor, fixes take the patch. Before 1.0 the minor version followed the
@@ -276,6 +276,13 @@ over Wi-Fi. All of it was found and proved against MYI64 with `VEETEE_LAT_TRACE`
 longer lands on the screen, and each print job — from the host or the Print Screen key — as a PDF
 or on a real printer, seen on paper including a job printed from OpenVMS. It also honours XOFF
 from the host, so a long paste into OpenVMS with HOSTSYNC set no longer overruns.
+
+**1.6.0** (26 September 2026) made **Set-Up drive the line and the printer**: Communications
+Set-Up sets a serial line's speed, data format and flow control, from Set-Up or by the host at
+VT500 level, proved on a USB adapter to an OpenVMS terminal port and against `ser2net`; Printer
+Set-Up gained print mode, extent and terminator, with the VT420's factory full-page extent, and
+Ctrl+F2 turns auto print on and off. On the way it was found that OpenVMS's
+`SET TERMINAL/INQUIRE` puts every terminal in VT200 mode.
 
 ## After 1.0
 

@@ -322,7 +322,7 @@ footer p { margin: 0 0 8px; }
         <h1>The DEC terminal,<br><em>kept alive.</em></h1>
         <p>veetee is an open-source DEC VT terminal for Linux and Windows. It is built from DEC's own programmer references and tested screen by screen, so OpenVMS, DECforms, FMS and EDT behave exactly as they did on the glass.</p>
         <div class="cta">
-          <a class="key gold wide" href="https://github.com/issinoho/veetee/releases/latest"><small>PF1 · Gold</small><strong>Download 1.5.0</strong></a>
+          <a class="key gold wide" href="https://github.com/issinoho/veetee/releases/latest"><small>PF1 · Gold</small><strong>Download 1.6.0</strong></a>
           <a class="key light" href="https://github.com/issinoho/veetee"><small>Find</small><strong>Source</strong></a>
           <a class="key" href="https://github.com/issinoho/veetee/wiki"><small>Help</small><strong>Wiki</strong></a>
         </div>
@@ -418,7 +418,7 @@ footer p { margin: 0 0 8px; }
         <div class="feature"><span class="key light"><small>DECDLD</small><strong>Soft font</strong></span><h3>Soft fonts and charsets</h3><p>Downloadable character sets, 17 national replacement sets, DEC Supplemental, DEC Technical, ISO Latin, and the VT500 Greek, Hebrew, Turkish and Cyrillic sets.</p></div>
         <div class="feature"><span class="key"><small>DECCRA</small><strong>Rectangle</strong></span><h3>VT420 rectangles and pages</h3><p>Left/right margins, rectangular copy, fill, erase and attribute changes, checksums that match the hardware, page memory, macros and state reports.</p></div>
         <div class="feature"><span class="key light"><small>F4</small><strong>Session</strong></span><h3>Dual sessions</h3><p>Two independent sessions in a split window, just like a VT520 on two comm lines. The host can name each session and make it active.</p></div>
-        <div class="feature"><span class="key gold"><small>F5</small><strong>Break</strong></span><h3>Telnet, SSH, serial and LAT</h3><p>Native Telnet with BREAK and RFC 2217 line control for terminal servers, SSH through your OpenSSH setup, and serial lines at DEC factory defaults (9600 8N1 XON/XOFF), on Linux and on Windows COM ports. On Linux there is LAT as well, DEC's own protocol straight on Ethernet: find the nodes announcing themselves and open a session, which OpenVMS sets up as a VT420.</p></div>
+        <div class="feature"><span class="key gold"><small>F5</small><strong>Break</strong></span><h3>Telnet, SSH, serial and LAT</h3><p>Native Telnet with BREAK and RFC 2217 line control for terminal servers, SSH through your OpenSSH setup, and serial lines at DEC factory defaults (9600 8N1 XON/XOFF), set from Communications Set-Up as on the terminal, on Linux and on Windows COM ports. On Linux there is LAT as well, DEC's own protocol straight on Ethernet: find the nodes announcing themselves and open a session, which OpenVMS sets up as a VT420.</p></div>
         <div class="feature"><span class="key light"><small>SEND</small><strong>Kermit</strong></span><h3>Kermit file transfer</h3><p>Send File and Receive File over any connection — Telnet, SSH, serial or LAT — to the host's own Kermit, with text or binary agreed file by file, CRC checks and long packets. Proved against C-Kermit on OpenVMS, and scriptable with <code>vt-headless kermit</code>.</p></div>
         <div class="feature"><span class="key gold"><small>F2</small><strong>Print Screen</strong></span><h3>A printer port</h3><p>Print Screen, auto print and printer controller mode, as a VT420 has them: what the host prints on the printer at your desk becomes a PDF, or goes to a real printer through CUPS or Windows printing, chosen once.</p></div>
         <div class="feature"><span class="key"><small>F1</small><strong>Hold Screen</strong></span><h3>Power-user touches</h3><p>Saved connections with a default to open at start, session logs with timestamps, a searchable scrollback, screen reader support, copy and paste that translate DEC characters, Hold Screen with real flow control, a visual LK401 keymap editor, VT520 key programming and session recordings that replay as tests.</p></div>
@@ -486,21 +486,21 @@ $ sudo apt install veetee</div>
 
           <h3 style="margin-top:32px">Debian, Ubuntu, Fedora, RHEL and openSUSE</h3>
           <p>Download the package from the <a href="https://github.com/issinoho/veetee/releases/latest">latest release</a> and install it. GTK 4.14 and libadwaita 1.5 or later are required. The RPM asks for its libraries by soname, so the one package suits every RPM distribution.</p>
-          <div class="term"><span class="c"># veetee 1.5.0, from the latest release</span>
-$ sudo apt install ./veetee_1.5.0-1_amd64.deb
-$ sudo dnf install ./veetee-1.5.0-1.x86_64.rpm     <span class="c"># zypper on openSUSE</span></div>
+          <div class="term"><span class="c"># veetee 1.6.0, from the latest release</span>
+$ sudo apt install ./veetee_1.6.0-1_amd64.deb
+$ sudo dnf install ./veetee-1.6.0-1.x86_64.rpm     <span class="c"># zypper on openSUSE</span></div>
           <h3 style="margin-top:32px">Any distribution, with Flatpak</h3>
           <p>A Flatpak bundle runs on any distribution with the GNOME runtime from Flathub. Local shells and <code>--ssh</code> run on the host, so your own shell and <code>~/.ssh</code> apply.</p>
           <div class="term"><span class="c"># install the bundle from a release</span>
 $ curl -LO https://github.com/issinoho/veetee/\
-    releases/download/v1.5.0/veetee-1.5.0-x86_64.flatpak
-$ flatpak install --user ./veetee-1.5.0-x86_64.flatpak
+    releases/download/v1.6.0/veetee-1.6.0-x86_64.flatpak
+$ flatpak install --user ./veetee-1.6.0-x86_64.flatpak
 $ flatpak run com.issinoho.Veetee --telnet vms1</div>
           <h3 style="margin-top:32px">Windows 10 and 11</h3>
           <p>One <a href="https://github.com/issinoho/veetee/releases/latest">zip</a> with GTK included: unzip it anywhere and run <code>bin\veetee.exe</code>. Local sessions use the Windows pseudo console, <code>--ssh</code> uses Windows' OpenSSH client, and <code>--serial COM3</code> opens a COM port.</p>
           <div class="term"><span class="c">REM unzip and connect in Command Prompt</span>
-&gt; tar -xf veetee-1.5.0-x86_64-windows.zip
-&gt; cd veetee-1.5.0-x86_64-windows
+&gt; tar -xf veetee-1.6.0-x86_64-windows.zip
+&gt; cd veetee-1.6.0-x86_64-windows
 &gt; bin\veetee --telnet vms1</div>
         </div>
         <div>
@@ -545,7 +545,7 @@ $ cd veetee && cargo run --release -p veetee</div>
         <div class="milestone done"><span class="dot"></span><div><b>M6 · Keyboard &amp; apps</b><span>Keymap editor, key programming, recordings · 0.6.0</span></div></div>
         <div class="milestone done"><span class="dot"></span><div><b>M7 · Fonts &amp; look</b><span>DEC-cell fonts, Set-Up, sound, CRT · 0.7.1</span></div></div>
         <div class="milestone done"><span class="dot"></span><div><b>M8 · 1.0</b><span>Connections, logs, search, screen readers, Flatpak, signed Windows builds ✓ · 1.0.0</span></div></div>
-        <div class="milestone done"><span class="dot"></span><div><b>Since 1.0</b><span>Default connection · 1.2.0 · Kermit file transfer · 1.3.0 · LAT that survives lost frames, long packets · 1.4.0 · Printing, XOFF from the host · 1.5.0</span></div></div>
+        <div class="milestone done"><span class="dot"></span><div><b>Since 1.0</b><span>Default connection · 1.2.0 · Kermit file transfer · 1.3.0 · LAT that survives lost frames, long packets · 1.4.0 · Printing, XOFF from the host · 1.5.0 · The serial line from Set-Up, Printer Set-Up · 1.6.0</span></div></div>
       </div>
     </div>
   </section>

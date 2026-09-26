@@ -59,9 +59,9 @@ Rust 1.92 and 24.04's archive tops out at 1.91. See
 and an x86_64 Linux tarball, all needing GTK 4.14+ and libadwaita 1.5+:
 
 ```sh
-sudo apt install ./veetee_1.5.0-1_amd64.deb          # Debian, Ubuntu
-sudo dnf install ./veetee-1.5.0-1.x86_64.rpm         # Fedora, RHEL
-sudo zypper install ./veetee-1.5.0-1.x86_64.rpm      # openSUSE
+sudo apt install ./veetee_1.6.0-1_amd64.deb          # Debian, Ubuntu
+sudo dnf install ./veetee-1.6.0-1.x86_64.rpm         # Fedora, RHEL
+sudo zypper install ./veetee-1.6.0-1.x86_64.rpm      # openSUSE
 ```
 
 The RPM asks for the libraries it needs by soname rather than by package name, so it resolves on
@@ -71,7 +71,7 @@ Any Linux distribution with Flatpak can install the Flatpak bundle from a releas
 GNOME runtime from Flathub):
 
 ```sh
-flatpak install --user ./veetee-1.5.0-x86_64.flatpak
+flatpak install --user ./veetee-1.6.0-x86_64.flatpak
 flatpak run com.issinoho.Veetee --telnet vms1
 ```
 
@@ -82,7 +82,7 @@ refuses raw Ethernet sockets outright, so use the package or the tarball for tha
 yourself with
 `flatpak-builder --user --install --force-clean build packaging/flatpak/com.issinoho.Veetee.yml`.
 
-For Windows 10 (1809) or later, unzip `veetee-1.5.0-x86_64-windows.zip` and run
+For Windows 10 (1809) or later, unzip `veetee-1.6.0-x86_64-windows.zip` and run
 `bin\veetee.exe`; the GTK runtime is included. Release builds are signed with a Certum code-signing
 certificate after publishing (see `packaging/windows/SIGNING.md`). Local command windows use the Windows pseudo
 console, `--ssh` uses Windows' OpenSSH client and `--serial COM3` opens a COM port.

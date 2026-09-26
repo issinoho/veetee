@@ -67,6 +67,11 @@
   </supports>
   <content_rating type="oars-1.1"/>
   <releases>
+    <release version="1.6.0" date="2026-09-26">
+      <description>
+        <p>Communications Set-Up sets the serial line, and Printer Set-Up gains print mode, extent and terminator.</p>
+      </description>
+    </release>
     <release version="1.5.0" date="2026-09-25">
       <description>
         <p>Printing, to PDF or a real printer, and XOFF from the host is honoured.</p>

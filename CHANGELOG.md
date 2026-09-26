@@ -8,6 +8,14 @@ Before 1.0 the minor version followed the project milestones (0.3 = M3). The for
 
 ## [Unreleased]
 
+## [1.6.0] - 2026-09-26
+
+**Set-Up drives the line and the printer.** Communications Set-Up now sets a serial line — its
+speed, data format and flow control, from Set-Up or from the host — where before it was saved and
+shown but acted on nothing; it was proved on a USB serial adapter to an OpenVMS terminal port, and
+against `ser2net` for a terminal server. Printer Set-Up gains its print mode, print extent and
+print terminator, and Ctrl+F2 turns auto print on and off.
+
 - **Printer Set-Up has its settings.** The VT420's Printer Set-Up screen, and the VT500 series'
   Printer menu, now have Print Mode (normal, auto print, controller), Print Extent (full page or
   scrolling region) and Print Terminator (a form feed after a print), as on the terminal: they
@@ -19,7 +27,6 @@ Before 1.0 the minor version followed the project milestones (0.3 = M3). The for
   Full Page, Installing and Using the VT420, table 8-1); before, it printed the scrolling region.
   The VT500 models keep the scrolling region, DECPEX's default in EK-VT510-RM. Either is chosen in
   Printer Set-Up, or by the host with DECPEX.
-
 - **Communications Set-Up sets the serial line**, as it does on the terminal, where before its
   speed, data format and flow control were saved and shown but acted on nothing. `--serial`
   opens with the saved Set-Up (DEC's factory 9600 8N1 XON/XOFF where nothing is saved); the
@@ -786,7 +793,8 @@ The first release: VT100 through VT420 emulation with local, Telnet, SSH and ser
   `cargo deny` licence checks and parser fuzzing.
 - `cargo xtask dist` builds the release tarball and Debian package.
 
-[Unreleased]: https://github.com/issinoho/veetee/compare/v1.5.0...HEAD
+[Unreleased]: https://github.com/issinoho/veetee/compare/v1.6.0...HEAD
+[1.6.0]: https://github.com/issinoho/veetee/compare/v1.5.0...v1.6.0
 [1.5.0]: https://github.com/issinoho/veetee/compare/v1.4.0...v1.5.0
 [1.4.0]: https://github.com/issinoho/veetee/compare/v1.3.0...v1.4.0
 [1.3.0]: https://github.com/issinoho/veetee/compare/v1.2.0...v1.3.0
