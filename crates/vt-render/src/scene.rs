@@ -223,6 +223,22 @@ pub fn page_rows(term: &Terminal) -> usize {
 /// Builds the instance buffer for one frame: a page fill followed by every
 /// cell that is not blank on the page background. `indicator` is the text
 /// of the indicator status line, when that type is selected.
+/// The page's background: the theme's, or its foreground on a light screen
+/// (DECSCNM); a colour terminal's normal text background.
+pub fn page_background(term: &Terminal, theme: &Theme) -> [f32; 3] {
+    let reverse_screen = term.modes().reverse_screen;
+    if let Some((table, _)) = term.colors() {
+        let (fg, bg) = table.normal;
+        let index = if reverse_screen { fg } else { bg };
+        return rgb100(table.map[usize::from(index)]);
+    }
+    if reverse_screen {
+        scale(theme.foreground, theme.normal_intensity)
+    } else {
+        theme.background
+    }
+}
+
 #[allow(clippy::too_many_arguments)]
 pub fn build_instances(
     term: &Terminal,
@@ -245,17 +261,12 @@ pub fn build_instances(
     out.clear();
     let reverse_screen = term.modes().reverse_screen;
     let normal = scale(theme.foreground, theme.normal_intensity);
-    let (mut page_bg, text_normal, text_bold) = if reverse_screen {
-        (normal, theme.background, theme.background)
+    let (text_normal, text_bold) = if reverse_screen {
+        (theme.background, theme.background)
     } else {
-        (theme.background, normal, theme.foreground)
+        (normal, theme.foreground)
     };
-    // A colour terminal paints the screen in the normal text background.
-    if let Some((table, _)) = term.colors() {
-        let (fg, bg) = table.normal;
-        let index = if reverse_screen { fg } else { bg };
-        page_bg = rgb100(table.map[usize::from(index)]);
-    }
+    let page_bg = page_background(term, theme);
 
     push(
         out,

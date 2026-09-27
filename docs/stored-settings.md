@@ -74,6 +74,11 @@ against a scripted port; the adapter is to come.
 On the monochrome VT520, the screen's background colour fills the window to its edges instead
 of stopping at the picture's border.
 
+**Done** (27 September 2026): with DECOSCNM set on the VT510 or VT520 — the monochrome models
+whose Set-Up offers it, not the colour VT525 — the area around the page, and the edge of a curved
+screen, take the page's own background in place of the dark surround; most visible on a light
+screen.
+
 ### Z6. Energy saver
 
 After the CRT saver has run the DECSEST time, veetee stops drawing the screen altogether until

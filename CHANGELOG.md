@@ -8,6 +8,8 @@ Before 1.0 the minor version followed the project milestones (0.3 = M3). The for
 
 ## [Unreleased]
 
+- **Overscan acts** on the VT510 and VT520 (DECOSCNM, Display Set-Up): the page's background
+  fills the window to its edges instead of sitting in a dark surround.
 - **Modem control acts on a serial line** (DECMCM, with the disconnect delay DECSDDT): with it
   on, nothing is sent or received while DSR is off — the status line says *Waiting for DSR* —
   and the session ends when DSR goes off, or when carrier does after 2 seconds, 60 ms or never.

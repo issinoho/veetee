@@ -272,6 +272,18 @@ impl Renderer {
         indicator: &str,
         scroll: Option<ScrollFrame>,
     ) -> bool {
+        // Overscan (DECOSCNM): the picture fills the tube, so what lies
+        // around the page is the page's own background.
+        let overscanned;
+        let theme = if term.overscan() {
+            overscanned = Theme {
+                bezel: crate::scene::page_background(term, theme),
+                ..theme.clone()
+            };
+            &overscanned
+        } else {
+            theme
+        };
         let clip = build_instances(
             term,
             layout,

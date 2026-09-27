@@ -41,6 +41,20 @@ impl Terminal {
         self.emu.config.set_saved_features(features);
     }
 
+    /// Overscan (DECOSCNM, VT500 Display Set-Up): the picture fills the
+    /// screen to its edges. A monochrome terminal's feature only (EK-VT520-RM,
+    /// DECOSCNM), so never on the colour VT525, nor before the VT500 series.
+    pub fn overscan(&self) -> bool {
+        matches!(self.emu.config.model, Model::Vt510 | Model::Vt520)
+            && self
+                .emu
+                .setup
+                .modes
+                .get(&DECOSCNM)
+                .copied()
+                .unwrap_or(false)
+    }
+
     /// The zero style (DECSZS, VT500 Display Set-Up): 1 the oval zero, the
     /// default, 2 the zero with a slash, 3 with a dot (EK-VT520-RM, DECSZS).
     /// `None` for earlier models, which have no such setting and show the
@@ -654,6 +668,24 @@ mod tests {
         term.apply_setup_features(&f);
         term.advance(b"\x1b[c");
         assert_eq!(term.take_output(), b"\x1b[?63;1;2;7;8;9c");
+    }
+
+    #[test]
+    fn overscan_is_for_the_monochrome_vt500_models() {
+        for (model, has) in [
+            (Model::Vt510, true),
+            (Model::Vt520, true),
+            (Model::Vt525, false),
+            (Model::Vt420, false),
+        ] {
+            let mut term = Terminal::new(Config {
+                model,
+                ..Config::default()
+            });
+            assert!(!term.overscan(), "{model:?}: off from the factory");
+            term.advance(b"\x1b[?106h");
+            assert_eq!(term.overscan(), has, "{model:?}");
+        }
     }
 
     #[test]
