@@ -5,7 +5,7 @@ The working roadmap: what is done, what 1.0 ships with, and what is parked. The 
 every control function are in [compat-matrix.md](compat-matrix.md), and released changes in
 [CHANGELOG.md](../CHANGELOG.md).
 
-Latest release: **1.8.0** (27 September 2026); 1.0.0 was released on 17 September 2026 (see
+Latest release: **1.9.0** (27 September 2026); 1.0.0 was released on 17 September 2026 (see
 [Since 1.0](#since-10)). From 1.0 the version follows Semantic Versioning:
 a breaking change to the crates' public API or to saved settings takes the major, new terminal
 behaviour takes the minor, fixes take the patch. Before 1.0 the minor version followed the
@@ -190,9 +190,9 @@ rather than fixes; none of it was judged a reason to hold the release.
 
 ### Limitations 1.0 ships with (from compat-matrix.md)
 
-- **Stored-only Set-Up settings**: zero style, energy saver, host wake-up, overscan, transmit
-  rate limits, modem control, the receive speed and the compose/Alt/F5 key options are saved and
-  reported but do not change behaviour. Communications Set-Up sets the serial line from 1.6.0
+- **Stored-only Set-Up settings**: the receive speed, modem speeds, the compose/Alt/F5 key
+  options and a few more are saved and reported but do not change behaviour; the zero style,
+  transmit rate limit, modem control, overscan, host wake-up and energy saver act from 1.9.0. Communications Set-Up sets the serial line from 1.6.0
   ([`serial-setup.md`](serial-setup.md)).
 - **Sessions**: four on the VT520 and VT525 from 1.8.0, each on its own connection
   ([`sessions.md`](sessions.md)); no session management over one line (TD/SMP, SSU), which waits
@@ -293,6 +293,11 @@ connection, two on the screen with Ctrl+F4 for one or two, Alt+1 to Alt+4 and fr
 session icons, accepted on MYI64; a serial line's parity and framing errors shown as the error
 character; and saved keymaps given functions added since they were saved. Kermit was accepted
 over SSH and a seven-bit line with parity along the way.
+
+**1.9.0** (27 September 2026) made the **Set-Up settings that were stored only** act, as planned in
+[`stored-settings.md`](stored-settings.md): the zero style, the transmit rate limit, modem control
+on a serial line, overscan, host wake-up and the energy saver. Host wake-up's factory setting and
+the VT500 series' oval zero were put right to DEC's on the way; the keyboard options stay stored.
 
 ## After 1.0
 

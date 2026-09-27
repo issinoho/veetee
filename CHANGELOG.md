@@ -8,6 +8,13 @@ Before 1.0 the minor version followed the project milestones (0.3 = M3). The for
 
 ## [Unreleased]
 
+## [1.9.0] - 2026-09-27
+
+**Set-Up settings that did nothing now act.** The zero style draws an oval, slashed or dotted
+zero; the transmit rate limit paces what veetee sends; modem control watches a serial line's DSR
+and carrier; overscan, host wake-up and the energy saver do what the VT500 series does. Two
+defaults change to DEC's: a VT500 model's zero is oval, and host wake-up is on.
+
 - **The energy saver acts** on the VT500 series (DECSEST): once the CRT saver has run its time,
   veetee stops drawing altogether until woken, which is what a suspended monitor saves. The CRT
   saver also no longer redraws its blank screen twice a second.
@@ -872,7 +879,8 @@ The first release: VT100 through VT420 emulation with local, Telnet, SSH and ser
   `cargo deny` licence checks and parser fuzzing.
 - `cargo xtask dist` builds the release tarball and Debian package.
 
-[Unreleased]: https://github.com/issinoho/veetee/compare/v1.8.0...HEAD
+[Unreleased]: https://github.com/issinoho/veetee/compare/v1.9.0...HEAD
+[1.9.0]: https://github.com/issinoho/veetee/compare/v1.8.0...v1.9.0
 [1.8.0]: https://github.com/issinoho/veetee/compare/v1.7.0...v1.8.0
 [1.7.0]: https://github.com/issinoho/veetee/compare/v1.6.0...v1.7.0
 [1.6.0]: https://github.com/issinoho/veetee/compare/v1.5.0...v1.6.0
