@@ -14,6 +14,7 @@
 //! | Delete End PgDn                | Select, Prev Screen, Next Screen     |
 //! | NumLock / * −                  | PF1 PF2 PF3 PF4                      |
 //! | Keypad + (Shift: minus)        | Keypad , (−)                         |
+//! | Keypad =                       | Keypad −                             |
 //! | Keypad 0–9 . Enter             | Keypad 0–9 . Enter                   |
 //! | Backspace                      | `<X]` (Delete)                       |
 //! | Ctrl+Shift+C / Ctrl+Shift+V    | Copy / Paste                         |
@@ -108,6 +109,7 @@ pub mod keysym {
     pub const KP_DIVIDE: u32 = 0xffaf;
     pub const KP_0: u32 = 0xffb0;
     pub const KP_9: u32 = 0xffb9;
+    pub const KP_EQUAL: u32 = 0xffbd;
     pub const F1: u32 = 0xffbe;
     pub const F20: u32 = 0xffd1;
     pub const ISO_LEFT_TAB: u32 = 0xfe20;
@@ -276,6 +278,7 @@ mod tests {
         assert_eq!(key(KP_SUBTRACT, NONE), Some(Action::Key(Key::Pf4)));
         assert_eq!(key(KP_ADD, NONE), Some(Action::Key(Key::KeypadComma)));
         assert_eq!(key(KP_ADD, SHIFT), Some(Action::Key(Key::KeypadMinus)));
+        assert_eq!(key(KP_EQUAL, NONE), Some(Action::Key(Key::KeypadMinus)));
         assert_eq!(key(KP_0 + 7, NONE), Some(Action::Key(Key::Keypad(7))));
         assert_eq!(
             key(KP_HOME, NONE),

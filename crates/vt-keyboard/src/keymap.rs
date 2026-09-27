@@ -203,6 +203,7 @@ const KEY_NAMES: &[(&str, u32)] = &[
     ("KP_Subtract", keysym::KP_SUBTRACT),
     ("KP_Decimal", keysym::KP_DECIMAL),
     ("KP_Divide", keysym::KP_DIVIDE),
+    ("KP_Equal", keysym::KP_EQUAL),
     ("Delete", keysym::DELETE),
     ("space", 0x20),
 ];

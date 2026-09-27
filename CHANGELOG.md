@@ -8,6 +8,11 @@ Before 1.0 the minor version followed the project milestones (0.3 = M3). The for
 
 ## [Unreleased]
 
+- **Keypad = is the keypad minus key.** A PC keypad has no key for the LK401's keypad −, so the
+  default keymap reached it only with Shift+Keypad +. Keypads that have a spare key, such as a
+  real LK401 on the elkay USB converter (https://github.com/issinoho/elkay), send Keypad = for it,
+  and veetee now takes that as keypad −.
+
 ## [1.7.0] - 2026-09-26
 
 **Manual pages and `--version`.** `man veetee` and `man vt-headless` now come with every Linux

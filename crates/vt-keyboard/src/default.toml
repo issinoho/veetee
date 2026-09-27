@@ -256,6 +256,11 @@ dec = "kp-comma"
 [[bind]]
 pc = "Shift+KP_Add"
 dec = "kp-minus"
+# Keypads with a key to spare, such as an LK401 on a USB converter, send
+# Keypad = for the DEC keypad minus.
+[[bind]]
+pc = "KP_Equal"
+dec = "kp-minus"
 [[bind]]
 pc = "KP_Decimal"
 dec = "kp-period"
