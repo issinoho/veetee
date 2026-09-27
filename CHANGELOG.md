@@ -8,6 +8,10 @@ Before 1.0 the minor version followed the project milestones (0.3 = M3). The for
 
 ## [Unreleased]
 
+- **The zero style acts** on the VT500 series (DECSZS, Display Set-Up's *Zero font*): an oval
+  zero, a slashed zero or a zero with a dot, in every font and size. **Changed**: DECSZS's
+  default is the oval zero, so a VT510, VT520 or VT525 now shows an oval zero where veetee drew a
+  slashed one; *Slashed zero* brings it back. Earlier models keep the zero as drawn.
 - **The transmit rate limit acts**: with *Limited transmit* on (DECXRLM), what veetee sends —
   typing, pastes, the answerback and its replies to the host — goes at 150, 50 or 30 characters a
   second (DECSTRL), keys that send sequences at the function-key rate where one is set. Kermit

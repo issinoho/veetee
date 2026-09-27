@@ -16,6 +16,13 @@ mod resample;
 mod set;
 
 pub use controls::C1_CONTROL_PICTURES;
+
+/// The oval zero, without the slash veetee's fonts draw (DECSZS 1), in a
+/// private-use code point the renderer puts in place of `0`.
+pub const OVAL_ZERO: char = '\u{E0F0}';
+
+/// The zero with a dot in it (DECSZS 3).
+pub const DOTTED_ZERO: char = '\u{E0F1}';
 pub use set::{Family, FontSet};
 
 /// The VT100/VT220-style font, drawn on a 10×10 dot cell. VT420-family
@@ -199,6 +206,68 @@ impl Font {
     pub fn contains(&self, ch: char) -> bool {
         self.index.contains_key(&ch)
     }
+
+    /// Adds [`OVAL_ZERO`] and [`DOTTED_ZERO`], made from this font's own
+    /// zero, which is drawn slashed: the dots inside the oval taken out, and
+    /// for the dotted one a dot put in the middle. By rule rather than by
+    /// hand, so every face and size has them.
+    pub fn add_zero_styles(&mut self) {
+        let Some(&at) = self.index.get(&'0') else {
+            return;
+        };
+        let zero = self.glyphs[usize::from(at)].clone();
+        let lit: Vec<usize> = (0..zero.rows.len())
+            .filter(|&y| zero.rows[y] != 0)
+            .collect();
+        let (Some(&top), Some(&bottom)) = (lit.first(), lit.last()) else {
+            return;
+        };
+        // Inside the oval: on each row between the top and bottom strokes,
+        // what lies between the leftmost and rightmost dots.
+        let mut oval = zero.rows.clone();
+        for row in oval.iter_mut().take(bottom).skip(top + 1) {
+            if *row == 0 {
+                continue;
+            }
+            let left = row.trailing_zeros();
+            let right = 15 - row.leading_zeros();
+            if right > left + 1 {
+                let inside = ((1u16 << right) - 1) & !((1u16 << (left + 1)) - 1);
+                *row &= !inside;
+            }
+        }
+        // The dot: the middle of the inside — two dots wide where the inside
+        // is an even width of four or more, else one, so it sits centred —
+        // and two tall on a tall cell.
+        let mut dotted = oval.clone();
+        let middle = (top + bottom) / 2;
+        let row = oval[middle];
+        if row != 0 {
+            let left = row.trailing_zeros();
+            let right = 15 - row.leading_zeros();
+            let inside = right.saturating_sub(left + 1);
+            if inside >= 1 {
+                let wide = inside >= 4 && inside.is_multiple_of(2);
+                let x = left + 1 + (inside - if wide { 2 } else { 1 }) / 2;
+                let mask = if wide { 0b11u16 << x } else { 1u16 << x };
+                let tall = self.height >= 14;
+                let rows = if tall && bottom - top >= 6 {
+                    vec![middle, middle + 1]
+                } else {
+                    vec![middle]
+                };
+                for y in rows {
+                    dotted[y] |= mask;
+                }
+            }
+        }
+        for (ch, rows) in [(OVAL_ZERO, oval), (DOTTED_ZERO, dotted)] {
+            if !self.index.contains_key(&ch) {
+                self.index.insert(ch, self.glyphs.len() as u16);
+                self.glyphs.push(Glyph { ch, rows });
+            }
+        }
+    }
 }
 
 #[cfg(test)]
@@ -207,6 +276,45 @@ mod tests {
 
     fn builtin() -> Font {
         Font::parse(VEETEE_10X10).expect("built-in font parses")
+    }
+
+    fn picture(font: &Font, ch: char) -> Vec<String> {
+        let g = &font.glyphs()[usize::from(font.index_of(ch))];
+        (0..usize::from(font.height))
+            .map(|y| {
+                (0..usize::from(font.width))
+                    .map(|x| if g.dot(x, y) { '#' } else { '.' })
+                    .collect()
+            })
+            .collect()
+    }
+
+    #[test]
+    fn every_face_has_the_oval_and_dotted_zeros() {
+        for family in [Family::Vt220, Family::Vt420] {
+            for face in FontSet::new(family).faces() {
+                let (slashed, oval, dotted) = (
+                    picture(face, '0'),
+                    picture(face, OVAL_ZERO),
+                    picture(face, DOTTED_ZERO),
+                );
+                println!("{}x{}", face.width, face.height);
+                for ((a, b), c) in slashed.iter().zip(&oval).zip(&dotted) {
+                    println!("  {a}  {b}  {c}");
+                }
+                assert!(face.contains(OVAL_ZERO) && face.contains(DOTTED_ZERO));
+                assert_ne!(slashed, oval, "the slash comes out");
+                assert_ne!(oval, dotted, "the dot goes in");
+                // The oval keeps the outline: the top and bottom rows are the
+                // zero's own.
+                let lit: Vec<usize> = (0..slashed.len())
+                    .filter(|&y| slashed[y].contains('#'))
+                    .collect();
+                let (top, bottom) = (lit[0], *lit.last().unwrap());
+                assert_eq!(oval[top], slashed[top]);
+                assert_eq!(oval[bottom], slashed[bottom]);
+            }
+        }
     }
 
     #[test]

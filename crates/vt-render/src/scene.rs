@@ -518,6 +518,13 @@ fn draw_line(
         text_bold,
     } = *colors;
     let space = font.index_of(' ');
+    // DECSZS on the VT500 series: the oval zero, the slashed zero veetee's
+    // fonts draw, or the zero with a dot.
+    let zero = match term.zero_style() {
+        Some(1) => vt_fonts::OVAL_ZERO,
+        Some(3) => vt_fonts::DOTTED_ZERO,
+        _ => '0',
+    };
     let (mult, size_flag) = match line.size {
         LineSize::Single => (1, 0),
         LineSize::DoubleWidth => (2, 0),
@@ -599,7 +606,8 @@ fn draw_line(
             }
         } else {
             let (w, h) = font.size();
-            (font.index_of(cell.ch), w, h)
+            let ch = if cell.ch == '0' { zero } else { cell.ch };
+            (font.index_of(ch), w, h)
         };
         let decorated = flags
             & (flag::UNDERLINE

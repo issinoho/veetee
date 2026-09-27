@@ -46,6 +46,14 @@ DECSZS 2 and 3 draw the zero slashed or dotted, in every font veetee has: 80 and
 each model's cell, double width and height. The slash and dot are added to the existing zero by
 rule rather than drawn anew per font, so every size gets them.
 
+**Done** (27 September 2026), the other way about: every zero veetee's fonts draw is already
+slashed, so the rule takes the slash out for the oval zero and puts a dot in for the dotted one —
+a dot two wide where the inside of the zero is an even width, else one so that it sits centred,
+and two tall on a tall cell; in the 6-dot-wide 132-column faces the inside is two dots across and
+the dot touches a side, there being no room. On the VT500 series the zero follows DECSZS, whose
+default is the oval zero, so a VT510, VT520 or VT525 now shows an oval zero where it showed a
+slashed one; earlier models, with no such setting, keep the zero as drawn.
+
 ### Z4. Modem control, on a serial line
 
 With DECMCM set on a serial line: the port's DSR and carrier are read as data flows; while DSR is

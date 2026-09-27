@@ -88,6 +88,7 @@ impl FontSet {
         let mut faces = faces;
         for face in &mut faces {
             face.add_control_pictures();
+            face.add_zero_styles();
         }
         FontSet { family, faces }
     }

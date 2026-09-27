@@ -41,6 +41,15 @@ impl Terminal {
         self.emu.config.set_saved_features(features);
     }
 
+    /// The zero style (DECSZS, VT500 Display Set-Up): 1 the oval zero, the
+    /// default, 2 the zero with a slash, 3 with a dot (EK-VT520-RM, DECSZS).
+    /// `None` for earlier models, which have no such setting and show the
+    /// zero as it is drawn.
+    pub fn zero_style(&self) -> Option<u8> {
+        (self.emu.config.model.max_level() >= 5)
+            .then(|| self.emu.setup.selection(b",{").parse().unwrap_or(1))
+    }
+
     /// Host wake-up (DECHWUM, VT500 Display Set-Up): host output restores the
     /// screen from the CRT saver as well as a key does (EK-VT520-RM,
     /// DECHWUM). Earlier models have no such setting, and host output wakes
