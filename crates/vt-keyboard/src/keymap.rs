@@ -56,6 +56,24 @@ impl Default for Keymap {
 }
 
 impl Keymap {
+    /// Adds `from`'s bindings for local functions this keymap has no binding
+    /// for at all, where their PC key is free here: so a keymap saved before a
+    /// function existed (auto print, the session keys) gains it on its
+    /// default key, and nothing the user bound or moved is touched. Returns
+    /// how many were added.
+    pub fn add_new_functions(&mut self, from: &Keymap) -> usize {
+        let new: Vec<Binding> = from
+            .bindings
+            .iter()
+            .filter(|b| matches!(b.target, Target::Local(_)))
+            .filter(|b| self.bindings.iter().all(|mine| mine.target != b.target))
+            .filter(|b| self.bindings.iter().all(|mine| mine.pc != b.pc))
+            .copied()
+            .collect();
+        self.bindings.extend_from_slice(&new);
+        new.len()
+    }
+
     pub fn from_toml(text: &str) -> Result<Keymap, String> {
         let file: KeymapFile = toml::from_str(text).map_err(|e| e.to_string())?;
         let bindings = file
@@ -377,6 +395,45 @@ pub fn target_name(target: Target) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_saved_keymap_gains_functions_it_never_had() {
+        // Saved before the session keys existed, with Alt+1 moved to Help.
+        let mut saved = Keymap::from_toml(
+            "name = \"mine\"\n\
+             [[bind]]\npc = \"F4\"\ndec = \"session\"\n\
+             [[bind]]\npc = \"Alt+1\"\ndec = \"help\"\n",
+        )
+        .unwrap();
+        let added = saved.add_new_functions(&Keymap::default());
+        assert!(added > 0);
+        let target_of = |pc: &str| {
+            let pc = parse_pc_key(pc).unwrap();
+            saved.bindings.iter().find(|b| b.pc == pc).map(|b| b.target)
+        };
+        assert_eq!(
+            target_of("Alt+2"),
+            Some(Target::Local(Local::GoToSession(2))),
+            "a new function on its default key"
+        );
+        assert_eq!(
+            target_of("Alt+1"),
+            parse_target("help"),
+            "a key the user bound is left alone"
+        );
+        assert_eq!(
+            target_of("F4"),
+            Some(Target::Local(Local::SwitchSession)),
+            "and so is a function it already had"
+        );
+        assert!(
+            !saved
+                .bindings
+                .iter()
+                .any(|b| b.target == Target::Local(Local::GoToSession(1))),
+            "session 1's key is taken, so it is not bound"
+        );
+    }
 
     #[test]
     fn default_keymap_round_trips() {

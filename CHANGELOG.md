@@ -14,6 +14,10 @@ Before 1.0 the minor version followed the project milestones (0.3 = M3). The for
   the one active before it; the others go on receiving. F4 moves to the next session, and the new
   **Alt+1 to Alt+4** to one directly, in place of the VT520's Caps Lock with keypad 1–4.
   `--sessions` takes 1 to 4, and *Open Second Session* is now *New Session*.
+- **Fixed: a keymap saved from the Keyboard Map window missed functions added since.** A saved
+  keymap replaced the built-in one whole, so Ctrl+F2 (auto print, 1.6.0) and now Alt+1 to Alt+4
+  never reached anyone who had saved one. A saved keymap now gains each local function it has no
+  binding for, on its default key where that key is free; what the user bound is left alone.
 
 - **A character received with a parity or framing error shows as the error character** on a
   serial line, as on the terminal: the VT510 programmer reference has SUB substituted for it, and

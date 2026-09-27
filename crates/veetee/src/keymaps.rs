@@ -11,7 +11,9 @@ pub fn user_path() -> PathBuf {
 }
 
 /// The keymap from `path`, else the saved keymap, else the built-in one.
-/// A file that cannot be read is reported and the built-in map is used.
+/// A file that cannot be read is reported and the built-in map is used. A
+/// keymap from a file gains the built-in map's local functions it has never
+/// heard of, on their default keys where those are free.
 pub fn load(path: Option<&Path>) -> Keymap {
     let path = path.map(Path::to_path_buf).or_else(|| {
         let saved = user_path();
@@ -24,7 +26,10 @@ pub fn load(path: Option<&Path>) -> Keymap {
         .map_err(|e| e.to_string())
         .and_then(|text| Keymap::from_toml(&text))
     {
-        Ok(map) => map,
+        Ok(mut map) => {
+            map.add_new_functions(&Keymap::default());
+            map
+        }
         Err(e) => {
             eprintln!(
                 "veetee: keymap {}: {e}; using the built-in keymap",
