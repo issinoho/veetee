@@ -281,6 +281,18 @@ fn add_session_actions(window: &adw::ApplicationWindow, workspace: &Rc<workspace
     });
     window.add_action(&new_session);
 
+    // A session icon: to that session.
+    let session_go = gio::SimpleAction::new("session-go", Some(glib::VariantTy::BYTE));
+    session_go.connect_activate({
+        let workspace = Rc::downgrade(workspace);
+        move |_, n| {
+            if let (Some(ws), Some(n)) = (workspace.upgrade(), n.and_then(|v| v.get::<u8>())) {
+                ws.go_to_session(n);
+            }
+        }
+    });
+    window.add_action(&session_go);
+
     let close_session = gio::SimpleAction::new("close-session", None);
     close_session.connect_activate({
         let workspace = Rc::downgrade(workspace);

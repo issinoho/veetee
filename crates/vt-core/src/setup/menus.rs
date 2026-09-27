@@ -293,7 +293,9 @@ fn items(menu: Menu, f: &Features, model: Model, session: u8) -> Vec<Item> {
             sub("CRT saver", M::CrtSaver),
             sub("Energy saver", M::EnergySaver).when(f.crt_saver && f.crt_saver_minutes > 0),
             check("Overscan", f.overscan, |f| f.overscan = !f.overscan).when(model != Model::Vt525),
-            fixed("Framed windows", false),
+            check("Framed windows", f.framed_windows, |f| {
+                f.framed_windows = !f.framed_windows
+            }),
             cmd("Screen alignment...", Command::Align),
         ],
         M::LinesPerScreen => {

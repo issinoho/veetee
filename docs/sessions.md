@@ -78,6 +78,16 @@ does. A session not on the screen goes on receiving from its host.
 
 ### FS3. Framed windows and session icons
 
+**Done** (27 September 2026): DECFWM (`CSI ? 111 h/l`) and the Display menu's *Framed windows*
+are live and saved, on by default as DECFWM's own page has it (the factory-defaults table shows
+it cleared; the two disagree). With framed windows and more than one session, each window has
+its title bar and a row of icons sits above them, one per session: `S1` and the host's icon name
+(DECSIN) or the first 12 characters of the session name. The active session's icon is raised,
+one off the screen is dimmed, and one whose host has sent output since it was last shown turns
+the warning colour and blinks; clicking an icon goes to that session. Without framed windows,
+neither title bars nor icons. Earlier models, with no such setting, frame their two sessions.
+DECUS is still stored only: every session updates, shown or not.
+
 The Display menu's *Framed windows*: a title bar per window with the session name, and a row of
 session icons, one per session, which blinks when its session has had new data unseen, where
 DECUS allows it. veetee's title bars already show the name; the icons are new.

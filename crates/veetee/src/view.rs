@@ -34,6 +34,10 @@ pub struct Callbacks {
     pub status: Box<dyn Fn(&str)>,
     /// The host named the session (DECSWT).
     pub title: Box<dyn Fn(&str)>,
+    /// The host named the session's icon (DECSIN).
+    pub icon: Box<dyn Fn(&str)>,
+    /// The host sent something, which a session off the screen has not shown.
+    pub output: Box<dyn Fn()>,
     /// The Session key (F4).
     pub switch_session: Box<dyn Fn()>,
     /// To a session directly (Alt+1 to Alt+4).
@@ -1111,6 +1115,7 @@ impl TerminalView {
             while let Ok(notice) = notices.recv().await {
                 match notice {
                     Notice::Redraw => {
+                        (callbacks.output)();
                         // Assistive technologies hear about changes at most
                         // ten times a second. The timer also lets the next
                         // change send a notice when no frame is drawn (a
@@ -1160,6 +1165,7 @@ impl TerminalView {
                         }
                     }
                     Notice::Title(name) => (callbacks.title)(&name),
+                    Notice::Icon(name) => (callbacks.icon)(&name),
                     Notice::Activate => (callbacks.activate)(),
                     Notice::Print(job) => (callbacks.print)(job),
                     Notice::Line(line, error) => (callbacks.line)(line, error),

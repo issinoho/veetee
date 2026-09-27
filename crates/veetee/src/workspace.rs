@@ -131,6 +131,11 @@ struct Pane {
     transfer: TransferBar,
     /// Host-supplied session name (DECSWT).
     name: RefCell<String>,
+    /// Host-supplied icon name (DECSIN).
+    icon: RefCell<String>,
+    /// Output has come while the session was off the screen, and its icon
+    /// blinks until it is shown (EK-VT520-IN 2.3).
+    unseen: Cell<bool>,
     /// Extra status such as "Hold Screen" or "Disconnected".
     status: RefCell<String>,
 }
@@ -140,6 +145,10 @@ pub struct Workspace {
     title: adw::WindowTitle,
     toasts: adw::ToastOverlay,
     paned: gtk::Paned,
+    /// The session icons above the windows, with framed windows.
+    icons: gtk::Box,
+    /// The icons and the windows under them.
+    body: gtk::Box,
     config: Config,
     options: Options,
     panes: RefCell<Vec<Rc<Pane>>>,
@@ -158,6 +167,11 @@ pub struct Workspace {
     two_windows: Cell<bool>,
     /// Where the line between two windows is, as a share of the height.
     split_at: Rc<Cell<f64>>,
+    /// The sessions on the screen now.
+    on_screen: RefCell<Vec<u64>>,
+    /// The blink timer is running, and whether unseen icons are lit.
+    blinking: Cell<bool>,
+    blink_lit: Cell<bool>,
     keymap: SharedKeymap,
 }
 
@@ -190,11 +204,26 @@ impl Workspace {
                 }
             }
         });
+        let icons = gtk::Box::builder()
+            .orientation(gtk::Orientation::Horizontal)
+            .spacing(4)
+            .margin_start(6)
+            .margin_end(6)
+            .margin_top(2)
+            .margin_bottom(2)
+            .visible(false)
+            .build();
+        let body = gtk::Box::new(gtk::Orientation::Vertical, 0);
+        body.append(&icons);
+        body.append(&paned);
+        paned.set_vexpand(true);
         let workspace = Rc::new(Workspace {
             window: window.clone(),
             title: title.clone(),
             toasts: toasts.clone(),
             paned,
+            icons,
+            body,
             config,
             options,
             panes: RefCell::new(Vec::new()),
@@ -208,6 +237,9 @@ impl Workspace {
             recent: RefCell::new(Vec::new()),
             two_windows: Cell::new(true),
             split_at,
+            on_screen: RefCell::new(Vec::new()),
+            blinking: Cell::new(false),
+            blink_lit: Cell::new(true),
             keymap: Rc::new(RefCell::new(crate::keymaps::load(
                 options_keymap.as_deref(),
             ))),
@@ -314,6 +346,15 @@ impl Workspace {
                     }
                 }
             }),
+            icon: Box::new({
+                let weak = weak.clone();
+                move |name: &str| {
+                    if let Some(ws) = weak.upgrade() {
+                        ws.set_icon(id, name);
+                    }
+                }
+            }),
+            output: Box::new(on(|ws, id| ws.output(id))),
             switch_session: Box::new(on(|ws, _| ws.switch_session())),
             split: Box::new({
                 let weak = weak.clone();
@@ -385,6 +426,8 @@ impl Workspace {
             header,
             transfer,
             name: RefCell::new(String::new()),
+            icon: RefCell::new(String::new()),
+            unseen: Cell::new(false),
             status: RefCell::new(String::new()),
         });
         {
@@ -495,15 +538,135 @@ impl Workspace {
             self.paned.set_end_child(Some(&second.frame));
             self.place_split();
         }
+        let framed = self.framed();
         for pane in panes.iter() {
-            pane.header.set_visible(panes.len() > 1);
+            pane.header.set_visible(framed && panes.len() > 1);
         }
-        if self.toasts.child().as_ref() != Some(self.paned.upcast_ref::<gtk::Widget>()) {
-            self.toasts.set_child(Some(&self.paned));
+        let on_screen: Vec<u64> = shown
+            .iter()
+            .filter_map(|&n| pane(n).map(|p| p.id))
+            .collect();
+        for pane in panes.iter() {
+            if on_screen.contains(&pane.id) {
+                pane.unseen.set(false);
+            }
+        }
+        *self.on_screen.borrow_mut() = on_screen;
+        if self.toasts.child().as_ref() != Some(self.body.upcast_ref::<gtk::Widget>()) {
+            self.toasts.set_child(Some(&self.body));
         }
         let count = panes.len() as u8;
         for pane in panes.iter() {
             pane.view.session().terminal().set_sessions(count);
+        }
+    }
+
+    /// Framed windows (DECFWM), as the active session's Set-Up has it.
+    fn framed(&self) -> bool {
+        let panes = self.panes.borrow();
+        panes
+            .iter()
+            .find(|p| p.id == self.active.get())
+            .or(panes.first())
+            .is_none_or(|p| p.view.session().terminal().framed_windows())
+    }
+
+    /// The host sent a session something: one off the screen has output
+    /// unseen, and its icon blinks.
+    fn output(self: &Rc<Self>, id: u64) {
+        if self.on_screen.borrow().contains(&id) {
+            return;
+        }
+        let pane = self.panes.borrow().iter().find(|p| p.id == id).cloned();
+        let Some(pane) = pane else { return };
+        if pane.unseen.replace(true) {
+            return;
+        }
+        self.update_icons();
+        if !self.blinking.replace(true) {
+            let weak = Rc::downgrade(self);
+            glib::timeout_add_local(std::time::Duration::from_millis(500), move || {
+                let Some(ws) = weak.upgrade() else {
+                    return glib::ControlFlow::Break;
+                };
+                let any = ws.panes.borrow().iter().any(|p| p.unseen.get());
+                if !any {
+                    ws.blinking.set(false);
+                    ws.blink_lit.set(true);
+                    ws.update_icons();
+                    return glib::ControlFlow::Break;
+                }
+                ws.blink_lit.set(!ws.blink_lit.get());
+                ws.update_icons();
+                glib::ControlFlow::Continue
+            });
+        }
+    }
+
+    fn set_icon(&self, id: u64, name: &str) {
+        if let Some(pane) = self.panes.borrow().iter().find(|p| p.id == id) {
+            *pane.icon.borrow_mut() = name.to_string();
+        }
+        self.refresh();
+    }
+
+    /// The session icons, with framed windows and more than one session:
+    /// `S1 name` for each, the name the host's icon name (DECSIN) or the first
+    /// 12 characters of the session's name (EK-VT520-RM 2.6.2). The active one
+    /// is marked, one off the screen is dimmed, and one with output unseen
+    /// blinks. Clicking one goes to that session.
+    fn update_icons(&self) {
+        while let Some(child) = self.icons.first_child() {
+            self.icons.remove(&child);
+        }
+        let panes = self.panes.borrow();
+        let visible = self.framed() && panes.len() > 1;
+        self.icons.set_visible(visible);
+        if !visible {
+            return;
+        }
+        let on_screen = self.on_screen.borrow();
+        for pane in panes.iter() {
+            let icon = pane.icon.borrow();
+            let name = if !icon.is_empty() {
+                icon.clone()
+            } else {
+                let name = pane.name.borrow();
+                let full = if name.is_empty() {
+                    pane.label.borrow().clone()
+                } else {
+                    name.clone()
+                };
+                full.chars().take(12).collect()
+            };
+            let button = gtk::Button::builder()
+                .label(format!("S{} {name}", pane.number))
+                .tooltip_text(format!("Session {} (Alt+{})", pane.number, pane.number))
+                .build();
+            // The active session's icon is raised; the others are flat, and
+            // dimmed off the screen. Output unseen shows in the warning colour,
+            // blinking.
+            if pane.id != self.active.get() {
+                button.add_css_class("flat");
+            }
+            if pane.unseen.get() {
+                button.add_css_class("warning");
+                if !self.blink_lit.get() {
+                    button.set_opacity(0.25);
+                }
+            } else if !on_screen.contains(&pane.id) {
+                button.add_css_class("dim-label");
+            }
+            let workspace = self.window.clone();
+            let n = pane.number;
+            button.connect_clicked(move |_| {
+                gtk::gio::prelude::ActionGroupExt::activate_action(
+                    &workspace,
+                    "session-go",
+                    Some(&n.to_variant()),
+                );
+            });
+            self.icons.append(&button);
         }
     }
 
@@ -596,7 +759,7 @@ impl Workspace {
 
     /// Alt+1 to Alt+4: to a session directly, as Caps Lock with keypad 1–4
     /// on a VT520 (EK-VT520-RM 2.5.4).
-    fn go_to_session(&self, n: u8) {
+    pub fn go_to_session(&self, n: u8) {
         let id = self
             .panes
             .borrow()
@@ -715,6 +878,7 @@ impl Workspace {
 
     /// Updates session headers and the window title for the active session.
     fn refresh(&self) {
+        self.update_icons();
         let panes = self.panes.borrow();
         let split = panes.len() > 1;
         for pane in panes.iter() {

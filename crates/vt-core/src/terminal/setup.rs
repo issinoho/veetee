@@ -18,6 +18,8 @@ const DECCANSM: u16 = 101;
 const DECNULM: u16 = 102;
 const DECHDPXM: u16 = 103;
 const DECOSCNM: u16 = 106;
+/// DECFWM: framed windows.
+const DECFWM: u16 = 111;
 const DECHWUM: u16 = 113;
 
 impl Terminal {
@@ -37,6 +39,14 @@ impl Terminal {
     pub fn save_setup_features(&mut self) {
         let features = self.emu.setup_features();
         self.emu.config.set_saved_features(features);
+    }
+
+    /// Framed windows (DECFWM, VT500 Display Set-Up): session windows get
+    /// title bars, and the sessions icons. Earlier models, which have no
+    /// such setting, show their two sessions framed.
+    pub fn framed_windows(&self) -> bool {
+        self.emu.config.model.max_level() < 5
+            || self.emu.setup.modes.get(&DECFWM).copied().unwrap_or(true)
     }
 
     /// Global Set-Up "On Line"; off (Local), typed characters go to the
@@ -284,6 +294,7 @@ impl Emulator {
             half_duplex: flag(DECHDPXM),
             clear_on_column_change: !flag(vt520::DECNCSM),
             overscan: flag(DECOSCNM),
+            framed_windows: flag(DECFWM),
             host_wake_up: flag(DECHWUM),
             zero_style: s.selection(b",{").parse().unwrap_or(1),
             crt_saver_minutes: s.selection(b"-q").parse().unwrap_or(15),
@@ -417,6 +428,7 @@ impl Emulator {
             (DECHDPXM, f.half_duplex),
             (vt520::DECNCSM, !f.clear_on_column_change),
             (DECOSCNM, f.overscan),
+            (DECFWM, f.framed_windows),
             (DECHWUM, f.host_wake_up),
         ];
         for (mode, on) in modes {
@@ -624,6 +636,28 @@ mod tests {
         term.apply_setup_features(&f);
         term.advance(b"\x1b[c");
         assert_eq!(term.take_output(), b"\x1b[?63;1;2;7;8;9c");
+    }
+
+    #[test]
+    fn framed_windows_follow_decfwm_and_set_up() {
+        let mut term = Terminal::new(Config {
+            model: Model::Vt520,
+            ..Config::default()
+        });
+        assert!(term.framed_windows(), "on by default (EK-VT520-RM, DECFWM)");
+        term.advance(b"\x1b[?111l");
+        assert!(!term.framed_windows());
+        assert!(!term.setup_features().framed_windows, "Set-Up shows it");
+        let mut f = term.setup_features();
+        f.framed_windows = true;
+        term.apply_setup_features(&f);
+        assert!(term.framed_windows());
+        let back = Features::from_text(Model::Vt520, &f.to_text());
+        assert!(back.framed_windows, "and it is saved");
+        // A VT420 has no such setting, and frames its two sessions.
+        let mut vt420 = Terminal::new(Config::default());
+        vt420.advance(b"\x1b[?111l");
+        assert!(vt420.framed_windows());
     }
 
     #[test]

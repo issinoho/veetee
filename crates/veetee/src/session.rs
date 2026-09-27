@@ -23,6 +23,8 @@ pub enum Notice {
     Sound(crate::sound::Sound),
     /// The host named the session (DECSWT).
     Title(String),
+    /// The host named the session's icon (DECSIN).
+    Icon(String),
     /// The host made this session active (DECES).
     Activate,
     /// A line started scrolling smoothly; keep redrawing until it settles.
@@ -755,7 +757,10 @@ fn handle_step(
             Event::SessionActivated => {
                 let _ = tx.try_send(Notice::Activate);
             }
-            Event::ScreenLinesChanged(_) | Event::IconNameChanged(_) => {}
+            Event::IconNameChanged(icon) => {
+                let _ = tx.try_send(Notice::Icon(icon.clone()));
+            }
+            Event::ScreenLinesChanged(_) => {}
             Event::Print(job) => {
                 let _ = tx.try_send(Notice::Print(job.clone()));
             }

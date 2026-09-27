@@ -14,6 +14,11 @@ Before 1.0 the minor version followed the project milestones (0.3 = M3). The for
   the one active before it; the others go on receiving. F4 moves to the next session, and the new
   **Alt+1 to Alt+4** to one directly, in place of the VT520's Caps Lock with keypad 1–4.
   `--sessions` takes 1 to 4, and *Open Second Session* is now *New Session*.
+- **Session icons**, as a VT520's framed windows have: with more than one session, a row above
+  the windows with an icon for each, named by the host (DECSIN) or from the session's name. The
+  active session's is raised, and one off the screen whose host has sent something since it was
+  last seen blinks; clicking an icon goes to that session. DECFWM and Display Set-Up's *Framed
+  windows*, on by default, turn title bars and icons on and off.
 - **New Session asks where to connect**: the window's own connection or any saved one, as a
   VT520's sessions were on different comm ports. The session keeps the window's model; its title
   bar, the window's title and subtitle, and log and print file names follow the session's own

@@ -173,6 +173,8 @@ pub struct Features {
     /// VT500 Display: DECHWUM, DECOSCNM.
     pub host_wake_up: bool,
     pub overscan: bool,
+    /// VT500 Display: framed windows (DECFWM), title bars and session icons.
+    pub framed_windows: bool,
     // General
     pub terminal_mode: TerminalMode,
     pub udk_locked: bool,
@@ -330,6 +332,9 @@ impl Features {
             energy_saver_minutes: 15,
             host_wake_up: false,
             overscan: false,
+            // DECFWM's own page gives "Framed windows enabled" as the default
+            // (EK-VT520-RM 5); the factory-defaults table shows it cleared.
+            framed_windows: true,
             terminal_mode: if level >= 2 {
                 TerminalMode::Level {
                     level,
@@ -466,6 +471,7 @@ impl Features {
         );
         line("host-wake-up", b(self.host_wake_up).to_string());
         line("overscan", b(self.overscan).to_string());
+        line("framed-windows", b(self.framed_windows).to_string());
         line(
             "terminal-mode",
             match self.terminal_mode {
@@ -675,6 +681,7 @@ impl Features {
                 }
                 "host-wake-up" => f.host_wake_up = flag,
                 "overscan" => f.overscan = flag,
+                "framed-windows" => f.framed_windows = flag,
                 "terminal-mode" => {
                     if let Some(m) = terminal_modes(model).into_iter().find(|m| {
                         let name = match m {
