@@ -113,6 +113,23 @@ against. MYI64 (OpenVMS IA64 V8.4-2L3) has none: `MCR SSU` finds no image and th
 
 ### FS6. Acceptance
 
+On MYI64 (OpenVMS IA64), run by the user on 27 September 2026, with veetee as a VT520:
+
+| Check | Result |
+|---|---|
+| Four sessions (`--profile Telnet-IA64 --model vt520 --sessions 4`) | Four logins over Telnet, each its own session; two on the screen, S3 active over S4 |
+| Alt+1 to Alt+4 | Each goes to its session — after the fix that gives a keymap saved before them the new keys |
+| Ctrl+F4 | One window and two, back and forth |
+| New Session | Opens where it is asked: the window's own connection or a saved one |
+| A session off the screen with output | `MONITOR SYSTEM` in a session moved off the screen: its icon blinked, and clicking it brought the session back |
+| F4 with four open | S1 → S2 → S3 → S4 → S1 |
+| Ctrl+Shift+Up and Down | The line between the windows moves, and stays when sessions are switched |
+| Close Session with more than two open | The session goes, and the one active before it takes its place |
+| A serial line as one of the sessions | Opened with New Session beside network sessions |
+| Each session's Set-Up | Saved in one session and restored in that one alone when the window is opened again |
+
+Every check in the plan has passed.
+
 Four sessions to MYI64 over different connections — Telnet, SSH, LAT and the serial line —
 switching with F4 and directly, one window and two, a session in the background receiving output
 (`MONITOR SYSTEM`) and its icon blinking, and each session's Set-Up saved and restored on its own.

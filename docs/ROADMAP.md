@@ -194,8 +194,9 @@ rather than fixes; none of it was judged a reason to hold the release.
   rate limits, modem control, the receive speed and the compose/Alt/F5 key options are saved and
   reported but do not change behaviour. Communications Set-Up sets the serial line from 1.6.0
   ([`serial-setup.md`](serial-setup.md)).
-- **Sessions**: a window holds two sessions (a VT520 has four), with no session management over one
-  line (TD/SMP, SSU).
+- **Sessions**: four on the VT520 and VT525 from 1.8.0, each on its own connection
+  ([`sessions.md`](sessions.md)); no session management over one line (TD/SMP, SSU), which waits
+  for a host that has SSU — MYI64 has none.
 - **Indicator status line** field layout not yet checked against hardware; DECTST resets without a
   visible self-test.
 - **Printing**: released in 1.5.0 ([`printing.md`](printing.md)). The terminal's printer
@@ -328,8 +329,8 @@ Printing came in 1.5.0: the printer functions in `vt-core`, and print jobs to a 
 printer. The plan, and its acceptance on OpenVMS, are in
 [`printing.md`](printing.md).
 
-Four sessions, as the VT520 has, are planned in [`sessions.md`](sessions.md): each with its own
-connection, one window or two on the screen, framed windows with session icons; TD/SMP over one
-line waits for a host with SSU.
+Four sessions, as the VT520 has, are done ([`sessions.md`](sessions.md)): each with its own
+connection, one window or two on the screen, framed windows with session icons, accepted on
+MYI64; TD/SMP over one line waits for a host with SSU.
 
 An Android port is planned in outline in [`android.md`](android.md).
