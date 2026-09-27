@@ -141,6 +141,15 @@ Recommendations first; these are the user's to settle.
    errors included whatever the parity; on Windows the port replaces a parity error with SUB
    itself (`ErrorChar`), and has nothing for framing errors. Even and Odd *unchecked* send parity
    and do not check it.
+   On hardware (27 September 2026, the PL2303 adapter to `TTA0:` with the host at 8N1 and a
+   procedure printing the time every three seconds): with veetee at 7E1 the times came out full
+   of error characters, and clean again the moment it went back to 8N1. Which characters were
+   hit was not per character — the same `2` or `:` came through in one place and not another —
+   as if Linux's PL2303 driver marks every character of a USB packet when one in it has an
+   error; veetee shows what the driver marks, and an adapter with another chip may mark more
+   exactly. With veetee at twice the host's speed there were few framing errors, only wrong
+   bytes (`x~xxxx~`): at double speed the receiver still finds a stop bit where it looks for
+   one. A receiver slower than the sender is what meets framing errors.
 6. **RFC 2217.** *Recommended*: Telnet with COM Port Control follows Set-Up in the same way, but
    only on a connection that turned COM Port Control on; a plain Telnet connection never starts
    sending it.
