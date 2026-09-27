@@ -44,6 +44,11 @@ pub enum Local {
     /// To session 1 to 4 directly, as Caps Lock with keypad 1–4 on a VT520
     /// (EK-VT520-RM 2.5.4).
     GoToSession(u8),
+    /// Ctrl+Session on a VT520: one window or two (EK-VT520-RM 3.7).
+    SplitScreen,
+    /// Ctrl+Shift+Up and Down on a VT520: move the line between two windows.
+    SplitUp,
+    SplitDown,
     Break,
     Answerback,
     Copy,

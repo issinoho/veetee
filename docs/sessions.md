@@ -64,6 +64,13 @@ menu's Select session offers S1 to S4 for the sessions open.
 
 ### FS2. Two windows, as the terminal has
 
+**Done** (27 September 2026): Ctrl+F4 toggles one window and two, as Ctrl+Session on a VT520,
+and Ctrl+Shift+Up and Down move the line between them (EK-VT520-RM 3.7, keyboard summary); a line
+dragged or moved stays where it was left when sessions are switched. A second session still
+splits the window when it opens, as veetee always has — neither manual says whether a VT520 does
+— and Ctrl+F4 gives one window. Auto resize's 48 lines for two windows (RM 2.8.1.1) is not done:
+veetee scales each session to its window instead.
+
 One window or two, whatever the number of sessions (decision 2). With two windows, the active
 session is in one and the session last active before it in the other; switching to a session not
 on the screen replaces the one not active. Ctrl+F4 toggles one window and two, as Ctrl+Session

@@ -38,6 +38,8 @@ pub struct Callbacks {
     pub switch_session: Box<dyn Fn()>,
     /// To a session directly (Alt+1 to Alt+4).
     pub go_to_session: Box<dyn Fn(u8)>,
+    /// One window or two, and the line between them.
+    pub split: Box<dyn Fn(Split)>,
     /// The host made this session active (DECES).
     pub activate: Box<dyn Fn()>,
     /// The view received keyboard focus.
@@ -48,6 +50,16 @@ pub struct Callbacks {
     pub print: Box<dyn Fn(vt_core::PrintJob)>,
     /// The line was set anew, or (with the error) the port refused it.
     pub line: Box<dyn Fn(vt_transport::serial::Line, Option<String>)>,
+}
+
+/// What the window-configuration keys ask for (EK-VT520-RM 3.7).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Split {
+    /// Ctrl+Session: one window or two.
+    Toggle,
+    /// Ctrl+Shift+Up and Down: the line between two windows.
+    Up,
+    Down,
 }
 
 /// The keymap shared by the views in a window.
@@ -917,6 +929,15 @@ impl TerminalView {
                 let callbacks = st.callbacks.clone();
                 drop(st);
                 (callbacks.go_to_session)(n);
+            }
+            Local::SplitScreen | Local::SplitUp | Local::SplitDown => {
+                let callbacks = st.callbacks.clone();
+                drop(st);
+                (callbacks.split)(match local {
+                    Local::SplitScreen => Split::Toggle,
+                    Local::SplitUp => Split::Up,
+                    _ => Split::Down,
+                });
             }
             Local::Break => {
                 if let Err(e) = st.session.send_break() {

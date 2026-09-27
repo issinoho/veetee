@@ -15,7 +15,7 @@ use vt_render::Theme;
 
 use crate::cli::{self, Options};
 use crate::session::{self, Notice, Session};
-use crate::view::{Callbacks, SharedKeymap, TerminalView};
+use crate::view::{Callbacks, SharedKeymap, Split, TerminalView};
 
 /// The most sessions a model has: four on the VT520 and VT525 (EK-VT520-RM
 /// 2.5), two on the VT420 (RM420 chapter 14) and the VT510, which had one —
@@ -35,19 +35,20 @@ fn free_number(taken: impl IntoIterator<Item = u8>) -> u8 {
     (1..=4).find(|n| !taken.contains(n)).unwrap_or(1)
 }
 
-/// The sessions to show: the active one and the one active before it, in
-/// session order, of `open` (session numbers) given the order they were last
-/// active in, most recent first.
-fn shown(open: &[u8], recent: &[u8]) -> Vec<u8> {
+/// The sessions to show: the active one and, with two windows, the one active
+/// before it, in session order, of `open` (session numbers) given the order
+/// they were last active in, most recent first.
+fn shown(open: &[u8], recent: &[u8], two_windows: bool) -> Vec<u8> {
+    let windows = if two_windows { 2 } else { 1 };
     let mut shown: Vec<u8> = recent
         .iter()
         .copied()
         .filter(|n| open.contains(n))
-        .take(2)
+        .take(windows)
         .collect();
     // A session never active yet, where fewer than two have been.
     for &n in open {
-        if shown.len() >= 2 {
+        if shown.len() >= windows {
             break;
         }
         if !shown.contains(&n) {
@@ -144,6 +145,11 @@ pub struct Workspace {
     to_open: Cell<u8>,
     /// Session ids in the order they were last active, most recent first.
     recent: RefCell<Vec<u64>>,
+    /// Two windows, split horizontally, where more than one session is
+    /// open; Ctrl+F4 toggles it, as Ctrl+Session on a VT520.
+    two_windows: Cell<bool>,
+    /// Where the line between two windows is, as a share of the height.
+    split_at: Rc<Cell<f64>>,
     keymap: SharedKeymap,
 }
 
@@ -165,6 +171,18 @@ impl Workspace {
             .shrink_start_child(false)
             .shrink_end_child(false)
             .build();
+        // Where the user drags the line between two windows is kept, so
+        // switching sessions does not move it back.
+        let split_at = Rc::new(Cell::new(0.5f64));
+        paned.connect_position_notify({
+            let split_at = split_at.clone();
+            move |paned| {
+                let height = paned.height();
+                if height > 0 && paned.end_child().is_some() {
+                    split_at.set(f64::from(paned.position()) / f64::from(height));
+                }
+            }
+        });
         let workspace = Rc::new(Workspace {
             window: window.clone(),
             title: title.clone(),
@@ -182,6 +200,8 @@ impl Workspace {
             opening: Cell::new(false),
             to_open: Cell::new(0),
             recent: RefCell::new(Vec::new()),
+            two_windows: Cell::new(true),
+            split_at,
             keymap: Rc::new(RefCell::new(crate::keymaps::load(
                 options_keymap.as_deref(),
             ))),
@@ -281,6 +301,14 @@ impl Workspace {
                 }
             }),
             switch_session: Box::new(on(|ws, _| ws.switch_session())),
+            split: Box::new({
+                let weak = weak.clone();
+                move |op: Split| {
+                    if let Some(ws) = weak.upgrade() {
+                        ws.split(op);
+                    }
+                }
+            }),
             go_to_session: Box::new({
                 let weak = weak.clone();
                 move |n: u8| {
@@ -409,7 +437,7 @@ impl Workspace {
             .iter()
             .filter_map(|&id| number_of(id))
             .collect();
-        let shown = shown(&open, &recent);
+        let shown = shown(&open, &recent, self.two_windows.get());
         let pane = |n: u8| panes.iter().find(|p| p.number == n);
         self.paned.set_start_child(None::<&gtk::Widget>);
         self.paned.set_end_child(None::<&gtk::Widget>);
@@ -418,14 +446,7 @@ impl Workspace {
         }
         if let Some(second) = shown.get(1).and_then(|&n| pane(n)) {
             self.paned.set_end_child(Some(&second.frame));
-            // Split the screen evenly once the window has a size.
-            let paned = self.paned.clone();
-            glib::idle_add_local_once(move || {
-                let height = paned.height();
-                if height > 0 {
-                    paned.set_position(height / 2);
-                }
-            });
+            self.place_split();
         }
         for pane in panes.iter() {
             pane.header.set_visible(panes.len() > 1);
@@ -436,6 +457,52 @@ impl Workspace {
         let count = panes.len() as u8;
         for pane in panes.iter() {
             pane.view.session().terminal().set_sessions(count);
+        }
+    }
+
+    /// Puts the line between two windows where it was last left, once the
+    /// window has a size.
+    fn place_split(&self) {
+        let paned = self.paned.clone();
+        let at = self.split_at.get();
+        glib::idle_add_local_once(move || {
+            let height = paned.height();
+            if height > 0 {
+                paned.set_position((f64::from(height) * at).round() as i32);
+            }
+        });
+    }
+
+    /// Ctrl+F4 and Ctrl+Shift+Up/Down: one window or two, and the line
+    /// between them (EK-VT520-RM 3.7).
+    fn split(&self, op: Split) {
+        if self.panes.borrow().len() < 2 {
+            self.notify("Only one session is open (window menu: New Session)");
+            return;
+        }
+        match op {
+            Split::Toggle => {
+                self.two_windows.set(!self.two_windows.get());
+                self.activate_session(self.active.get());
+            }
+            Split::Up | Split::Down if !self.two_windows.get() => {
+                self.notify("One window: Ctrl+F4 splits it in two");
+            }
+            Split::Up | Split::Down => {
+                let height = f64::from(self.paned.height().max(1));
+                let now = f64::from(self.paned.position()) / height;
+                // A step of about a line of a 24-line screen, between a
+                // quarter and three quarters of the window.
+                let step = 1.0 / 24.0;
+                let at = if op == Split::Up {
+                    now - step
+                } else {
+                    now + step
+                };
+                let at = at.clamp(0.25, 0.75);
+                self.split_at.set(at);
+                self.paned.set_position((height * at).round() as i32);
+            }
         }
     }
 
@@ -1397,14 +1464,20 @@ mod tests {
     #[test]
     fn the_screen_shows_the_active_session_and_the_one_before() {
         // One session: the whole window.
-        assert_eq!(shown(&[1], &[1]), [1]);
+        assert_eq!(shown(&[1], &[1], true), [1]);
         // Four open, S3 active and S1 before it: those two, S1 on top.
-        assert_eq!(shown(&[1, 2, 3, 4], &[3, 1, 4, 2]), [1, 3]);
+        assert_eq!(shown(&[1, 2, 3, 4], &[3, 1, 4, 2], true), [1, 3]);
         // Going to S4 puts it beside S3, the one it came from.
-        assert_eq!(shown(&[1, 2, 3, 4], &[4, 3, 1, 2]), [3, 4]);
+        assert_eq!(shown(&[1, 2, 3, 4], &[4, 3, 1, 2], true), [3, 4]);
         // A session opened but never active still shows beside the active one.
-        assert_eq!(shown(&[1, 2], &[1]), [1, 2]);
+        assert_eq!(shown(&[1, 2], &[1], true), [1, 2]);
         // A closed session in the history is passed over.
-        assert_eq!(shown(&[1, 4], &[2, 4, 1]), [1, 4]);
+        assert_eq!(shown(&[1, 4], &[2, 4, 1], true), [1, 4]);
+    }
+
+    #[test]
+    fn one_window_shows_only_the_active_session() {
+        assert_eq!(shown(&[1, 2, 3, 4], &[3, 1, 4, 2], false), [3]);
+        assert_eq!(shown(&[1, 2], &[], false), [1]);
     }
 }

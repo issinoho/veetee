@@ -14,6 +14,9 @@ Before 1.0 the minor version followed the project milestones (0.3 = M3). The for
   the one active before it; the others go on receiving. F4 moves to the next session, and the new
   **Alt+1 to Alt+4** to one directly, in place of the VT520's Caps Lock with keypad 1–4.
   `--sessions` takes 1 to 4, and *Open Second Session* is now *New Session*.
+- **Ctrl+F4 toggles one window and two**, as Ctrl+Session does on a VT520, and
+  **Ctrl+Shift+Up and Down** move the line between the two windows; where it is left, dragged or
+  moved, it stays when sessions are switched.
 - **Fixed: a keymap saved from the Keyboard Map window missed functions added since.** A saved
   keymap replaced the built-in one whole, so Ctrl+F2 (auto print, 1.6.0) and now Alt+1 to Alt+4
   never reached anyone who had saved one. A saved keymap now gains each local function it has no

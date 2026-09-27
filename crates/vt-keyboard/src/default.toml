@@ -45,6 +45,17 @@ dec = "session-3"
 [[bind]]
 pc = "Alt+4"
 dec = "session-4"
+# One window or two, and the line between them (Ctrl+Session and
+# Ctrl+Shift+Up/Down on a VT520).
+[[bind]]
+pc = "Ctrl+F4"
+dec = "split-screen"
+[[bind]]
+pc = "Ctrl+Shift+Up"
+dec = "split-up"
+[[bind]]
+pc = "Ctrl+Shift+Down"
+dec = "split-down"
 [[bind]]
 pc = "F5"
 dec = "break"
