@@ -244,6 +244,7 @@ Against C-Kermit 9.0.300 on MYI64 (OpenVMS IA64), run by the user:
 | LAT | 25 September 2026 | The same, and 20 MB both ways once LAT survived lost frames (1.4.0) |
 | Serial, 9600 baud to `TTA0:` through a USB adapter | 27 September 2026 | Text (200 lines, 12 KB) and binary (64 KB random) both ways, each back identical byte for byte; a text file arrives as variable-length records and a binary one as fixed 512-byte records; cancelling from either end |
 | Serial, 9600 baud, **seven bits with even parity** (`SET TERMINAL/PARITY=EVEN/NOEIGHTBIT`, Set-Up 7 Bits, Even Parity) | 27 September 2026 | 64 KB of random bytes both ways, back identical: every byte above 127 carried by eighth-bit prefixing |
+| SSH, OpenSSH to the host's SSH server (an `_FTAn:` pseudo-terminal) | 27 September 2026 | Text (12 KB) and binary (1 MiB random) both ways, each back identical byte for byte; cancelling from either end |
 
 Cancelling a send marks the file discard, but C-Kermit's default `SET FILE INCOMPLETE AUTO` keeps
 an incomplete *binary* file all the same (its own help: "DISCARD if transfer is in text mode,
@@ -257,7 +258,7 @@ the session had to be stopped from another. DCL on the same line was fine, the t
 stripping parity for it. Given `kermit -p e -r` or `kermit -p e -i -s FILE` on the DCL command
 line, it never uses its prompt and both transfers ran first time. Nothing in veetee to change.
 
-Still to try: SSH, C-Kermit 8.0.211, and KERMIT-32 where a system has it.
+Still to try: C-Kermit 8.0.211, and KERMIT-32, where a system has them.
 
 ### K5. After that, only if wanted
 
