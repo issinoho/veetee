@@ -8,6 +8,10 @@ Before 1.0 the minor version followed the project milestones (0.3 = M3). The for
 
 ## [Unreleased]
 
+- **The transmit rate limit acts**: with *Limited transmit* on (DECXRLM), what veetee sends —
+  typing, pastes, the answerback and its replies to the host — goes at 150, 50 or 30 characters a
+  second (DECSTRL), keys that send sequences at the function-key rate where one is set. Kermit
+  transfers are not limited.
 - **Host wake-up** (DECHWUM, Display Set-Up) now decides whether host output wakes the screen
   from the CRT saver; cleared, only a key does. Its factory setting is now on, as EK-VT520-RM's
   table of factory defaults has it, where veetee had it off — and reported it off to the host —

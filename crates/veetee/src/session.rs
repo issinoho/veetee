@@ -1,5 +1,6 @@
 //! A host session: a transport plus the terminal it drives, run on an I/O thread.
 
+use std::collections::VecDeque;
 use std::fs::File;
 use std::io::{self, LineWriter, Write};
 use std::path::PathBuf;
@@ -93,6 +94,10 @@ struct Shared {
     /// A serial line, or a terminal server's line by RFC 2217: what is set
     /// on it, and what Set-Up said when it was set (docs/serial-setup.md).
     line: Mutex<Option<LineState>>,
+    /// What waits to go at the transmit rate limit (DECXRLM), a byte at a
+    /// time with the pause after it, and the signal that there is some.
+    paced: Mutex<VecDeque<(u8, Duration)>>,
+    paced_ready: Condvar,
 }
 
 struct LineState {
@@ -175,11 +180,19 @@ impl Session {
             stopped: AtomicBool::new(false),
             queued: Mutex::new(Vec::new()),
             line: Mutex::new(line),
+            paced: Mutex::new(VecDeque::new()),
+            paced_ready: Condvar::new(),
         });
         let session = Session {
             shared: shared.clone(),
             notices: tx.clone(),
         };
+        {
+            let shared = shared.clone();
+            thread::Builder::new()
+                .name("veetee-paced".into())
+                .spawn(move || pacer(&shared))?;
+        }
         thread::Builder::new()
             .name("veetee-io".into())
             .spawn(move || io_loop(transport, shared, tx))?;
@@ -208,7 +221,7 @@ impl Session {
             let outcome = term.key_with(key, mods);
             (outcome, term.take_output())
         };
-        self.send(&output);
+        self.send_key(&output);
         outcome
     }
 
@@ -224,7 +237,7 @@ impl Session {
             let outcome = term.alphanumeric_key(station, mods, alt_graph);
             (outcome, term.take_output())
         };
-        self.send(&output);
+        self.send_key(&output);
         outcome
     }
 
@@ -411,7 +424,22 @@ impl Session {
         }
     }
 
+    /// What a key sends: a function key's rate, where it sends more than one
+    /// byte, as the function keys do, under the transmit rate limit.
+    fn send_key(&self, bytes: &[u8]) {
+        let pace = if bytes.len() > 1 {
+            Pace::Function
+        } else {
+            Pace::Graphic
+        };
+        self.send_as(bytes, pace);
+    }
+
     fn send(&self, bytes: &[u8]) {
+        self.send_as(bytes, Pace::Graphic);
+    }
+
+    fn send_as(&self, bytes: &[u8], pace: Pace) {
         if bytes.is_empty() {
             return;
         }
@@ -428,7 +456,7 @@ impl Session {
         if transferring {
             return;
         }
-        {
+        let interval = {
             // Local (Global Set-Up): typed characters go to the screen.
             let mut term = self.terminal();
             if !term.on_line() {
@@ -437,13 +465,85 @@ impl Session {
                 request_redraw(&self.shared, &self.notices);
                 return;
             }
-        }
+            pace_interval(&term, pace)
+        };
         record(&self.shared, |r| r.keys(bytes));
-        if let Err(e) = transmit(&self.shared, bytes) {
+        if let Err(e) = send_paced(&self.shared, bytes, interval) {
             let _ = self.notices.try_send(Notice::Exited(Some(e.to_string())));
         }
         // Local echo may have changed the screen.
         request_redraw(&self.shared, &self.notices);
+    }
+}
+
+/// Which of the transmit rate limit's rates applies (EK-VT520-RM, DECSTRL).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Pace {
+    /// Typing, pastes and the terminal's own replies.
+    Graphic,
+    /// A key that sends a sequence.
+    Function,
+}
+
+/// The pause after each character under the transmit rate limit, where
+/// Set-Up's *Limited transmit* (DECXRLM) is on: 150, 50 or 30 characters a
+/// second (DECSTRL), function keys at their own rate where one is set.
+fn pace_interval(term: &Terminal, pace: Pace) -> Option<Duration> {
+    let f = term.setup_features();
+    if !f.limited_transmit {
+        return None;
+    }
+    let code = match pace {
+        Pace::Function if f.fkey_rate != 0 => f.fkey_rate,
+        _ => f.transmit_rate,
+    };
+    let per_second = match code {
+        2 => 50,
+        3 => 30,
+        _ => 150,
+    };
+    Some(Duration::from_secs(1) / per_second)
+}
+
+/// Sends at once, or, under the transmit rate limit — or while something is
+/// still going at it, so that nothing overtakes it — through the pacer.
+fn send_paced(shared: &Shared, bytes: &[u8], interval: Option<Duration>) -> io::Result<()> {
+    let mut paced = shared.paced.lock().unwrap_or_else(|e| e.into_inner());
+    if interval.is_none() && paced.is_empty() {
+        drop(paced);
+        return transmit(shared, bytes);
+    }
+    let pause = interval.unwrap_or_default();
+    paced.extend(bytes.iter().map(|&b| (b, pause)));
+    shared.paced_ready.notify_one();
+    Ok(())
+}
+
+/// Sends what waits under the transmit rate limit, a character at a time,
+/// until the session closes.
+fn pacer(shared: &Shared) {
+    loop {
+        let next = {
+            let mut paced = shared.paced.lock().unwrap_or_else(|e| e.into_inner());
+            loop {
+                if shared.closed.load(Ordering::Acquire) {
+                    return;
+                }
+                if let Some(next) = paced.pop_front() {
+                    break next;
+                }
+                paced = shared
+                    .paced_ready
+                    .wait_timeout(paced, Duration::from_millis(250))
+                    .unwrap_or_else(|e| e.into_inner())
+                    .0;
+            }
+        };
+        let (byte, pause) = next;
+        let _ = transmit(shared, &[byte]);
+        if !pause.is_zero() {
+            thread::sleep(pause);
+        }
     }
 }
 
@@ -662,6 +762,7 @@ fn io_loop(
                 Step {
                     text: term.take_captured_text(),
                     reply: term.take_output(),
+                    pace: pace_interval(&term, Pace::Graphic),
                     events: term.take_events(),
                     rows: term.grid().rows(),
                     cols: term.grid().cols(),
@@ -695,11 +796,15 @@ fn io_loop(
             }
         }
     };
+    // Nothing more goes to the line; the pacer stops.
+    shared.closed.store(true, Ordering::Release);
     let _ = tx.try_send(Notice::Exited(reason));
 }
 
 /// What one step of processing produced.
 struct Step {
+    /// The transmit rate limit for the terminal's replies, if one is on.
+    pace: Option<Duration>,
     text: String,
     reply: Vec<u8>,
     events: Vec<Event>,
@@ -721,7 +826,7 @@ fn handle_step(
     }
     if !step.reply.is_empty() {
         record(shared, |r| r.reply(&step.reply));
-        let _ = transmit(shared, &step.reply);
+        let _ = send_paced(shared, &step.reply, step.pace);
     }
     let volumes = step.volumes;
     for event in &step.events {
@@ -843,6 +948,44 @@ mod flow_tests {
             thread::sleep(Duration::from_millis(10));
         }
         false
+    }
+
+    #[test]
+    fn the_transmit_rate_limit_paces_what_is_typed() {
+        let (session, _host, sent) = connect(false);
+        {
+            let mut term = session.terminal();
+            let mut f = term.setup_features();
+            f.limited_transmit = true;
+            f.transmit_rate = 3; // 30 characters a second
+            term.apply_setup_features(&f);
+        }
+        let start = std::time::Instant::now();
+        session.type_text("abcd");
+        thread::sleep(Duration::from_millis(40));
+        let early = sent.lock().unwrap().len();
+        assert!(
+            early < 4,
+            "paced, not all at once: {early} sent after 40 ms"
+        );
+        assert!(
+            until(|| sent.lock().unwrap().as_slice() == b"abcd"),
+            "all, in order"
+        );
+        assert!(
+            start.elapsed() >= Duration::from_millis(90),
+            "four at 30 a second take a tenth of a second"
+        );
+        // Off, what is typed goes at once.
+        {
+            let mut term = session.terminal();
+            let mut f = term.setup_features();
+            f.limited_transmit = false;
+            term.apply_setup_features(&f);
+        }
+        thread::sleep(Duration::from_millis(50));
+        session.type_text("xyz");
+        assert!(until(|| sent.lock().unwrap().ends_with(b"xyz")));
     }
 
     #[test]

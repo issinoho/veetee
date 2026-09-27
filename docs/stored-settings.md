@@ -35,6 +35,11 @@ DECSTRL rate, the function-key rate for what a function key sends. The paced sen
 the XOFF queue in the session, so the two agree. Kermit's packets are left at full speed: a
 transfer is not typing (decision 2).
 
+**Done** (27 September 2026). A key that sends more than one byte — a function, editing, cursor
+or keypad key — goes at the function-key rate where one is set; typing, pastes and the
+terminal's replies at the other. While anything is still going out paced, what follows queues
+behind it, so nothing overtakes; XON and XOFF still stop and start it.
+
 ### Z3. Zero style
 
 DECSZS 2 and 3 draw the zero slashed or dotted, in every font veetee has: 80 and 132 columns,
