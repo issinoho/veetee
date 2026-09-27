@@ -302,7 +302,14 @@ the VT500 series' oval zero were put right to DEC's on the way; the keyboard opt
 ## After 1.0
 
 VT340 Sixel and ReGIS graphics, Tektronix 4010/4014, X/Y/ZMODEM file transfer, scripting and
-macros. The parser already accepts and safely ignores
+macros.
+
+**Parked (27 September 2026): a way to turn the xterm extensions on.** `vt-core` has three, all
+off — UTF-8 from the host, xterm SGR colours, and xterm's readings of SU, SD and DECRQCRA — but
+nothing in the application enables them, only the test tools; CLAUDE.md says they are "off
+unless enabled", and there is no way to enable them. Outlined: `--xterm` for all three,
+`--utf8` and `--xterm-colours` for one, and the same as a setting per saved connection, DEC-strict
+by default. Mouse reporting is not implemented, and would be its own piece of work. The parser already accepts and safely ignores
 their sequences.
 
 ### Kermit: released, acceptance under way
