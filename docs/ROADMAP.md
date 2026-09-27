@@ -328,4 +328,8 @@ Printing came in 1.5.0: the printer functions in `vt-core`, and print jobs to a 
 printer. The plan, and its acceptance on OpenVMS, are in
 [`printing.md`](printing.md).
 
+Four sessions, as the VT520 has, are planned in [`sessions.md`](sessions.md): each with its own
+connection, one window or two on the screen, framed windows with session icons; TD/SMP over one
+line waits for a host with SSU.
+
 An Android port is planned in outline in [`android.md`](android.md).
