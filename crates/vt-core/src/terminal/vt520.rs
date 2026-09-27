@@ -66,7 +66,8 @@ const STORED_MODES: [(u16, bool); 24] = [
     (106, false), // DECOSCNM overscan
     (111, true),  // DECFWM framed windows
     (112, false), // DECRPL review previous lines
-    (113, false), // DECHWUM host wake-up
+    // DECHWUM host wake-up: on from the factory (EK-VT520-RM table 2-10).
+    (113, true),
     (114, false), // DECATCUM alternate text colour underline
     (115, false), // DECATCBM alternate text colour blink
     (116, false), // DECBBSM bold and blink style

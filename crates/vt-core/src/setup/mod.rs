@@ -330,7 +330,8 @@ impl Features {
             zero_style: 1,
             crt_saver_minutes: 15,
             energy_saver_minutes: 15,
-            host_wake_up: false,
+            // Ticked in EK-VT520-RM's Set-Up factory defaults (table 2-10).
+            host_wake_up: true,
             overscan: false,
             // DECFWM's own page gives "Framed windows enabled" as the default
             // (EK-VT520-RM 5); the factory-defaults table shows it cleared.

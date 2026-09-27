@@ -1129,7 +1129,11 @@ impl TerminalView {
                                 view.update_accessible();
                             });
                         }
-                        view.wake();
+                        // Host output wakes the screen from the CRT saver only
+                        // with Host wake-up (DECHWUM).
+                        if session.terminal().host_wake_up() {
+                            view.wake();
+                        }
                         // Host output returns the screen to the page.
                         view.leave_review();
                         area.queue_render();

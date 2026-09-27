@@ -8,6 +8,11 @@ Before 1.0 the minor version followed the project milestones (0.3 = M3). The for
 
 ## [Unreleased]
 
+- **Host wake-up** (DECHWUM, Display Set-Up) now decides whether host output wakes the screen
+  from the CRT saver; cleared, only a key does. Its factory setting is now on, as EK-VT520-RM's
+  table of factory defaults has it, where veetee had it off — and reported it off to the host —
+  while waking on host output regardless.
+
 ## [1.8.0] - 2026-09-27
 
 **Four sessions.** A VT520 or VT525 window now holds four sessions, as the terminal does, each on

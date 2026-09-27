@@ -41,6 +41,15 @@ impl Terminal {
         self.emu.config.set_saved_features(features);
     }
 
+    /// Host wake-up (DECHWUM, VT500 Display Set-Up): host output restores the
+    /// screen from the CRT saver as well as a key does (EK-VT520-RM,
+    /// DECHWUM). Earlier models have no such setting, and host output wakes
+    /// them.
+    pub fn host_wake_up(&self) -> bool {
+        self.emu.config.model.max_level() < 5
+            || self.emu.setup.modes.get(&DECHWUM).copied().unwrap_or(true)
+    }
+
     /// Framed windows (DECFWM, VT500 Display Set-Up): session windows get
     /// title bars, and the sessions icons. Earlier models, which have no
     /// such setting, show their two sessions framed.
@@ -636,6 +645,26 @@ mod tests {
         term.apply_setup_features(&f);
         term.advance(b"\x1b[c");
         assert_eq!(term.take_output(), b"\x1b[?63;1;2;7;8;9c");
+    }
+
+    #[test]
+    fn host_output_wakes_the_screen_only_with_host_wake_up() {
+        let mut term = Terminal::new(Config {
+            model: Model::Vt520,
+            ..Config::default()
+        });
+        assert!(
+            term.host_wake_up(),
+            "on from the factory (EK-VT520-RM table 2-10)"
+        );
+        term.advance(b"\x1b[?113$p");
+        assert_eq!(term.take_output(), b"\x1b[?113;1$y");
+        term.advance(b"\x1b[?113l");
+        assert!(!term.host_wake_up());
+        // A VT420 has no such setting: host output wakes it.
+        let mut vt420 = Terminal::new(Config::default());
+        vt420.advance(b"\x1b[?113l");
+        assert!(vt420.host_wake_up());
     }
 
     #[test]
