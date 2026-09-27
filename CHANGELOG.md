@@ -8,6 +8,14 @@ Before 1.0 the minor version followed the project milestones (0.3 = M3). The for
 
 ## [Unreleased]
 
+## [1.8.0] - 2026-09-27
+
+**Four sessions.** A VT520 or VT525 window now holds four sessions, as the terminal does, each on
+a connection of its own — New Session asks where — with two on the screen at once, Ctrl+F4 for
+one window or two, Alt+1 to Alt+4 to go to one, and session icons that blink when a session out
+of sight has news. Accepted on OpenVMS. A serial line also now shows a character received with a
+parity or framing error as the error character, as the terminal does.
+
 - **Four sessions on a VT520 or VT525**, as the terminal has (EK-VT520-RM 2.5); the VT420 and
   VT510 keep two, and earlier models have one. Each session has its own connection and its own
   saved Set-Up (S1 to S4). The screen shows two at once, as a VT520's does: the active session and
@@ -842,7 +850,8 @@ The first release: VT100 through VT420 emulation with local, Telnet, SSH and ser
   `cargo deny` licence checks and parser fuzzing.
 - `cargo xtask dist` builds the release tarball and Debian package.
 
-[Unreleased]: https://github.com/issinoho/veetee/compare/v1.7.0...HEAD
+[Unreleased]: https://github.com/issinoho/veetee/compare/v1.8.0...HEAD
+[1.8.0]: https://github.com/issinoho/veetee/compare/v1.7.0...v1.8.0
 [1.7.0]: https://github.com/issinoho/veetee/compare/v1.6.0...v1.7.0
 [1.6.0]: https://github.com/issinoho/veetee/compare/v1.5.0...v1.6.0
 [1.5.0]: https://github.com/issinoho/veetee/compare/v1.4.0...v1.5.0

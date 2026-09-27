@@ -5,7 +5,7 @@ The working roadmap: what is done, what 1.0 ships with, and what is parked. The 
 every control function are in [compat-matrix.md](compat-matrix.md), and released changes in
 [CHANGELOG.md](../CHANGELOG.md).
 
-Latest release: **1.7.0** (26 September 2026); 1.0.0 was released on 17 September 2026 (see
+Latest release: **1.8.0** (27 September 2026); 1.0.0 was released on 17 September 2026 (see
 [Since 1.0](#since-10)). From 1.0 the version follows Semantic Versioning:
 a breaking change to the crates' public API or to saved settings takes the major, new terminal
 behaviour takes the minor, fixes take the patch. Before 1.0 the minor version followed the
@@ -287,6 +287,12 @@ Ctrl+F2 turns auto print on and off. On the way it was found that OpenVMS's
 
 **1.7.0** (26 September 2026) added **manual pages** for veetee and vt-headless, installed by
 every Linux package and kept to the help texts by tests, and `-v` (`--version`) for both.
+
+**1.8.0** (27 September 2026) brought **four sessions** to the VT520 and VT525, each on its own
+connection, two on the screen with Ctrl+F4 for one or two, Alt+1 to Alt+4 and framed windows with
+session icons, accepted on MYI64; a serial line's parity and framing errors shown as the error
+character; and saved keymaps given functions added since they were saved. Kermit was accepted
+over SSH and a seven-bit line with parity along the way.
 
 ## After 1.0
 

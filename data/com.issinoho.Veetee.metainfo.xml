@@ -67,6 +67,11 @@
   </supports>
   <content_rating type="oars-1.1"/>
   <releases>
+    <release version="1.8.0" date="2026-09-27">
+      <description>
+        <p>Four sessions on a VT520 or VT525, each on its own connection, with session icons; parity and framing errors shown as the error character.</p>
+      </description>
+    </release>
     <release version="1.7.0" date="2026-09-26">
       <description>
         <p>Manual pages for veetee and vt-headless, a --version option, and the author and licence in the About box.</p>
