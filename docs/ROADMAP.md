@@ -310,8 +310,9 @@ C-Kermit are GPL, so they are counterparties to test against and never a referen
   packets, so the host is told whether a file is text; and the CRC, asked for by default. All of
   it is proved both ways against C-Kermit and G-Kermit, which CI installs.
 - **Acceptance on OpenVMS (K4), under way**: against C-Kermit 9.0.300 on MYI64, everything passes
-  over Telnet and LAT — text and binary both ways, a mixed batch, cancelling from either end.
-  Still to try: SSH, serial, C-Kermit 8.0.211, and KERMIT-32 where a system has it.
+  over Telnet, LAT and a serial line at 9600 baud — text and binary both ways, each back
+  identical, a mixed batch, cancelling from either end. Still to try: SSH, C-Kermit 8.0.211, a
+  seven-bit line with parity, and KERMIT-32 where a system has it.
 - **Long packets** (1.4.0): up to 9 KB where both ends offer them. 20 MB to OpenVMS over LAT takes
   16 minutes over Wi-Fi and 31 on the cable, the pace now the host's; over Telnet it is still to
   be timed.
