@@ -84,6 +84,13 @@ DECUS allows it. veetee's title bars already show the name; the icons are new.
 
 ### FS4. Where each session connects
 
+**Done** (27 September 2026): *New Session* asks where, in a small chooser — the window's own
+connection first, then the saved connections. Only where it connects is taken from a saved
+connection; the session keeps the window's model, as a session of one terminal. Each session
+then carries its own connection: its title bar, the window title and subtitle, a serial line's
+settings, a log or print file's name, what happens when it drops, and Save As all follow the
+active session rather than the window's first. `--sessions N` still opens N to the window's own.
+
 A new session asks where to connect (decision 3), from the saved connections or a new one, rather
 than logging in again to session 1's host. `--sessions N` still opens N to the window's connection.
 

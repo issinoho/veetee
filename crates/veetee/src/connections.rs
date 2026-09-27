@@ -135,6 +135,75 @@ pub fn open(parent: &adw::ApplicationWindow) {
     dialog.present(Some(parent));
 }
 
+/// New Session: where the new session connects. The window's own connection
+/// comes first, then the saved connections; choosing one calls `chosen` with
+/// it, or with `None` for the window's own. Only where it connects is taken
+/// from a saved connection: the session belongs to this terminal.
+pub fn choose_session(
+    parent: &adw::ApplicationWindow,
+    current: &str,
+    chosen: impl Fn(Option<Profile>) + 'static,
+) {
+    let chosen = Rc::new(chosen);
+    let list = gtk::ListBox::builder()
+        .selection_mode(gtk::SelectionMode::None)
+        .css_classes(["boxed-list"])
+        .build();
+    let dialog = adw::Dialog::builder()
+        .title("New Session")
+        .content_width(460)
+        .content_height(420)
+        .build();
+    let row = |title: &str, subtitle: &str| {
+        let row = adw::ActionRow::builder()
+            .title(glib::markup_escape_text(title).as_str())
+            .subtitle(glib::markup_escape_text(subtitle).as_str())
+            .activatable(true)
+            .build();
+        row.add_suffix(&gtk::Image::from_icon_name("go-next-symbolic"));
+        row
+    };
+    let own = row("This window's connection", current);
+    own.connect_activated({
+        let (dialog, chosen) = (dialog.clone(), chosen.clone());
+        move |_| {
+            dialog.close();
+            chosen(None);
+        }
+    });
+    list.append(&own);
+    // A file that cannot be read leaves the window's own connection.
+    for profile in profiles::load().unwrap_or_default() {
+        let entry = row(&profile.name, &profile.connection.label());
+        entry.connect_activated({
+            let (dialog, chosen) = (dialog.clone(), chosen.clone());
+            move |_| {
+                dialog.close();
+                chosen(Some(profile.clone()));
+            }
+        });
+        list.append(&entry);
+    }
+    let clamp = adw::Clamp::builder()
+        .maximum_size(520)
+        .margin_top(18)
+        .margin_bottom(18)
+        .margin_start(12)
+        .margin_end(12)
+        .child(&list)
+        .build();
+    let scrolled = gtk::ScrolledWindow::builder()
+        .hscrollbar_policy(gtk::PolicyType::Never)
+        .vexpand(true)
+        .child(&clamp)
+        .build();
+    let toolbar = adw::ToolbarView::new();
+    toolbar.add_top_bar(&adw::HeaderBar::new());
+    toolbar.set_content(Some(&scrolled));
+    dialog.set_child(Some(&toolbar));
+    dialog.present(Some(parent));
+}
+
 /// Opens the editor for a new connection filled in from `profile`, such as
 /// the connection of the window it was opened from.
 pub fn save_as(parent: &adw::ApplicationWindow, profile: Profile) {

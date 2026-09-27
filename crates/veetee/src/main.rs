@@ -190,10 +190,11 @@ fn build_window(app: &adw::Application, config: Config, options: Options) {
             }
         };
         let phosphor = phosphor_named(&options.phosphor);
-        let workspace =
-            workspace::Workspace::new(&window, &title, &toasts, config, options, base_subtitle);
+        let (first_connection, first_profile) =
+            (options.connection.clone(), options.profile.clone());
+        let workspace = workspace::Workspace::new(&window, &title, &toasts, config, options);
         workspace.set_phosphor(phosphor);
-        workspace.add_session(session, notices);
+        workspace.add_session(session, notices, first_connection, first_profile);
         workspace.open_more(workspace.sessions_to_open().saturating_sub(1));
         add_session_actions(&window, &workspace);
         // Developer hook for screenshots: VEETEE_STARTUP_ACTION=keymap.
@@ -274,7 +275,7 @@ fn add_session_actions(window: &adw::ApplicationWindow, workspace: &Rc<workspace
         let workspace = Rc::downgrade(workspace);
         move |_, _| {
             if let Some(ws) = workspace.upgrade() {
-                ws.open_session();
+                ws.new_session();
             }
         }
     });

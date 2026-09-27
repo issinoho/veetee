@@ -115,6 +115,15 @@ struct Pane {
     /// The session number, S1 to S4: which saved Set-Up it has, and what its
     /// title bar and the subtitle call it.
     number: u8,
+    /// Where this session is connected, as on a VT520 with its sessions on
+    /// different comm ports: the window's own connection, or another chosen
+    /// with New Session.
+    connection: cli::Connection,
+    /// The saved connection it came from, if one.
+    profile: Option<String>,
+    /// The connection as the title bar and subtitle show it; a serial line's
+    /// settings follow the line.
+    label: RefCell<String>,
     view: TerminalView,
     frame: gtk::Box,
     header: gtk::Label,
@@ -133,7 +142,6 @@ pub struct Workspace {
     paned: gtk::Paned,
     config: Config,
     options: Options,
-    base_subtitle: RefCell<String>,
     panes: RefCell<Vec<Rc<Pane>>>,
     active: Cell<u64>,
     next_id: Cell<u64>,
@@ -160,7 +168,6 @@ impl Workspace {
         toasts: &adw::ToastOverlay,
         config: Config,
         options: Options,
-        base_subtitle: String,
     ) -> Rc<Workspace> {
         let options_keymap = options.keymap.clone();
         let paned = gtk::Paned::builder()
@@ -190,7 +197,6 @@ impl Workspace {
             paned,
             config,
             options,
-            base_subtitle: RefCell::new(base_subtitle),
             panes: RefCell::new(Vec::new()),
             active: Cell::new(0),
             next_id: Cell::new(1),
@@ -221,7 +227,10 @@ impl Workspace {
     /// The window's connection and options as a profile to save, named
     /// after the connection.
     pub fn profile(&self) -> crate::profiles::Profile {
-        let name = match &self.options.connection {
+        let connection = self
+            .active_pane()
+            .map_or_else(|| self.options.connection.clone(), |p| p.connection.clone());
+        let name = match &connection {
             cli::Connection::Telnet { host, .. } => host.clone(),
             cli::Connection::Ssh(s) => s.destination.clone(),
             cli::Connection::Serial(s) => s
@@ -232,7 +241,11 @@ impl Workspace {
             cli::Connection::Shell => "Local shell".into(),
             cli::Connection::Command(c) => c.split_whitespace().next().unwrap_or("").into(),
         };
-        crate::profiles::Profile::from_options(&name, &self.config, &self.options)
+        let options = Options {
+            connection,
+            ..self.options.clone()
+        };
+        crate::profiles::Profile::from_options(&name, &self.config, &options)
     }
 
     fn notify(&self, msg: &str) {
@@ -241,17 +254,16 @@ impl Workspace {
 
     /// The line was set anew from Set-Up or by the host: a serial line's
     /// settings are in the subtitle, and either way a message says so.
-    fn line_set(&self, line: vt_transport::serial::Line, error: Option<String>) {
+    fn line_set(&self, id: u64, line: vt_transport::serial::Line, error: Option<String>) {
         match error {
             Some(e) => self.notify(&format!("The line stays at {line}: {e}")),
             None => self.notify(&format!("Line set to {line}")),
         }
-        if let cli::Connection::Serial(serial) = &self.options.connection {
-            *self.base_subtitle.borrow_mut() = format!(
-                "{} · {} {line}",
-                cli::model_name(self.config.model),
-                serial.device.display()
-            );
+        let pane = self.panes.borrow().iter().find(|p| p.id == id).cloned();
+        if let Some(pane) = pane
+            && let cli::Connection::Serial(serial) = &pane.connection
+        {
+            *pane.label.borrow_mut() = format!("{} {line}", serial.device.display());
             self.refresh();
         }
     }
@@ -261,6 +273,8 @@ impl Workspace {
         self: &Rc<Self>,
         session: Session,
         notices: async_channel::Receiver<Notice>,
+        connection: cli::Connection,
+        profile: Option<String>,
     ) {
         let id = self.next_id.get();
         self.next_id.set(id + 1);
@@ -339,7 +353,7 @@ impl Workspace {
                 let weak = weak.clone();
                 move |line, error| {
                     if let Some(ws) = weak.upgrade() {
-                        ws.line_set(line, error);
+                        ws.line_set(id, line, error);
                     }
                 }
             }),
@@ -359,9 +373,13 @@ impl Workspace {
         frame.append(&header);
         frame.append(&transfer.bar);
         frame.append(view.container());
+        let label = RefCell::new(connection.label());
         let pane = Rc::new(Pane {
             id,
             number: session_number,
+            connection,
+            profile,
+            label,
             view,
             frame,
             header,
@@ -377,7 +395,7 @@ impl Workspace {
         self.activate_session(id);
         if self.to_open.get() > 0 {
             self.to_open.set(self.to_open.get() - 1);
-            self.open_session();
+            self.open_session(None);
         }
     }
 
@@ -385,12 +403,35 @@ impl Workspace {
     pub fn open_more(self: &Rc<Self>, n: u8) {
         if n > 0 {
             self.to_open.set(n - 1);
-            self.open_session();
+            self.open_session(None);
         }
     }
 
-    /// Opens another session to the same destination as the first.
-    pub fn open_session(self: &Rc<Self>) {
+    /// New Session: asks where the session is to connect — the window's own
+    /// connection or a saved one — and opens it there.
+    pub fn new_session(self: &Rc<Self>) {
+        let most = max_sessions(self.config.model);
+        if self.panes.borrow().len() >= most {
+            self.open_session(None);
+            return;
+        }
+        let weak = Rc::downgrade(self);
+        crate::connections::choose_session(
+            &self.window,
+            &self.options.connection.label(),
+            move |chosen| {
+                if let Some(ws) = weak.upgrade() {
+                    ws.open_session(chosen.map(|p| (p.connection, Some(p.name))));
+                }
+            },
+        );
+    }
+
+    /// Opens another session, to `to` — a connection and the saved connection
+    /// it came from — or else to the window's own connection. The session is
+    /// part of this terminal, so it has the window's model whatever the saved
+    /// connection says.
+    pub fn open_session(self: &Rc<Self>, to: Option<(cli::Connection, Option<String>)>) {
         let most = max_sessions(self.config.model);
         if self.panes.borrow().len() >= most {
             self.to_open.set(0);
@@ -408,8 +449,14 @@ impl Workspace {
         let (tx, rx) = async_channel::bounded(1);
         let mut config = self.config.clone();
         crate::setup_store::load_into(&mut config, number);
-        let connection = self.options.connection.clone();
+        let (connection, profile) = to.unwrap_or_else(|| {
+            (
+                self.options.connection.clone(),
+                self.options.profile.clone(),
+            )
+        });
         let session_config = config.clone();
+        let for_pane = connection.clone();
         std::thread::spawn(move || {
             let _ = tx.send_blocking(cli::open_transport(&config, &connection));
         });
@@ -421,7 +468,7 @@ impl Workspace {
             let started =
                 opened.and_then(|t| session::Session::start(session_config, t, None, None));
             match started {
-                Ok((session, notices)) => ws.add_session(session, notices),
+                Ok((session, notices)) => ws.add_session(session, notices, for_pane, profile),
                 Err(e) => ws.notify(&format!("Cannot open a session: {e}")),
             }
         });
@@ -600,14 +647,14 @@ impl Workspace {
         };
         let pane = self.panes.borrow()[index].clone();
         pane.view.session().close();
-        let label = self.options.connection.label();
+        let label = pane.label.borrow().clone();
         let msg = match reason {
             Some(r) => format!("Connection closed: {r}"),
             None => format!("Connection to {label} closed"),
         };
         eprintln!("veetee: {msg}");
         let split = self.panes.borrow().len() > 1;
-        if !split && self.options.connection.keep_open_on_close() {
+        if !split && pane.connection.keep_open_on_close() {
             // Keep the screen readable (and copyable) after the line drops.
             // Only worth it for the last session: it is the only thing left
             // to look at, and closing the window is the only alternative.
@@ -673,7 +720,7 @@ impl Workspace {
         for pane in panes.iter() {
             let name = pane.name.borrow();
             let label = if name.is_empty() {
-                self.options.connection.label()
+                pane.label.borrow().clone()
             } else {
                 name.clone()
             };
@@ -698,12 +745,16 @@ impl Workspace {
         let window_title = if !name.is_empty() {
             name.as_str()
         } else {
-            self.options.profile.as_deref().unwrap_or("veetee")
+            active.profile.as_deref().unwrap_or("veetee")
         };
         self.title.set_title(window_title);
         self.window.set_title(Some(window_title));
         let status = active.status.borrow();
-        let mut subtitle = self.base_subtitle.borrow().clone();
+        let mut subtitle = format!(
+            "{} · {}",
+            cli::model_name(self.config.model),
+            active.label.borrow()
+        );
         if split {
             subtitle.push_str(&format!(" · Session {}", active.number));
         }
@@ -783,9 +834,8 @@ impl Workspace {
             .map(|s| s.to_string())
             .unwrap_or_default();
         let label = self
-            .options
-            .profile
-            .clone()
+            .active_pane()
+            .and_then(|p| p.profile.clone().or_else(|| Some(p.label.borrow().clone())))
             .unwrap_or_else(|| self.options.connection.label());
         let safe: String = label
             .chars()
@@ -878,9 +928,14 @@ impl Workspace {
             .borrow()
             .iter()
             .find(|p| p.id == id)
-            .map(|p| p.name.borrow().clone())
-            .filter(|n| !n.is_empty())
-            .or_else(|| self.options.profile.clone())
+            .and_then(|p| {
+                let name = p.name.borrow().clone();
+                if name.is_empty() {
+                    p.profile.clone()
+                } else {
+                    Some(name)
+                }
+            })
             .unwrap_or_else(|| "veetee".into());
         let paper = crate::printing::paper();
         let text = crate::printing::text_of(&job);
