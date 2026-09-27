@@ -238,8 +238,8 @@ of 24 and killed every session within minutes of a login. `CHANGELOG.md` has eac
 
 Away from LAT, 1.1.0 gave a split window a way back out of itself: **Close Session** in the
 window menu, and a second session that ends now gives the whole window to the other rather
-than leaving half of it dead. Neither has been seen working by anything but a compiler — a
-GTK dialog cannot be driven from the machine this was written on.
+than leaving half of it dead. Close Session has since been confirmed working in daily use
+(27 September 2026); a second session ending of its own accord has not been watched on purpose.
 
 1.1.0 also added **`VEETEE_LAT_TRACE`**, which is what found the rest: every frame to a file with
 a line of running totals each minute, and from 1.1.2 the kernel's own `PACKET_STATISTICS` beside
@@ -259,7 +259,7 @@ is unit-tested and has never run in anger, no host having dropped a circuit sinc
 
 **1.2.0** (24 September 2026) added a **default connection**: a star beside a saved connection makes
 it what veetee opens when started without one, in place of the login shell, and `--shell` is the
-way back. Like Close Session it has been seen only by a compiler and its unit tests.
+way back. Confirmed working in daily use (27 September 2026).
 
 **1.3.0** (24 September 2026) added **Kermit file transfer**, in the window and from the command
 line, and fixed LAT for any paste longer than 255 characters: veetee filled a slot to 255 and

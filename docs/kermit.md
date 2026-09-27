@@ -192,10 +192,10 @@ host's credit decides how fast they go.
 
 ### K3. In the window
 
-**Built** (24 September 2026), and **not yet seen working in the window**: the session under it
-is tested end to end against G-Kermit on a pty (`session.rs`), but the menu items, the file
-dialogs and the bar have been run by nothing but the compiler. What was built follows the plan
-below, with these differences:
+**Built** (24 September 2026), and **seen working in the window** through the K4 acceptance on
+OpenVMS: *Send File…* and *Receive File…*, the file dialogs, the progress bar and its Cancel
+button, over Telnet and LAT. The session under it is also tested end to end against G-Kermit on
+a pty (`session.rs`). What was built follows the plan below, with these differences:
 
 - **Text or binary is decided per file** when sending, by looking at it as C-Kermit does (no
   nulls, and nearly all printable or the controls text uses), and the host told in an attribute
