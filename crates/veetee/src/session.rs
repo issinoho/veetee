@@ -37,6 +37,9 @@ pub enum Notice {
     Flow(bool),
     /// Something for the printer, from the host or from the screen.
     Print(vt_core::PrintJob),
+    /// Modem control: DSR is off (true), so nothing is sent or received, or
+    /// on again (false).
+    NoDsr(bool),
     /// The line was set anew, from Set-Up or by the host (DECSCS, DECSPP,
     /// DECSFC); or, with the error, the port refused the new settings and
     /// the line is as it was.
@@ -98,6 +101,8 @@ struct Shared {
     /// time with the pause after it, and the signal that there is some.
     paced: Mutex<VecDeque<(u8, Duration)>>,
     paced_ready: Condvar,
+    /// Modem control is on and DSR is off: nothing goes to the line.
+    no_dsr: AtomicBool,
 }
 
 struct LineState {
@@ -182,6 +187,7 @@ impl Session {
             line: Mutex::new(line),
             paced: Mutex::new(VecDeque::new()),
             paced_ready: Condvar::new(),
+            no_dsr: AtomicBool::new(false),
         });
         let session = Session {
             shared: shared.clone(),
@@ -476,6 +482,83 @@ impl Session {
     }
 }
 
+/// What modem control (DECMCM) makes of the line just now.
+enum ModemCheck {
+    Carry,
+    /// DSR is off: what arrived is dropped.
+    Ignore,
+    /// DSR or carrier went: the session ends, for this reason.
+    Disconnect(String),
+}
+
+/// Modem control on a serial line, as EK-VT520-RM's DECMCM and DECSDDT have
+/// it: with DSR off nothing is sent and what arrives is ignored; DSR going
+/// off once it has been on disconnects; carrier going off disconnects after
+/// the disconnect delay, 2 seconds, 60 ms or never. With modem control off
+/// the line is data leads only, whatever its signals.
+#[derive(Default)]
+struct ModemWatch {
+    dsr_seen: bool,
+    carrier_seen: bool,
+    carrier_lost: Option<std::time::Instant>,
+    waiting: bool,
+}
+
+impl ModemWatch {
+    fn check(
+        &mut self,
+        transport: &mut dyn Transport,
+        shared: &Shared,
+        tx: &async_channel::Sender<Notice>,
+    ) -> ModemCheck {
+        let Some(signals) = transport.modem() else {
+            return ModemCheck::Carry;
+        };
+        let (on, delay) = {
+            let term = shared.term.lock().unwrap_or_else(|e| e.into_inner());
+            let f = term.setup_features();
+            // Set-Up's disconnect: 0 two seconds, 1 60 ms, 2 no disconnect.
+            let delay = match f.disconnect {
+                1 => Some(Duration::from_millis(60)),
+                2 => None,
+                _ => Some(Duration::from_secs(2)),
+            };
+            (f.modem_control, delay)
+        };
+        let waiting = on && !signals.dsr;
+        shared.no_dsr.store(waiting, Ordering::Release);
+        if waiting != self.waiting {
+            self.waiting = waiting;
+            let _ = tx.try_send(Notice::NoDsr(waiting));
+        }
+        if !on {
+            *self = ModemWatch::default();
+            return ModemCheck::Carry;
+        }
+        if !signals.dsr {
+            if self.dsr_seen {
+                return ModemCheck::Disconnect("modem control: DSR went off".into());
+            }
+            return ModemCheck::Ignore;
+        }
+        self.dsr_seen = true;
+        if signals.carrier {
+            self.carrier_seen = true;
+            self.carrier_lost = None;
+        } else if self.carrier_seen
+            && let Some(delay) = delay
+        {
+            let since = *self
+                .carrier_lost
+                .get_or_insert_with(std::time::Instant::now);
+            if since.elapsed() >= delay {
+                return ModemCheck::Disconnect("modem control: carrier lost".into());
+            }
+        }
+        ModemCheck::Carry
+    }
+}
+
 /// Which of the transmit rate limit's rates applies (EK-VT520-RM, DECSTRL).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Pace {
@@ -602,6 +685,11 @@ fn write_line(shared: &Shared, bytes: &[u8]) {
 /// typing, pastes, reports and Kermit packets — and only Break does not,
 /// being a signal on the line rather than data.
 fn transmit(shared: &Shared, bytes: &[u8]) -> io::Result<()> {
+    // Modem control without DSR: "no data is transmitted" (EK-VT520-RM,
+    // DECMCM).
+    if shared.no_dsr.load(Ordering::Acquire) {
+        return Ok(());
+    }
     let mut queued = shared.queued.lock().unwrap_or_else(|e| e.into_inner());
     if shared.stopped.load(Ordering::Acquire) {
         queued.extend_from_slice(bytes);
@@ -706,17 +794,24 @@ fn io_loop(
     tx: async_channel::Sender<Notice>,
 ) {
     let mut buf = vec![0u8; 64 * 1024];
+    let mut modem = ModemWatch::default();
     let reason = loop {
         if !wait_while_held(&shared) {
             break None;
         }
-        let n = match transport.read_timeout(&mut buf, Duration::from_millis(250)) {
+        let mut n = match transport.read_timeout(&mut buf, Duration::from_millis(250)) {
             Ok(n) => n,
             Err(e) if e.kind() == io::ErrorKind::UnexpectedEof => {
                 break e.get_ref().map(|inner| inner.to_string());
             }
             Err(e) => break Some(e.to_string()),
         };
+        match modem.check(transport.as_mut(), &shared, &tx) {
+            ModemCheck::Carry => {}
+            // "When DSR is not asserted … incoming receive data is ignored."
+            ModemCheck::Ignore => n = 0,
+            ModemCheck::Disconnect(why) => break Some(why),
+        }
         if n > 0 {
             record(&shared, |r| r.host(&buf[..n]));
             flow(&shared, &buf[..n], &tx);
@@ -1380,5 +1475,183 @@ mod line_tests {
                 ..line
             }]
         );
+    }
+}
+
+#[cfg(test)]
+mod modem_tests {
+    use super::*;
+    use std::sync::mpsc;
+    use vt_transport::Modem;
+
+    /// A serial port whose DSR and carrier the test sets.
+    struct Port {
+        from_host: mpsc::Receiver<Vec<u8>>,
+        sent: Arc<Mutex<Vec<u8>>>,
+        signals: Arc<Mutex<Modem>>,
+    }
+
+    struct Keeper(Arc<Mutex<Vec<u8>>>);
+
+    impl Write for Keeper {
+        fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+            self.0.lock().unwrap().extend_from_slice(buf);
+            Ok(buf.len())
+        }
+        fn flush(&mut self) -> io::Result<()> {
+            Ok(())
+        }
+    }
+
+    impl TransportWriter for Keeper {}
+
+    impl Transport for Port {
+        fn read_timeout(&mut self, buf: &mut [u8], timeout: Duration) -> io::Result<usize> {
+            match self
+                .from_host
+                .recv_timeout(timeout.min(Duration::from_millis(20)))
+            {
+                Ok(bytes) => {
+                    buf[..bytes.len()].copy_from_slice(&bytes);
+                    Ok(bytes.len())
+                }
+                Err(mpsc::RecvTimeoutError::Timeout) => Ok(0),
+                Err(mpsc::RecvTimeoutError::Disconnected) => {
+                    Err(io::Error::from(io::ErrorKind::UnexpectedEof))
+                }
+            }
+        }
+        fn writer(&self) -> io::Result<Box<dyn TransportWriter>> {
+            Ok(Box::new(Keeper(self.sent.clone())))
+        }
+        fn description(&self) -> String {
+            "port".into()
+        }
+        fn modem(&mut self) -> Option<Modem> {
+            Some(*self.signals.lock().unwrap())
+        }
+    }
+
+    type Opened = (
+        Session,
+        async_channel::Receiver<Notice>,
+        mpsc::Sender<Vec<u8>>,
+        Arc<Mutex<Vec<u8>>>,
+        Arc<Mutex<Modem>>,
+    );
+
+    /// A VT520 with modem control on and the given disconnect delay.
+    fn open(disconnect: u8, dsr: bool) -> Opened {
+        let (host, from_host) = mpsc::channel();
+        let sent = Arc::new(Mutex::new(Vec::new()));
+        let signals = Arc::new(Mutex::new(Modem { dsr, carrier: dsr }));
+        let port = Port {
+            from_host,
+            sent: sent.clone(),
+            signals: signals.clone(),
+        };
+        let config = Config {
+            model: vt_core::Model::Vt520,
+            ..Config::default()
+        };
+        let (session, notices) = Session::start(config, Box::new(port), None, None).unwrap();
+        {
+            let mut term = session.terminal();
+            let mut f = term.setup_features();
+            f.modem_control = true;
+            f.disconnect = disconnect;
+            term.apply_setup_features(&f);
+        }
+        (session, notices, host, sent, signals)
+    }
+
+    fn until(what: impl Fn() -> bool) -> bool {
+        for _ in 0..200 {
+            if what() {
+                return true;
+            }
+            thread::sleep(Duration::from_millis(10));
+        }
+        false
+    }
+
+    fn screen_has(session: &Session, text: &str) -> bool {
+        let term = session.terminal();
+        (0..term.grid().rows()).any(|r| vt_core::dump::row_text(&term, r).contains(text))
+    }
+
+    fn exited(notices: &async_channel::Receiver<Notice>) -> Option<String> {
+        for _ in 0..300 {
+            while let Ok(notice) = notices.try_recv() {
+                if let Notice::Exited(reason) = notice {
+                    return Some(reason.unwrap_or_default());
+                }
+            }
+            thread::sleep(Duration::from_millis(10));
+        }
+        None
+    }
+
+    #[test]
+    fn without_dsr_nothing_goes_either_way() {
+        let (session, _notices, host, sent, signals) = open(0, false);
+        thread::sleep(Duration::from_millis(80));
+        host.send(b"UNSEEN".to_vec()).unwrap();
+        session.type_text("x");
+        thread::sleep(Duration::from_millis(120));
+        assert!(sent.lock().unwrap().is_empty(), "nothing sent");
+        assert!(!screen_has(&session, "UNSEEN"), "nothing received");
+        // DSR comes: the line carries.
+        *signals.lock().unwrap() = Modem {
+            dsr: true,
+            carrier: true,
+        };
+        thread::sleep(Duration::from_millis(80));
+        host.send(b"SEEN".to_vec()).unwrap();
+        assert!(until(|| screen_has(&session, "SEEN")));
+        session.type_text("y");
+        assert!(until(|| sent.lock().unwrap().as_slice() == b"y"));
+    }
+
+    #[test]
+    fn dsr_going_off_disconnects() {
+        let (_session, notices, _host, _sent, signals) = open(0, true);
+        thread::sleep(Duration::from_millis(80));
+        signals.lock().unwrap().dsr = false;
+        assert!(exited(&notices).is_some_and(|r| r.contains("DSR")));
+    }
+
+    #[test]
+    fn carrier_going_off_disconnects_after_the_delay_or_never() {
+        // 60 ms.
+        let (_session, notices, _host, _sent, signals) = open(1, true);
+        thread::sleep(Duration::from_millis(80));
+        signals.lock().unwrap().carrier = false;
+        assert!(exited(&notices).is_some_and(|r| r.contains("carrier")));
+        // No disconnect.
+        let (_session, notices, _host, _sent, signals) = open(2, true);
+        thread::sleep(Duration::from_millis(80));
+        signals.lock().unwrap().carrier = false;
+        thread::sleep(Duration::from_millis(300));
+        assert!(
+            !std::iter::from_fn(|| notices.try_recv().ok()).any(|n| matches!(n, Notice::Exited(_))),
+            "no disconnect"
+        );
+    }
+
+    #[test]
+    fn modem_control_off_is_data_leads_only() {
+        let (session, _notices, host, sent, _signals) = open(0, false);
+        {
+            let mut term = session.terminal();
+            let mut f = term.setup_features();
+            f.modem_control = false;
+            term.apply_setup_features(&f);
+        }
+        thread::sleep(Duration::from_millis(80));
+        host.send(b"DATA LEADS".to_vec()).unwrap();
+        assert!(until(|| screen_has(&session, "DATA LEADS")));
+        session.type_text("z");
+        assert!(until(|| sent.lock().unwrap().as_slice() == b"z"));
     }
 }

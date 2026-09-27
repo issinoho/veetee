@@ -13,8 +13,9 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use windows_sys::Win32::Devices::Communication::{
-    COMMTIMEOUTS, ClearCommBreak, DCB, EVENPARITY, GetCommState, MARKPARITY, NOPARITY, ODDPARITY,
-    ONESTOPBIT, SPACEPARITY, SetCommBreak, SetCommState, SetCommTimeouts, TWOSTOPBITS,
+    COMMTIMEOUTS, ClearCommBreak, DCB, EVENPARITY, GetCommModemStatus, GetCommState, MARKPARITY,
+    MS_DSR_ON, MS_RLSD_ON, NOPARITY, ODDPARITY, ONESTOPBIT, SPACEPARITY, SetCommBreak,
+    SetCommState, SetCommTimeouts, TWOSTOPBITS,
 };
 use windows_sys::Win32::Foundation::{
     ERROR_IO_PENDING, ERROR_OPERATION_ABORTED, GetLastError, HANDLE, WAIT_OBJECT_0,
@@ -255,6 +256,18 @@ impl crate::Transport for Serial {
 
     fn line(&self) -> Option<Line> {
         Some(self.config.line())
+    }
+
+    fn modem(&mut self) -> Option<crate::Modem> {
+        let mut status = 0;
+        // SAFETY: the port is open, and `status` is the one flag word written.
+        if unsafe { GetCommModemStatus(self.port.as_raw_handle() as HANDLE, &mut status) } == 0 {
+            return None;
+        }
+        Some(crate::Modem {
+            dsr: status & MS_DSR_ON != 0,
+            carrier: status & MS_RLSD_ON != 0,
+        })
     }
 }
 

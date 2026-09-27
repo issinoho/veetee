@@ -68,7 +68,8 @@ fn apply_line_settings(line: &Line, t: &mut Termios) -> io::Result<()> {
     let mut c = t.control_modes;
     c.remove(ControlModes::CSIZE | ControlModes::PARENB | ControlModes::PARODD);
     c.remove(ControlModes::CMSPAR | ControlModes::CSTOPB | ControlModes::CRTSCTS);
-    c.insert(ControlModes::CREAD | ControlModes::CLOCAL);
+    // HUPCL: closing the port drops DTR, as the terminal's disconnect does.
+    c.insert(ControlModes::CREAD | ControlModes::CLOCAL | ControlModes::HUPCL);
     c.insert(match line.data_bits {
         5 => ControlModes::CS5,
         6 => ControlModes::CS6,
@@ -192,6 +193,45 @@ impl crate::Transport for Serial {
     fn line(&self) -> Option<Line> {
         Some(self.config.line())
     }
+
+    fn modem(&mut self) -> Option<crate::Modem> {
+        modem_lines(&self.port)
+    }
+}
+
+/// DSR and carrier, from the port's modem lines (TIOCMGET). `None` where
+/// the port cannot say, or on an architecture whose ioctl numbers are not
+/// written down here.
+#[cfg(any(
+    target_arch = "x86_64",
+    target_arch = "x86",
+    target_arch = "aarch64",
+    target_arch = "arm",
+    target_arch = "riscv64"
+))]
+#[allow(unsafe_code)]
+fn modem_lines(port: &File) -> Option<crate::Modem> {
+    use rustix::ioctl::{Getter, Opcode, ioctl};
+    const TIOCMGET: Opcode = 0x5415;
+    const TIOCM_CAR: i32 = 0x040;
+    const TIOCM_DSR: i32 = 0x100;
+    // SAFETY: TIOCMGET writes one int, which is what the getter provides.
+    let lines = unsafe { ioctl(port, Getter::<TIOCMGET, i32>::new()) }.ok()?;
+    Some(crate::Modem {
+        dsr: lines & TIOCM_DSR != 0,
+        carrier: lines & TIOCM_CAR != 0,
+    })
+}
+
+#[cfg(not(any(
+    target_arch = "x86_64",
+    target_arch = "x86",
+    target_arch = "aarch64",
+    target_arch = "arm",
+    target_arch = "riscv64"
+)))]
+fn modem_lines(_port: &File) -> Option<crate::Modem> {
+    None
 }
 
 struct SerialWriter(File);

@@ -62,6 +62,13 @@ going off ends it after the DECSDDT delay (2 seconds, 60 ms, or never). Closing 
 DTR, as the terminal's disconnect does. Other connections have no modem and are unaffected.
 Tested on the PL2303 adapter, whose cable decides what DSR and carrier do (decision 3).
 
+**Built** (27 September 2026): the serial port reports DSR and carrier (TIOCMGET on Linux,
+GetCommModemStatus on Windows), and the session watches them with each read, a quarter of a
+second apart at most; with modem control on, DSR off stops what is sent and drops what arrives,
+with *Waiting for DSR* on the status line, DSR going off after it was on ends the session, and
+carrier going off ends it after the disconnect delay. Closing the port drops DTR (HUPCL). Tested
+against a scripted port; the adapter is to come.
+
 ### Z5. Overscan
 
 On the monochrome VT520, the screen's background colour fills the window to its edges instead

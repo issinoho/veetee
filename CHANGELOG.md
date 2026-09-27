@@ -8,6 +8,10 @@ Before 1.0 the minor version followed the project milestones (0.3 = M3). The for
 
 ## [Unreleased]
 
+- **Modem control acts on a serial line** (DECMCM, with the disconnect delay DECSDDT): with it
+  on, nothing is sent or received while DSR is off — the status line says *Waiting for DSR* —
+  and the session ends when DSR goes off, or when carrier does after 2 seconds, 60 ms or never.
+  Closing a serial session now drops DTR, as the terminal's disconnect does.
 - **The zero style acts** on the VT500 series (DECSZS, Display Set-Up's *Zero font*): an oval
   zero, a slashed zero or a zero with a dot, in every font and size. **Changed**: DECSZS's
   default is the oval zero, so a VT510, VT520 or VT525 now shows an oval zero where veetee drew a

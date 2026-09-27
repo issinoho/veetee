@@ -44,6 +44,22 @@ pub trait Transport: Send {
     fn line(&self) -> Option<serial::Line> {
         None
     }
+
+    /// The modem signals a serial port reads, for the terminal's modem
+    /// control (DECMCM); `None` for a connection that has none, or a port
+    /// that cannot say.
+    fn modem(&mut self) -> Option<Modem> {
+        None
+    }
+}
+
+/// The modem signals of a serial line, as the terminal sees them.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Modem {
+    /// Data Set Ready: the modem, or the host's port, is there.
+    pub dsr: bool,
+    /// Received Line Signal Detect: carrier.
+    pub carrier: bool,
 }
 
 /// Sending side of a [`Transport`].

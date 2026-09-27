@@ -1175,6 +1175,9 @@ impl TerminalView {
                     Notice::Line(line, error) => (callbacks.line)(line, error),
                     // Hold Screen and Local say more about why nothing moves,
                     // so they keep the status while either is on.
+                    Notice::NoDsr(waiting) => {
+                        (callbacks.status)(if waiting { "Waiting for DSR" } else { "" });
+                    }
                     Notice::Flow(stopped) => {
                         let (held, on_line) = (session.is_held(), session.terminal().on_line());
                         if !held && on_line {
