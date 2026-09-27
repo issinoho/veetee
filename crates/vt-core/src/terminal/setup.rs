@@ -102,6 +102,19 @@ impl Terminal {
     /// received, before blanking the screen; `None` when the CRT saver is
     /// off. A VT420 waits 30 minutes (Global Set-Up); a VT500 uses DECCRTST
     /// (minutes, 0 never; factory 15).
+    /// How long the CRT saver runs before the energy saver suspends the
+    /// monitor (DECSEST, VT500 Display Set-Up: minutes, 0 never; factory 15;
+    /// EK-VT520-RM). `None` before the VT500 series, which have no energy
+    /// saver, or with the CRT saver off, which the energy saver waits on.
+    pub fn energy_saver_timeout(&self) -> Option<std::time::Duration> {
+        let e = &self.emu;
+        if e.config.model.max_level() < 5 || self.crt_saver_timeout().is_none() {
+            return None;
+        }
+        let minutes = e.setup.selection(b"-r").parse::<u64>().unwrap_or(15);
+        (minutes > 0).then(|| std::time::Duration::from_secs(minutes * 60))
+    }
+
     pub fn crt_saver_timeout(&self) -> Option<std::time::Duration> {
         let e = &self.emu;
         if !e.setup.modes.get(&DECCRTSM).copied().unwrap_or(false) {
@@ -668,6 +681,35 @@ mod tests {
         term.apply_setup_features(&f);
         term.advance(b"\x1b[c");
         assert_eq!(term.take_output(), b"\x1b[?63;1;2;7;8;9c");
+    }
+
+    #[test]
+    fn the_energy_saver_follows_decsest_after_the_crt_saver() {
+        use std::time::Duration;
+        let mut vt520 = Terminal::new(Config {
+            model: Model::Vt520,
+            ..Config::default()
+        });
+        assert_eq!(
+            vt520.energy_saver_timeout(),
+            Some(Duration::from_secs(15 * 60)),
+            "15 minutes from the factory"
+        );
+        vt520.advance(b"\x1b[5-r");
+        assert_eq!(
+            vt520.energy_saver_timeout(),
+            Some(Duration::from_secs(5 * 60))
+        );
+        vt520.advance(b"\x1b[0-r");
+        assert_eq!(vt520.energy_saver_timeout(), None, "0 is never");
+        // It waits on the CRT saver: with that off, never.
+        vt520.advance(b"\x1b[15-r\x1b[?97l");
+        assert_eq!(vt520.energy_saver_timeout(), None);
+        // The VT420 has no energy saver.
+        assert_eq!(
+            Terminal::new(Config::default()).energy_saver_timeout(),
+            None
+        );
     }
 
     #[test]

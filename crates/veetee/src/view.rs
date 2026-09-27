@@ -98,6 +98,11 @@ struct State {
     last_activity: Instant,
     /// The CRT saver has blanked the screen.
     saver: bool,
+    /// When the CRT saver blanked the screen.
+    saver_since: Instant,
+    /// The energy saver has suspended drawing (DECSEST): nothing is drawn
+    /// until the screen is woken.
+    suspended: bool,
     visible_bell: bool,
     /// When the visible bell started flashing.
     bell_flash: Option<Instant>,
@@ -216,6 +221,8 @@ impl TerminalView {
             ticking: false,
             last_activity: Instant::now(),
             saver: false,
+            saver_since: Instant::now(),
+            suspended: false,
             visible_bell: false,
             bell_flash: None,
             review: 0,
@@ -270,6 +277,7 @@ impl TerminalView {
         let mut st = self.state.borrow_mut();
         st.last_activity = Instant::now();
         let was_blank = std::mem::take(&mut st.saver);
+        st.suspended = false;
         drop(st);
         if was_blank {
             self.area.queue_render();
@@ -1136,7 +1144,10 @@ impl TerminalView {
                         }
                         // Host output returns the screen to the page.
                         view.leave_review();
-                        area.queue_render();
+                        // The energy saver has stopped drawing.
+                        if !view.state.borrow().suspended {
+                            area.queue_render();
+                        }
                     }
                     Notice::SmoothScroll if !ticking.get() => {
                         // Redraw every frame until scrolling stops.
@@ -1208,10 +1219,22 @@ impl TerminalView {
                 return glib::ControlFlow::Break;
             };
             let mut st = state.borrow_mut();
+            if st.saver {
+                // A blank screen has nothing to redraw. After the energy
+                // saver's time, drawing stops altogether until woken, as the
+                // monitor's suspend would (EK-VT520-RM, DECSEST).
+                if !st.suspended {
+                    let energy = st.session.terminal().energy_saver_timeout();
+                    if energy.is_some_and(|t| st.saver_since.elapsed() >= t) {
+                        st.suspended = true;
+                    }
+                }
+                return glib::ControlFlow::Continue;
+            }
             if st.phases() != st.last_phases {
                 area.queue_render();
             }
-            if !st.saver && st.setup.is_none() {
+            if st.setup.is_none() {
                 let idle = st.last_activity.elapsed();
                 let timeout = crt_saver_override().or_else(|| {
                     // Checked only once the screen has been idle a while.
@@ -1221,6 +1244,7 @@ impl TerminalView {
                 });
                 if timeout.is_some_and(|t| idle >= t) {
                     st.saver = true;
+                    st.saver_since = Instant::now();
                     area.queue_render();
                 }
             }

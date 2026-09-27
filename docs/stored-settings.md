@@ -84,6 +84,12 @@ screen.
 After the CRT saver has run the DECSEST time, veetee stops drawing the screen altogether until
 woken, which is what suspend would save on a laptop; nothing changes to the eye (decision 4).
 
+**Done** (27 September 2026): on the VT500 series, with the CRT saver on, after the CRT saver has
+run the DECSEST time (5, 15 or 30 minutes, or never) drawing stops — even for host output with
+Host wake-up off — until a key, or host output with Host wake-up on, wakes the screen. On the
+way, the CRT saver itself stopped redrawing its blank screen at every blink of the cursor.
+Tested for its timing; its effect, nothing drawn, is not one a test can watch.
+
 ## Decisions
 
 Settled on 27 September 2026, each as recommended below.

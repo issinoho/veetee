@@ -8,6 +8,9 @@ Before 1.0 the minor version followed the project milestones (0.3 = M3). The for
 
 ## [Unreleased]
 
+- **The energy saver acts** on the VT500 series (DECSEST): once the CRT saver has run its time,
+  veetee stops drawing altogether until woken, which is what a suspended monitor saves. The CRT
+  saver also no longer redraws its blank screen twice a second.
 - **Overscan acts** on the VT510 and VT520 (DECOSCNM, Display Set-Up): the page's background
   fills the window to its edges instead of sitting in a dark surround.
 - **Modem control acts on a serial line** (DECMCM, with the disconnect delay DECSDDT): with it
