@@ -50,6 +50,13 @@ and Operating Information (EK-VT520-IN, chapter 2).
 
 ### FS1. Four sessions, each with its own connection
 
+**Done** (27 September 2026): up to four sessions on the VT520 and VT525, two on the VT420 and
+VT510, one below; each numbered S1 to S4 by the lowest free number, with that session's saved
+Set-Up; the screen showing the active session and the one before it (FS2's rule, the toggle to
+one window still to come); F4 cycling in session order, Alt+1 to Alt+4 going to one directly,
+and `--sessions` taking 1 to 4. Seen with four sessions on a VT520: S3 and S4 on the screen, S1
+and S2 open behind them. Choosing another session from Set-Up's Select session is left.
+
 What a VT520 does with a line per session, which is how veetee already treats two. The window
 holds up to four sessions on the VT520 and VT525; *New Session* and F4 as now, and a direct way to
 a session (decision 4). Session 3 and 4 get their own saved Set-Up, as session 2 does. The Session
@@ -77,8 +84,8 @@ than logging in again to session 1's host. `--sessions N` still opens N to the w
 
 Several sessions over one Telnet, SSH, LAT or serial connection, with SSU on the host. It needs
 the protocol, which DEC documented but veetee has no copy of (🔎), and a host with SSU to prove it
-against; whether OpenVMS V8.4 still ships SSU is not known (decision 1). Not started until both are
-in hand.
+against. MYI64 (OpenVMS IA64 V8.4-2L3) has none: `MCR SSU` finds no image and there is no
+`SYS$SYSTEM:SSU*.*` (27 September 2026). Not started until both are in hand.
 
 ### FS6. Acceptance
 

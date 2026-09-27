@@ -112,7 +112,7 @@ fn build_window(app: &adw::Application, config: Config, options: Options) {
     menu.append_section(None, &connection_section);
     let session_section = gio::Menu::new();
     session_section.append(Some("Set-Up"), Some("win.setup"));
-    session_section.append(Some("Open Second Session"), Some("win.new-session"));
+    session_section.append(Some("New Session"), Some("win.new-session"));
     session_section.append(Some("Close Session"), Some("win.close-session"));
     session_section.append(Some("Find…"), Some("win.search"));
     session_section.append(Some("Mark Checkpoint"), Some("win.mark-checkpoint"));
@@ -194,9 +194,7 @@ fn build_window(app: &adw::Application, config: Config, options: Options) {
             workspace::Workspace::new(&window, &title, &toasts, config, options, base_subtitle);
         workspace.set_phosphor(phosphor);
         workspace.add_session(session, notices);
-        if workspace.sessions_to_open() > 1 {
-            workspace.open_session();
-        }
+        workspace.open_more(workspace.sessions_to_open().saturating_sub(1));
         add_session_actions(&window, &workspace);
         // Developer hook for screenshots: VEETEE_STARTUP_ACTION=keymap.
         if let Ok(action) = std::env::var("VEETEE_STARTUP_ACTION") {

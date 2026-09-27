@@ -37,7 +37,8 @@ options:
                          are expanded)
   --log-timestamps       start each logged line with the date and time
   --log-raw              log the host's bytes as received instead of the text
-  --sessions N           open 1 or 2 sessions (2 splits the window, F4 switches)
+  --sessions N           open N sessions, up to 4 on a VT520 or VT525 and 2 on a
+                         VT420 or VT510 (the window shows two, F4 switches)
   --phosphor COLOUR      white (P4, default), green (P1) or amber (P3)
   --keymap FILE          PC-to-DEC keymap (default: the one saved from the Keyboard
                          Map window, else the built-in LK401 map)
@@ -293,10 +294,9 @@ pub fn parse_args_with(
             }
             "--sessions" => {
                 let v = value()?;
-                options.sessions = match v.as_str() {
-                    "1" => 1,
-                    "2" => 2,
-                    _ => return Err(format!("--sessions: 1 or 2, not {v:?}")),
+                options.sessions = match v.parse::<u8>() {
+                    Ok(n @ 1..=4) => n,
+                    _ => return Err(format!("--sessions: 1 to 4, not {v:?}")),
                 };
                 None
             }
@@ -776,6 +776,15 @@ mod tests {
             ),
             Ok(Parsed::Help)
         ));
+    }
+
+    #[test]
+    fn up_to_four_sessions() {
+        for n in 1..=4u8 {
+            assert_eq!(parse(&["--sessions", &n.to_string()]).unwrap().sessions, n);
+        }
+        assert!(parse(&["--sessions", "5"]).is_err());
+        assert!(parse(&["--sessions", "0"]).is_err());
     }
 
     #[test]

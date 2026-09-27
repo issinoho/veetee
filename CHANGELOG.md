@@ -8,6 +8,13 @@ Before 1.0 the minor version followed the project milestones (0.3 = M3). The for
 
 ## [Unreleased]
 
+- **Four sessions on a VT520 or VT525**, as the terminal has (EK-VT520-RM 2.5); the VT420 and
+  VT510 keep two, and earlier models have one. Each session has its own connection and its own
+  saved Set-Up (S1 to S4). The screen shows two at once, as a VT520's does: the active session and
+  the one active before it; the others go on receiving. F4 moves to the next session, and the new
+  **Alt+1 to Alt+4** to one directly, in place of the VT520's Caps Lock with keypad 1–4.
+  `--sessions` takes 1 to 4, and *Open Second Session* is now *New Session*.
+
 - **A character received with a parity or framing error shows as the error character** on a
   serial line, as on the terminal: the VT510 programmer reference has SUB substituted for it, and
   SUB is shown as a reversed question mark (a checkerboard on the VT100). A line at the wrong

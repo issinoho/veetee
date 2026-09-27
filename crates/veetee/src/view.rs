@@ -36,6 +36,8 @@ pub struct Callbacks {
     pub title: Box<dyn Fn(&str)>,
     /// The Session key (F4).
     pub switch_session: Box<dyn Fn()>,
+    /// To a session directly (Alt+1 to Alt+4).
+    pub go_to_session: Box<dyn Fn(u8)>,
     /// The host made this session active (DECES).
     pub activate: Box<dyn Fn()>,
     /// The view received keyboard focus.
@@ -910,6 +912,11 @@ impl TerminalView {
                 let callbacks = st.callbacks.clone();
                 drop(st);
                 (callbacks.switch_session)();
+            }
+            Local::GoToSession(n) => {
+                let callbacks = st.callbacks.clone();
+                drop(st);
+                (callbacks.go_to_session)(n);
             }
             Local::Break => {
                 if let Err(e) = st.session.send_break() {

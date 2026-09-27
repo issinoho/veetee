@@ -103,7 +103,7 @@ cargo run -p veetee -- --lat MYI64               # LAT, DEC's own protocol (Linu
 cargo run -p veetee -- --model vt525 --telnet vms1   # colour VT525 (vt100 … vt525)
 cargo run -p veetee -- --command 'vttest'        # any program, via /bin/sh -c
 cargo run -p veetee -- --record session.vtrec --telnet vms1  # record for replay and tests
-cargo run -p veetee -- --sessions 2 --telnet vms1   # two sessions in a split window; F4 switches
+cargo run -p veetee -- --model vt520 --sessions 4 --telnet vms1  # four sessions, two on screen; F4, Alt+1–4
 ```
 
 `cargo run -p veetee -- --help` lists every option, `--version` (`-v`) prints the version, and

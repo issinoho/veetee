@@ -41,6 +41,9 @@ pub enum Local {
     SetUp,
     /// Data/Talk on the VT420: switch sessions.
     SwitchSession,
+    /// To session 1 to 4 directly, as Caps Lock with keypad 1–4 on a VT520
+    /// (EK-VT520-RM 2.5.4).
+    GoToSession(u8),
     Break,
     Answerback,
     Copy,

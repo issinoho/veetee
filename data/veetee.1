@@ -153,7 +153,11 @@ Start each logged line with the date and time.
 Log the host's bytes as received, rather than the text.
 .TP
 .BI \-\-sessions " N"
-Open 1 or 2 sessions; 2 splits the window, and F4 switches between them.
+Open
+.I N
+sessions: up to 4 on a VT520 or VT525 and 2 on a VT420 or VT510, each with its own connection.
+The window shows two at once, the active session and the one before it; F4 moves to the next
+and Alt+1 to Alt+4 to one directly.
 .TP
 .BI \-\-phosphor " COLOUR"
 .B white
@@ -237,6 +241,9 @@ Break.
 .TP
 .B Ctrl+F5
 Answerback.
+.TP
+.B Alt+1\-Alt+4
+Session 1 to 4, where it is open.
 .TP
 .B F6\-F12, Shift+F1\-F10
 F6 to F20; Shift+F5 is Help and Shift+F6 is Do.

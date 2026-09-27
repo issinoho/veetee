@@ -1,7 +1,9 @@
 //! The sessions in one window. Like a VT520 with sessions on separate comm
-//! lines, each session has its own connection and terminal; with two sessions
-//! the window is split horizontally, each session under a title bar, and the
-//! Session key (F4) moves the keyboard between them.
+//! lines, each session has its own connection and terminal. A VT520 or VT525
+//! has up to four (EK-VT520-RM 2.5), a VT420 two; the screen shows at most
+//! two, split horizontally with a title bar each: the active session and the
+//! one active before it (EK-VT520-IN 2.3). The Session key (F4) moves the
+//! keyboard to the next session, and Alt+1 to Alt+4 to one directly.
 
 use std::cell::{Cell, RefCell};
 use std::rc::{Rc, Weak};
@@ -15,8 +17,46 @@ use crate::cli::{self, Options};
 use crate::session::{self, Notice, Session};
 use crate::view::{Callbacks, SharedKeymap, TerminalView};
 
-/// The most sessions a window holds.
-pub const MAX_SESSIONS: usize = 2;
+/// The most sessions a model has: four on the VT520 and VT525 (EK-VT520-RM
+/// 2.5), two on the VT420 (RM420 chapter 14) and the VT510, which had one —
+/// kept at two so as not to take away what worked — and one before them.
+pub fn max_sessions(model: vt_core::Model) -> usize {
+    use vt_core::Model;
+    match model {
+        Model::Vt520 | Model::Vt525 => 4,
+        Model::Vt420 | Model::Vt510 => 2,
+        _ => 1,
+    }
+}
+
+/// The lowest session number, 1 to 4, not in `taken`.
+fn free_number(taken: impl IntoIterator<Item = u8>) -> u8 {
+    let taken: Vec<u8> = taken.into_iter().collect();
+    (1..=4).find(|n| !taken.contains(n)).unwrap_or(1)
+}
+
+/// The sessions to show: the active one and the one active before it, in
+/// session order, of `open` (session numbers) given the order they were last
+/// active in, most recent first.
+fn shown(open: &[u8], recent: &[u8]) -> Vec<u8> {
+    let mut shown: Vec<u8> = recent
+        .iter()
+        .copied()
+        .filter(|n| open.contains(n))
+        .take(2)
+        .collect();
+    // A session never active yet, where fewer than two have been.
+    for &n in open {
+        if shown.len() >= 2 {
+            break;
+        }
+        if !shown.contains(&n) {
+            shown.push(n);
+        }
+    }
+    shown.sort_unstable();
+    shown
+}
 
 /// A bar above a session's screen while a file transfer has its line: what
 /// is going, how far it has got, and a way to stop it.
@@ -71,6 +111,9 @@ fn size_text(bytes: u64) -> String {
 
 struct Pane {
     id: u64,
+    /// The session number, S1 to S4: which saved Set-Up it has, and what its
+    /// title bar and the subtitle call it.
+    number: u8,
     view: TerminalView,
     frame: gtk::Box,
     header: gtk::Label,
@@ -97,6 +140,10 @@ pub struct Workspace {
     phosphor: Cell<vt_render::Phosphor>,
     appearance: Cell<crate::appearance::Appearance>,
     opening: Cell<bool>,
+    /// Sessions still to open, after this one, for `--sessions`.
+    to_open: Cell<u8>,
+    /// Session ids in the order they were last active, most recent first.
+    recent: RefCell<Vec<u64>>,
     keymap: SharedKeymap,
 }
 
@@ -133,6 +180,8 @@ impl Workspace {
             phosphor: Cell::new(vt_render::Phosphor::default()),
             appearance: Cell::new(crate::appearance::load()),
             opening: Cell::new(false),
+            to_open: Cell::new(0),
+            recent: RefCell::new(Vec::new()),
             keymap: Rc::new(RefCell::new(crate::keymaps::load(
                 options_keymap.as_deref(),
             ))),
@@ -204,7 +253,7 @@ impl Workspace {
                 }
             }
         };
-        let session_number = (self.panes.borrow().len() + 1) as u8;
+        let session_number = free_number(self.panes.borrow().iter().map(|p| p.number));
         let callbacks = Callbacks {
             session_number,
             notify: Box::new({
@@ -232,6 +281,14 @@ impl Workspace {
                 }
             }),
             switch_session: Box::new(on(|ws, _| ws.switch_session())),
+            go_to_session: Box::new({
+                let weak = weak.clone();
+                move |n: u8| {
+                    if let Some(ws) = weak.upgrade() {
+                        ws.go_to_session(n);
+                    }
+                }
+            }),
             activate: Box::new(on(|ws, id| ws.activate(id))),
             focused: Box::new(on(|ws, id| ws.focused(id))),
             exited: Box::new({
@@ -276,6 +333,7 @@ impl Workspace {
         frame.append(view.container());
         let pane = Rc::new(Pane {
             id,
+            number: session_number,
             view,
             frame,
             header,
@@ -283,25 +341,45 @@ impl Workspace {
             name: RefCell::new(String::new()),
             status: RefCell::new(String::new()),
         });
-        self.panes.borrow_mut().push(pane.clone());
-        self.layout();
-        self.active.set(id);
-        pane.view.widget().grab_focus();
-        self.refresh();
+        {
+            let mut panes = self.panes.borrow_mut();
+            panes.push(pane.clone());
+            panes.sort_by_key(|p| p.number);
+        }
+        self.activate_session(id);
+        if self.to_open.get() > 0 {
+            self.to_open.set(self.to_open.get() - 1);
+            self.open_session();
+        }
+    }
+
+    /// Opens `n` more sessions, one after another, for `--sessions`.
+    pub fn open_more(self: &Rc<Self>, n: u8) {
+        if n > 0 {
+            self.to_open.set(n - 1);
+            self.open_session();
+        }
     }
 
     /// Opens another session to the same destination as the first.
     pub fn open_session(self: &Rc<Self>) {
-        if self.panes.borrow().len() >= MAX_SESSIONS {
-            self.notify("This window already has two sessions");
+        let most = max_sessions(self.config.model);
+        if self.panes.borrow().len() >= most {
+            self.to_open.set(0);
+            let model = cli::model_name(self.config.model);
+            self.notify(&match most {
+                1 => format!("A {model} has one session"),
+                n => format!("This window has {n} sessions, the most a {model} has"),
+            });
             return;
         }
         if self.opening.replace(true) {
             return;
         }
+        let number = free_number(self.panes.borrow().iter().map(|p| p.number));
         let (tx, rx) = async_channel::bounded(1);
         let mut config = self.config.clone();
-        crate::setup_store::load_into(&mut config, 2);
+        crate::setup_store::load_into(&mut config, number);
         let connection = self.options.connection.clone();
         let session_config = config.clone();
         std::thread::spawn(move || {
@@ -323,12 +401,22 @@ impl Workspace {
 
     fn layout(&self) {
         let panes = self.panes.borrow();
+        let number_of = |id: u64| panes.iter().find(|p| p.id == id).map(|p| p.number);
+        let open: Vec<u8> = panes.iter().map(|p| p.number).collect();
+        let recent: Vec<u8> = self
+            .recent
+            .borrow()
+            .iter()
+            .filter_map(|&id| number_of(id))
+            .collect();
+        let shown = shown(&open, &recent);
+        let pane = |n: u8| panes.iter().find(|p| p.number == n);
         self.paned.set_start_child(None::<&gtk::Widget>);
         self.paned.set_end_child(None::<&gtk::Widget>);
-        if let Some(first) = panes.first() {
+        if let Some(first) = shown.first().and_then(|&n| pane(n)) {
             self.paned.set_start_child(Some(&first.frame));
         }
-        if let Some(second) = panes.get(1) {
+        if let Some(second) = shown.get(1).and_then(|&n| pane(n)) {
             self.paned.set_end_child(Some(&second.frame));
             // Split the screen evenly once the window has a size.
             let paned = self.paned.clone();
@@ -351,37 +439,76 @@ impl Workspace {
         }
     }
 
+    /// Makes a session active: the keyboard goes to it, and it is put on the
+    /// screen beside the one active before it.
+    fn activate_session(&self, id: u64) {
+        let Some(pane) = self.panes.borrow().iter().find(|p| p.id == id).cloned() else {
+            return;
+        };
+        {
+            let mut recent = self.recent.borrow_mut();
+            recent.retain(|&r| r != id);
+            recent.insert(0, id);
+        }
+        self.active.set(id);
+        self.layout();
+        pane.view.widget().grab_focus();
+        self.refresh();
+    }
+
     fn index_of(&self, id: u64) -> Option<usize> {
         self.panes.borrow().iter().position(|p| p.id == id)
     }
 
-    /// F4: move the keyboard to the next session.
+    /// F4: move the keyboard to the next session, in session order.
     fn switch_session(&self) {
-        let panes = self.panes.borrow();
-        if panes.len() < 2 {
-            drop(panes);
-            self.notify("Only one session is open (window menu: Open Second Session)");
-            return;
+        let next = {
+            let panes = self.panes.borrow();
+            if panes.len() < 2 {
+                None
+            } else {
+                let current = panes
+                    .iter()
+                    .position(|p| p.id == self.active.get())
+                    .unwrap_or(0);
+                Some(panes[(current + 1) % panes.len()].id)
+            }
+        };
+        match next {
+            Some(id) => self.activate_session(id),
+            None => self.notify("Only one session is open (window menu: New Session)"),
         }
-        let current = panes
+    }
+
+    /// Alt+1 to Alt+4: to a session directly, as Caps Lock with keypad 1–4
+    /// on a VT520 (EK-VT520-RM 2.5.4).
+    fn go_to_session(&self, n: u8) {
+        let id = self
+            .panes
+            .borrow()
             .iter()
-            .position(|p| p.id == self.active.get())
-            .unwrap_or(0);
-        let next = panes[(current + 1) % panes.len()].clone();
-        drop(panes);
-        next.view.widget().grab_focus();
+            .find(|p| p.number == n)
+            .map(|p| p.id);
+        match id {
+            Some(id) => self.activate_session(id),
+            None => self.notify(&format!("Session {n} is not open")),
+        }
     }
 
     /// DECES: the host made a session active.
     fn activate(&self, id: u64) {
-        let pane = self.panes.borrow().iter().find(|p| p.id == id).cloned();
-        if let Some(pane) = pane {
-            self.window.present();
-            pane.view.widget().grab_focus();
-        }
+        self.window.present();
+        self.activate_session(id);
     }
 
+    /// A session's screen took the keyboard, as by a click: it is active, and
+    /// already on the screen.
     fn focused(&self, id: u64) {
+        {
+            let mut recent = self.recent.borrow_mut();
+            recent.retain(|&r| r != id);
+            recent.insert(0, id);
+        }
         self.active.set(id);
         self.refresh();
     }
@@ -434,16 +561,23 @@ impl Workspace {
 
     /// Takes a pane out and gives the window to whatever is left of it.
     fn remove_pane(&self, index: usize) {
-        self.panes.borrow_mut().remove(index);
+        let gone = self.panes.borrow_mut().remove(index);
+        self.recent.borrow_mut().retain(|&r| r != gone.id);
         if self.panes.borrow().is_empty() {
             self.window.close();
             return;
         }
-        self.layout();
-        let first = self.panes.borrow()[0].clone();
-        first.view.widget().grab_focus();
-        self.active.set(first.id);
-        self.refresh();
+        // The session active before this one, or else the first.
+        let next = {
+            let panes = self.panes.borrow();
+            let recent = self.recent.borrow();
+            recent
+                .iter()
+                .copied()
+                .find(|&r| panes.iter().any(|p| p.id == r))
+                .unwrap_or(panes[0].id)
+        };
+        self.activate_session(next);
     }
 
     /// Closes the session the keyboard is in, leaving the other one the whole
@@ -469,7 +603,7 @@ impl Workspace {
     fn refresh(&self) {
         let panes = self.panes.borrow();
         let split = panes.len() > 1;
-        for (i, pane) in panes.iter().enumerate() {
+        for pane in panes.iter() {
             let name = pane.name.borrow();
             let label = if name.is_empty() {
                 self.options.connection.label()
@@ -477,7 +611,7 @@ impl Workspace {
                 name.clone()
             };
             let status = pane.status.borrow();
-            let mut text = format!("S{}  {label}", i + 1);
+            let mut text = format!("S{}  {label}", pane.number);
             if !status.is_empty() {
                 text.push_str(&format!("  ·  {status}"));
             }
@@ -504,8 +638,7 @@ impl Workspace {
         let status = active.status.borrow();
         let mut subtitle = self.base_subtitle.borrow().clone();
         if split {
-            let n = panes.iter().position(|p| p.id == active.id).unwrap_or(0) + 1;
-            subtitle.push_str(&format!(" · Session {n}"));
+            subtitle.push_str(&format!(" · Session {}", active.number));
         }
         if active.view.session().is_recording() {
             subtitle.push_str(" · Recording");
@@ -1235,5 +1368,43 @@ impl Workspace {
 
     pub fn sessions_to_open(&self) -> u8 {
         self.options.sessions
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use vt_core::Model;
+
+    #[test]
+    fn a_vt520_has_four_sessions_and_a_vt420_two() {
+        assert_eq!(max_sessions(Model::Vt520), 4);
+        assert_eq!(max_sessions(Model::Vt525), 4);
+        assert_eq!(max_sessions(Model::Vt420), 2);
+        assert_eq!(max_sessions(Model::Vt510), 2);
+        assert_eq!(max_sessions(Model::Vt320), 1);
+        assert_eq!(max_sessions(Model::Vt100), 1);
+    }
+
+    #[test]
+    fn a_new_session_takes_the_lowest_free_number() {
+        assert_eq!(free_number([]), 1);
+        assert_eq!(free_number([1, 2]), 3);
+        // S2 closed, so the next session is S2 again, with S2's Set-Up.
+        assert_eq!(free_number([1, 3, 4]), 2);
+    }
+
+    #[test]
+    fn the_screen_shows_the_active_session_and_the_one_before() {
+        // One session: the whole window.
+        assert_eq!(shown(&[1], &[1]), [1]);
+        // Four open, S3 active and S1 before it: those two, S1 on top.
+        assert_eq!(shown(&[1, 2, 3, 4], &[3, 1, 4, 2]), [1, 3]);
+        // Going to S4 puts it beside S3, the one it came from.
+        assert_eq!(shown(&[1, 2, 3, 4], &[4, 3, 1, 2]), [3, 4]);
+        // A session opened but never active still shows beside the active one.
+        assert_eq!(shown(&[1, 2], &[1]), [1, 2]);
+        // A closed session in the history is passed over.
+        assert_eq!(shown(&[1, 4], &[2, 4, 1]), [1, 4]);
     }
 }

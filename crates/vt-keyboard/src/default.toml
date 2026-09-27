@@ -32,6 +32,19 @@ dec = "set-up"
 [[bind]]
 pc = "F4"
 dec = "session"
+# To a session directly, as Caps Lock with keypad 1–4 on a VT520.
+[[bind]]
+pc = "Alt+1"
+dec = "session-1"
+[[bind]]
+pc = "Alt+2"
+dec = "session-2"
+[[bind]]
+pc = "Alt+3"
+dec = "session-3"
+[[bind]]
+pc = "Alt+4"
+dec = "session-4"
 [[bind]]
 pc = "F5"
 dec = "break"
