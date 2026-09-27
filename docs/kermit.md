@@ -243,14 +243,21 @@ Against C-Kermit 9.0.300 on MYI64 (OpenVMS IA64), run by the user:
 | Telnet | 25 September 2026 | Text and binary both ways, a mixed batch, a file not a multiple of 512 bytes, cancelling from either end |
 | LAT | 25 September 2026 | The same, and 20 MB both ways once LAT survived lost frames (1.4.0) |
 | Serial, 9600 baud to `TTA0:` through a USB adapter | 27 September 2026 | Text (200 lines, 12 KB) and binary (64 KB random) both ways, each back identical byte for byte; a text file arrives as variable-length records and a binary one as fixed 512-byte records; cancelling from either end |
+| Serial, 9600 baud, **seven bits with even parity** (`SET TERMINAL/PARITY=EVEN/NOEIGHTBIT`, Set-Up 7 Bits, Even Parity) | 27 September 2026 | 64 KB of random bytes both ways, back identical: every byte above 127 carried by eighth-bit prefixing |
 
 Cancelling a send marks the file discard, but C-Kermit's default `SET FILE INCOMPLETE AUTO` keeps
 an incomplete *binary* file all the same (its own help: "DISCARD if transfer is in text mode,
 KEEP if it is in binary mode"); `SET FILE INCOMPLETE DISCARD` makes it throw one away. Cancelling
 a receive leaves nothing at veetee's end.
 
-Still to try: SSH, C-Kermit 8.0.211, a seven-bit line with parity, and KERMIT-32 where a system
-has it.
+**C-Kermit on OpenVMS must be told the parity when it starts.** At its prompt on a line with
+parity, C-Kermit 9.0.300 reads what is typed with the parity bit still on: characters echo twice,
+Return (`0x8D` with even parity) never ends a command, and neither Ctrl+C nor Ctrl+Y gets out —
+the session had to be stopped from another. DCL on the same line was fine, the terminal driver
+stripping parity for it. Given `kermit -p e -r` or `kermit -p e -i -s FILE` on the DCL command
+line, it never uses its prompt and both transfers ran first time. Nothing in veetee to change.
+
+Still to try: SSH, C-Kermit 8.0.211, and KERMIT-32 where a system has it.
 
 ### K5. After that, only if wanted
 
