@@ -49,7 +49,7 @@ conformance scripts in `tests/conformance/vttest`.
 | DECTST | `CSI 4;Ps y` | 🟡 | Performs RIS; no visual self-test |
 | RIS | `ESC c` | ✅ | Returns to Set-Up defaults; scrollback kept |
 | ENQ answerback | | ✅ | Ctrl+Break also transmits it |
-| SUB error character | | ✅ | ▒ on VT100-class; reversed question mark U+2426 on VT220+. 🔎 CAN display on VT100 |
+| SUB error character | | ✅ | ▒ on VT100-class; reversed question mark U+2426 on VT220+. 🔎 CAN display on VT100. On a serial line a character received with a parity or framing error becomes SUB, as EK-VT510-RM 9.4.2.1 says (framing errors on Linux only); Even and Odd *unchecked* are not checked |
 | IL DL DCH | `CSI L M P` | ✅ | VT102 and later; ignored outside scroll region |
 | ICH | `CSI @` | ✅ | **VT220 and later** — the VT102 does not have it (vttest, UG102) |
 | VT52 mode | `ESC A–K Y Z = > < F G` | ✅ | Out-of-range `ESC Y` line **or column** leaves that coordinate unchanged (VT100 family; a real VT52 clamps) |

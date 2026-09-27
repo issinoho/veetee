@@ -37,6 +37,10 @@ pub fn of(model: Model, features: &Features) -> Line {
             SetupParity::Mark => Parity::Mark,
             SetupParity::Space => Parity::Space,
         },
+        check_parity: !matches!(
+            features.parity,
+            SetupParity::EvenUnchecked | SetupParity::OddUnchecked
+        ),
         stop_bits: if features.two_stop_bits { 2 } else { 1 },
         flow,
     }
@@ -60,12 +64,14 @@ fn flows(model: Model, features: &Features) -> (u8, u8) {
 pub fn put(line: &Line, features: &mut Features) {
     features.transmit_speed = line.baud;
     features.seven_bit_data = line.data_bits < 8;
-    features.parity = match line.parity {
-        Parity::None => SetupParity::None,
-        Parity::Even => SetupParity::Even,
-        Parity::Odd => SetupParity::Odd,
-        Parity::Mark => SetupParity::Mark,
-        Parity::Space => SetupParity::Space,
+    features.parity = match (line.parity, line.check_parity) {
+        (Parity::None, _) => SetupParity::None,
+        (Parity::Even, true) => SetupParity::Even,
+        (Parity::Even, false) => SetupParity::EvenUnchecked,
+        (Parity::Odd, true) => SetupParity::Odd,
+        (Parity::Odd, false) => SetupParity::OddUnchecked,
+        (Parity::Mark, _) => SetupParity::Mark,
+        (Parity::Space, _) => SetupParity::Space,
     };
     features.two_stop_bits = line.stop_bits == 2;
     let (transmit, receive) = match line.flow {
@@ -95,6 +101,11 @@ pub fn changed(before: &Line, after: &Line, current: &Line) -> Line {
         baud: pick(before.baud, after.baud, current.baud),
         data_bits: pick(before.data_bits, after.data_bits, current.data_bits),
         parity: pick(before.parity, after.parity, current.parity),
+        check_parity: pick(
+            before.check_parity,
+            after.check_parity,
+            current.check_parity,
+        ),
         stop_bits: pick(before.stop_bits, after.stop_bits, current.stop_bits),
         flow: pick(before.flow, after.flow, current.flow),
     }
@@ -125,6 +136,8 @@ mod tests {
                 baud: 19200,
                 data_bits: 7,
                 parity: Parity::Even,
+                // Even, unchecked: sent, and not checked on arrival.
+                check_parity: false,
                 stop_bits: 2,
                 // No XOFF: the VT420 still stops at the host's.
                 flow: FlowControl::XonXoffTransmit,
@@ -156,6 +169,12 @@ mod tests {
                 parity: Parity::Odd,
                 stop_bits: 2,
                 flow: FlowControl::None,
+                ..Line::default()
+            },
+            Line {
+                parity: Parity::Odd,
+                check_parity: false,
+                ..Line::default()
             },
             Line {
                 flow: FlowControl::XonXoffTransmit,

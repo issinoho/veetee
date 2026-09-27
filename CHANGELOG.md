@@ -8,6 +8,13 @@ Before 1.0 the minor version followed the project milestones (0.3 = M3). The for
 
 ## [Unreleased]
 
+- **A character received with a parity or framing error shows as the error character** on a
+  serial line, as on the terminal: the VT510 programmer reference has SUB substituted for it, and
+  SUB is shown as a reversed question mark (a checkerboard on the VT100). A line at the wrong
+  speed shows error characters, then, rather than accented letters. Set-Up's Even and Odd
+  *unchecked* parities send parity and do not check it. On Windows only parity errors are
+  caught; its serial ports report no framing errors.
+
 - **Keypad = is the keypad minus key.** A PC keypad has no key for the LK401's keypad −, so the
   default keymap reached it only with Shift+Keypad +. Keypads that have a spare key, such as a
   real LK401 on the elkay USB converter (https://github.com/issinoho/elkay), send Keypad = for it,

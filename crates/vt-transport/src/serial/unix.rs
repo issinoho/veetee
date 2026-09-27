@@ -18,6 +18,7 @@ use super::{FlowControl, Line, Parity, SerialConfig, invalid};
 pub struct Serial {
     port: File,
     config: SerialConfig,
+    marks: Marks,
 }
 
 impl Serial {
@@ -47,7 +48,11 @@ impl Serial {
         let mut t = tcgetattr(&port)?;
         apply_line_settings(&config.line(), &mut t)?;
         tcsetattr(&port, OptionalActions::Now, &t)?;
-        Ok(Serial { port, config })
+        Ok(Serial {
+            port,
+            config,
+            marks: Marks::default(),
+        })
     }
 
     pub fn config(&self) -> &SerialConfig {
@@ -91,11 +96,61 @@ fn apply_line_settings(line: &Line, t: &mut Termios) -> io::Result<()> {
         FlowControl::XonXoffReceive => i.insert(InputModes::IXOFF),
         FlowControl::RtsCts => c.insert(ControlModes::CRTSCTS),
     }
+    // A character received with a parity or framing error is marked in the
+    // input (PARMRK), for [`Marks`] to turn into SUB, which the terminal
+    // shows as its error character (EK-VT510-RM 9.4.2.1). Parity is checked
+    // only where the line has it and it is not DEC's *unchecked* kind;
+    // framing errors are marked whatever the parity. A break is ignored.
+    i.remove(InputModes::IGNPAR | InputModes::INPCK | InputModes::ISTRIP);
+    i.insert(InputModes::PARMRK | InputModes::IGNBRK);
+    if line.parity != Parity::None && line.check_parity {
+        i.insert(InputModes::INPCK);
+    }
     t.control_modes = c;
     t.input_modes = i;
     t.special_codes[SpecialCodeIndex::VMIN] = 1;
     t.special_codes[SpecialCodeIndex::VTIME] = 0;
     Ok(())
+}
+
+/// SUB: what the terminal puts in place of a character received with an
+/// error, and shows as its error character.
+const SUB: u8 = 0x1A;
+
+/// Undoes termios' PARMRK marking: `FF 00 c`, a character received with a
+/// parity or framing error, becomes SUB; `FF FF`, a real `FF`, becomes one
+/// `FF`. A mark may be split across reads, so what has been seen of one is
+/// kept between them.
+#[derive(Debug, Default)]
+struct Marks {
+    /// 0 outside a mark, 1 after `FF`, 2 after `FF 00`.
+    seen: u8,
+}
+
+impl Marks {
+    /// Decodes `buf` in place and returns how much of it is data.
+    fn decode(&mut self, buf: &mut [u8]) -> usize {
+        let mut out = 0;
+        for i in 0..buf.len() {
+            let byte = buf[i];
+            let (seen, emit) = match (self.seen, byte) {
+                (0, 0xFF) => (1, None),
+                (0, b) => (0, Some(b)),
+                (1, 0xFF) => (0, Some(0xFF)),
+                (1, 0x00) => (2, None),
+                // Not a mark after all, which PARMRK never sends: keep the
+                // byte, having lost the FF before it.
+                (1, b) => (0, Some(b)),
+                (_, _) => (0, Some(SUB)),
+            };
+            self.seen = seen;
+            if let Some(b) = emit {
+                buf[out] = b;
+                out += 1;
+            }
+        }
+        out
+    }
 }
 
 /// `O_NOCTTY`, so opening a serial line never makes it our controlling terminal.
@@ -121,7 +176,8 @@ impl crate::Transport for Serial {
         }
         match self.port.read(buf) {
             Ok(0) => Err(io::ErrorKind::UnexpectedEof.into()),
-            other => other,
+            Ok(n) => Ok(self.marks.decode(&mut buf[..n])),
+            Err(e) => Err(e),
         }
     }
 
@@ -282,6 +338,58 @@ mod tests {
                 .is_err()
         );
         assert_eq!(tcgetattr(&serial.port).unwrap().output_speed(), 19200);
+    }
+
+    #[test]
+    fn a_character_received_with_an_error_becomes_sub() {
+        // FF 00 X marks X as received with a parity or framing error; FF FF
+        // is a real FF.
+        let stream = b"ok\xff\x00\xc1here\xff\xffend";
+        let mut marks = Marks::default();
+        let mut buf = stream.to_vec();
+        let n = marks.decode(&mut buf);
+        assert_eq!(&buf[..n], b"ok\x1ahere\xffend");
+        // However the reads fall.
+        for split in 1..stream.len() {
+            let mut marks = Marks::default();
+            let (mut a, mut b) = (stream[..split].to_vec(), stream[split..].to_vec());
+            let n = marks.decode(&mut a);
+            let mut got = a[..n].to_vec();
+            let n = marks.decode(&mut b);
+            got.extend_from_slice(&b[..n]);
+            assert_eq!(got, b"ok\x1ahere\xffend", "split at {split}");
+        }
+    }
+
+    #[test]
+    fn parity_is_checked_unless_unchecked() {
+        let (_master, path) = loopback();
+        let mut t = tcgetattr(File::open(&path).unwrap()).unwrap();
+        let even = Line {
+            data_bits: 7,
+            parity: Parity::Even,
+            ..Line::default()
+        };
+        apply_line_settings(&even, &mut t).unwrap();
+        let i = t.input_modes;
+        assert!(i.contains(InputModes::INPCK | InputModes::PARMRK | InputModes::IGNBRK));
+        assert!(!i.intersects(InputModes::IGNPAR | InputModes::ISTRIP));
+        apply_line_settings(
+            &Line {
+                check_parity: false,
+                ..even
+            },
+            &mut t,
+        )
+        .unwrap();
+        assert!(!t.input_modes.contains(InputModes::INPCK), "unchecked");
+        assert!(
+            t.input_modes.contains(InputModes::PARMRK),
+            "framing errors are marked still"
+        );
+        apply_line_settings(&Line::default(), &mut t).unwrap();
+        assert!(!t.input_modes.contains(InputModes::INPCK), "no parity");
+        assert!(t.input_modes.contains(InputModes::PARMRK));
     }
 
     #[test]

@@ -134,6 +134,13 @@ Recommendations first; these are the user's to settle.
 5. **Checked parity.** Today no parity is checked, *unchecked* or not. A VT420 shows a character
    received with bad parity as the error character. *Recommended*: leave it for after S1 to S3,
    as its own step: termios `INPCK` with `PARMRK` on Linux, and the error character shown.
+   **Done** (27 September 2026), as EK-VT510-RM 9.4.2.1 has it: "the substitute (SUB) character
+   is substituted in the input buffer for any character with detected receive parity errors or
+   framing errors", and SUB shows as the error character. On Linux the port marks such a
+   character (`PARMRK`, with `INPCK` for parity) and the reader turns the mark into SUB, framing
+   errors included whatever the parity; on Windows the port replaces a parity error with SUB
+   itself (`ErrorChar`), and has nothing for framing errors. Even and Odd *unchecked* send parity
+   and do not check it.
 6. **RFC 2217.** *Recommended*: Telnet with COM Port Control follows Set-Up in the same way, but
    only on a connection that turned COM Port Control on; a plain Telnet connection never starts
    sending it.

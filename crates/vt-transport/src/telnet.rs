@@ -773,6 +773,7 @@ mod tests {
                 parity: Parity::Even,
                 stop_bits: 2,
                 flow: FlowControl::RtsCts,
+                ..ComPort::default()
             }),
             ..Options::default()
         };

@@ -48,6 +48,9 @@ pub struct Line {
     pub baud: u32,
     pub data_bits: u8,
     pub parity: Parity,
+    /// Whether received parity is checked; DEC's *unchecked* parities send
+    /// it and do not check it. Framing errors are reported either way.
+    pub check_parity: bool,
     pub stop_bits: u8,
     pub flow: FlowControl,
 }
@@ -58,6 +61,7 @@ impl Default for Line {
             baud: 9600,
             data_bits: 8,
             parity: Parity::None,
+            check_parity: true,
             stop_bits: 1,
             flow: FlowControl::XonXoff,
         }
@@ -92,6 +96,9 @@ impl fmt::Display for Line {
             "{} {}{}{}",
             self.baud, self.data_bits, parity, self.stop_bits
         )?;
+        if self.parity != Parity::None && !self.check_parity {
+            f.write_str(" parity unchecked")?;
+        }
         match self.flow {
             FlowControl::XonXoff => Ok(()),
             FlowControl::XonXoffTransmit => f.write_str(" XON/XOFF transmit only"),
@@ -108,6 +115,7 @@ pub struct SerialConfig {
     pub baud: u32,
     pub data_bits: u8,
     pub parity: Parity,
+    pub check_parity: bool,
     pub stop_bits: u8,
     pub flow: FlowControl,
 }
@@ -121,6 +129,7 @@ impl SerialConfig {
             baud: line.baud,
             data_bits: line.data_bits,
             parity: line.parity,
+            check_parity: line.check_parity,
             stop_bits: line.stop_bits,
             flow: line.flow,
         }
@@ -131,6 +140,7 @@ impl SerialConfig {
             baud: self.baud,
             data_bits: self.data_bits,
             parity: self.parity,
+            check_parity: self.check_parity,
             stop_bits: self.stop_bits,
             flow: self.flow,
         }
@@ -140,6 +150,7 @@ impl SerialConfig {
         self.baud = line.baud;
         self.data_bits = line.data_bits;
         self.parity = line.parity;
+        self.check_parity = line.check_parity;
         self.stop_bits = line.stop_bits;
         self.flow = line.flow;
     }

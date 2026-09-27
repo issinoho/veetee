@@ -161,8 +161,12 @@ fn apply_line_settings(config: &Line, dcb: &mut DCB) {
         | RTS_CONTROL_MASK
         | ABORT_ON_ERROR);
     bits |= BINARY | DTR_CONTROL_ENABLE | TX_CONTINUE_ON_XOFF;
-    if config.parity != Parity::None {
-        bits |= PARITY_CHECK;
+    // A character received with a parity error is replaced by SUB, which
+    // the terminal shows as its error character (EK-VT510-RM 9.4.2.1), where
+    // the line has parity and it is not DEC's *unchecked* kind. Windows has
+    // no such replacement for framing errors.
+    if config.parity != Parity::None && config.check_parity {
+        bits |= PARITY_CHECK | ERROR_CHAR;
     }
     match config.flow {
         FlowControl::None => bits |= RTS_CONTROL_ENABLE,
@@ -172,6 +176,7 @@ fn apply_line_settings(config: &Line, dcb: &mut DCB) {
         FlowControl::RtsCts => bits |= OUTX_CTS_FLOW | RTS_CONTROL_HANDSHAKE,
     }
     dcb._bitfield = bits;
+    dcb.ErrorChar = 0x1A;
     dcb.XonChar = 0x11;
     dcb.XoffChar = 0x13;
     dcb.XonLim = 256;
@@ -319,6 +324,16 @@ mod tests {
             "binary, parity check, CTS flow"
         );
         assert_eq!(dcb._bitfield >> 12 & 0b11, 2, "RTS handshake");
+        assert_ne!(dcb._bitfield & (1 << 10), 0, "a parity error becomes SUB");
+        assert_eq!(dcb.ErrorChar, 0x1A);
+        apply_line_settings(
+            &Line {
+                check_parity: false,
+                ..config.line()
+            },
+            &mut dcb,
+        );
+        assert_eq!(dcb._bitfield & 0b10, 0, "unchecked: no parity check");
         apply_line_settings(&Line::default(), &mut dcb);
         assert_ne!(dcb._bitfield & (1 << 8), 0, "XON/XOFF by default");
         apply_line_settings(
