@@ -67,7 +67,13 @@ GetCommModemStatus on Windows), and the session watches them with each read, a q
 second apart at most; with modem control on, DSR off stops what is sent and drops what arrives,
 with *Waiting for DSR* on the status line, DSR going off after it was on ends the session, and
 carrier going off ends it after the disconnect delay. Closing the port drops DTR (HUPCL). Tested
-against a scripted port; the adapter is to come.
+against a scripted port.
+
+On the PL2303 adapter to MYI64's `TTA0:` (27 September 2026): veetee reads the port's lines as DSR
+on and carrier off, and with modem control on the line carries as before — "assertion of DSR
+alone is sufficient to establish a connection". DSR stayed on with the cable unplugged at the far
+end, so the cable or adapter loops DTR back to DSR, and DSR going off cannot be shown with it;
+that, and carrier, rest on the scripted port.
 
 ### Z5. Overscan
 
