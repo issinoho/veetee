@@ -85,9 +85,9 @@ out of shell history but not out of the process command line. `wingetcreate toke
 GitHub's device flow once and caches its own token, after which `submit` needs no token at all.
 
 0.8.12 was submitted this way as
-[winget-pkgs#436670](https://github.com/microsoft/winget-pkgs/pull/436670). Until it merges, a
-new release goes onto that PR's branch rather than into a second PR: add the new version's
-directory, remove the old one, so the PR holds one version.
+[winget-pkgs#436670](https://github.com/microsoft/winget-pkgs/pull/436670). It was moved up
+to each release until 1.9.0, when the PR was promised to stay there: later releases wait for it
+to merge, then go in as PRs of their own with `wingetcreate submit`.
 
 ### Every URL in the manifests has to answer
 
