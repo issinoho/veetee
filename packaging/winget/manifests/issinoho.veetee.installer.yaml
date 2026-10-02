@@ -1,4 +1,4 @@
-# yaml-language-server: $schema=https://aka.ms/winget-manifest.installer.1.9.0.schema.json
+# yaml-language-server: $schema=https://aka.ms/winget-manifest.installer.1.6.0.schema.json
 # Generated for a release by `cargo xtask winget VERSION`; see README.md here.
 #
 # The release zip holds the GTK runtime beside the program, so this is a
@@ -22,4 +22,4 @@ Installers:
     InstallerUrl: https://github.com/issinoho/veetee/releases/download/v1.9.0/veetee-1.9.0-x86_64-windows.zip
     InstallerSha256: F237C729E0D2A2DD474856006211E6FA79827A95A07EF3E0BD3CBA2A4D5193DB
 ManifestType: installer
-ManifestVersion: 1.9.0
+ManifestVersion: 1.6.0

@@ -1,4 +1,4 @@
-# yaml-language-server: $schema=https://aka.ms/winget-manifest.defaultLocale.1.9.0.schema.json
+# yaml-language-server: $schema=https://aka.ms/winget-manifest.defaultLocale.1.6.0.schema.json
 # Generated for a release by `cargo xtask winget VERSION`; see README.md here.
 PackageIdentifier: issinoho.veetee
 PackageVersion: 1.9.0
@@ -40,4 +40,4 @@ Documentations:
   - DocumentLabel: Wiki
     DocumentUrl: https://github.com/issinoho/veetee/wiki
 ManifestType: defaultLocale
-ManifestVersion: 1.9.0
+ManifestVersion: 1.6.0

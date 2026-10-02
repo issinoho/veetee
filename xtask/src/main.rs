@@ -210,7 +210,7 @@ fn winget(args: &[String]) -> Result<()> {
     for name in manifests {
         let path = dir.join(name);
         let mut text = fs::read_to_string(&path).map_err(|e| format!("{name}: {e}"))?;
-        text = text.replace(&current, version);
+        text = replace_version(&text, &current, version);
         text = replace_field(&text, "InstallerSha256:", &sha);
         text = replace_field(&text, "ReleaseDate:", &date);
         fs::write(&path, text).map_err(|e| format!("{name}: {e}"))?;
@@ -220,6 +220,24 @@ fn winget(args: &[String]) -> Result<()> {
     println!("  {sha}");
     println!(r"check them with: winget validate --manifest packaging\winget\manifests");
     Ok(())
+}
+
+/// Replaces the package version wherever it appears, except in the schema
+/// comment and `ManifestVersion`: those name the manifest format, which only
+/// looks like a package version, and were swept along from 1.6.0 to 1.9.0
+/// before this kept them apart.
+fn replace_version(text: &str, current: &str, version: &str) -> String {
+    text.lines()
+        .map(|line| {
+            let schema = line.contains("schema=") || line.starts_with("ManifestVersion:");
+            match schema {
+                true => line.to_string(),
+                false => line.replace(current, version),
+            }
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+        + "\n"
 }
 
 /// Replaces the value of one `Field: value` line, leaving its indentation.
