@@ -1,5 +1,10 @@
 # <img src="data/icons/com.issinoho.Veetee.svg" alt="" width="64" height="64" align="absmiddle"> veetee
 
+[![Release](https://img.shields.io/github/v/release/issinoho/veetee?label=release)](https://github.com/issinoho/veetee/releases/latest)
+[![Downloads](https://img.shields.io/github/downloads/issinoho/veetee/total?label=downloads)](https://github.com/issinoho/veetee/releases)
+![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20Windows-blue)
+[![License](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue)](#license)
+
 A DEC VT terminal emulator for the Linux (and Windows) desktop, aiming at SmarTerm/Reflection-class
 compatibility: VT52 through VT525, DECforms and FMS applications, DEC-faithful fonts,
 and SSH, Telnet, serial and LAT connections.
