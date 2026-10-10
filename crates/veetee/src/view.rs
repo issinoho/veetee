@@ -482,7 +482,7 @@ impl TerminalView {
                 let is_setup_key = matches!(
                     keymap
                         .borrow()
-                        .map(keyval.into_glib(), keyval.to_unicode(), mods),
+                        .map(keysym(keyval, keycode), keyval.to_unicode(), mods),
                     Some(Action::Local(Local::SetUp))
                 );
                 if let Some(input) = setup_input(keyval, mods, is_setup_key) {
@@ -524,7 +524,7 @@ impl TerminalView {
             }
             let action = keymap
                 .borrow()
-                .map(keyval.into_glib(), keyval.to_unicode(), mods);
+                .map(keysym(keyval, keycode), keyval.to_unicode(), mods);
             let Some(action) = action else {
                 // Ordinary typing, dead keys and compose go through the input method.
                 return if to_input_method() {
@@ -1415,4 +1415,16 @@ fn save_frame(gl: &glow::Context, w: u32, h: u32, path: &std::path::Path) -> std
         }
     }
     std::fs::write(path, out)
+}
+
+/// The keysym veetee maps for a key press. On Windows GDK reports the numeric
+/// keypad with NumLock off, and keypad Enter, as the cursor keys and Return;
+/// `keycode` (the virtual key) puts them back on the keypad.
+pub(crate) fn keysym(keyval: gdk::Key, keycode: u32) -> u32 {
+    let sym = keyval.into_glib();
+    #[cfg(windows)]
+    let sym = crate::win_keys::keysym(sym, keycode);
+    #[cfg(not(windows))]
+    let _ = keycode;
+    sym
 }

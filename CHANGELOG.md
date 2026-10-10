@@ -8,6 +8,25 @@ Before 1.0 the minor version followed the project milestones (0.3 = M3). The for
 
 ## [Unreleased]
 
+## [1.9.1] - 2026-10-10
+
+**Fixes for Windows**: SSH sessions get the host's output as sent, and the numeric keypad works
+in EDT whatever the NumLock state.
+
+- **SSH on Windows passes the host's output through untouched.** OpenSSH ran in a Windows pseudo
+  console, which interprets what passes through it and sends its own rendering of the screen: 132
+  columns (DECCOLM) never arrived, DEC line drawing (MONITOR SYSTEM) came back as UTF-8 box drawing,
+  and keypad sequences such as `ESC O M` were turned into CR. The session now runs over pipes; the
+  pseudo console carries only OpenSSH's prompts (password, passphrase, host key), with typing sent
+  there until the host's output begins. The limitation is that OpenSSH on Windows reads the window
+  size from a console, so over pipes the host keeps its default size and is not told when the
+  window is resized.
+- **The numeric keypad on Windows** stays the keypad whatever the NumLock state, and keypad Enter
+  is the Enter key. GDK on Windows reported keypad keys with NumLock off as the cursor keys, and
+  keypad Enter as Return, so every press of PF1 (NumLock) turned the keypad into cursor keys until
+  the next one; EDT's GOLD 4 worked every other time, and Enter sent CR rather than `ESC O M`.
+  veetee now reads the extended-key flag that GDK drops.
+
 ## [1.9.0] - 2026-09-27
 
 **Set-Up settings that did nothing now act.** The zero style draws an oval, slashed or dotted
@@ -879,7 +898,8 @@ The first release: VT100 through VT420 emulation with local, Telnet, SSH and ser
   `cargo deny` licence checks and parser fuzzing.
 - `cargo xtask dist` builds the release tarball and Debian package.
 
-[Unreleased]: https://github.com/issinoho/veetee/compare/v1.9.0...HEAD
+[Unreleased]: https://github.com/issinoho/veetee/compare/v1.9.1...HEAD
+[1.9.1]: https://github.com/issinoho/veetee/compare/v1.9.0...v1.9.1
 [1.9.0]: https://github.com/issinoho/veetee/compare/v1.8.0...v1.9.0
 [1.8.0]: https://github.com/issinoho/veetee/compare/v1.7.0...v1.8.0
 [1.7.0]: https://github.com/issinoho/veetee/compare/v1.6.0...v1.7.0

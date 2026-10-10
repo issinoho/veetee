@@ -187,6 +187,35 @@ pub fn station_for_keycode(keycode: u32) -> Option<u8> {
     })
 }
 
+/// The numeric keypad key behind a Windows virtual-key code. GDK on Windows
+/// names keys by virtual key alone, and Windows gives a keypad key with
+/// NumLock off the virtual key of the editing or cursor key it doubles as
+/// (keypad 4 is VK_LEFT), and keypad Enter VK_RETURN; only the extended-key
+/// flag tells them apart. Without this, every press of PF1 (NumLock) turns
+/// the keypad into cursor keys until the next, so EDT's GOLD 4 failed every
+/// other time. `extended` is bit 24 of the key message's lParam.
+pub fn windows_keypad_keysym(vk: u32, extended: bool) -> Option<u32> {
+    use keysym::*;
+    if extended {
+        // VK_RETURN with the extended flag is keypad Enter.
+        return (vk == 0x0D).then_some(KP_ENTER);
+    }
+    Some(match vk {
+        0x0C => KP_BEGIN,     // VK_CLEAR, keypad 5
+        0x21 => KP_PAGE_UP,   // VK_PRIOR, keypad 9
+        0x22 => KP_PAGE_DOWN, // VK_NEXT, keypad 3
+        0x23 => KP_END,       // keypad 1
+        0x24 => KP_HOME,      // keypad 7
+        0x25 => KP_LEFT,      // keypad 4
+        0x26 => KP_UP,        // keypad 8
+        0x27 => KP_RIGHT,     // keypad 6
+        0x28 => KP_DOWN,      // keypad 2
+        0x2D => KP_INSERT,    // keypad 0
+        0x2E => KP_DELETE,    // keypad .
+        _ => return None,
+    })
+}
+
 /// Maps a key press with the built-in keymap. `ch` is the character the
 /// key produces (if any), used for Ctrl combinations. Returns `None` for
 /// keys that should go through normal text input (input methods, compose,
@@ -387,6 +416,21 @@ mod tests {
             None,
             "Escape is not a main keypad station"
         );
+    }
+
+    #[test]
+    fn windows_keypad_with_numlock_off() {
+        // Keypad 4 and 2 with NumLock off, and keypad Enter.
+        assert_eq!(windows_keypad_keysym(0x25, false), Some(KP_LEFT));
+        assert_eq!(windows_keypad_keysym(0x28, false), Some(KP_DOWN));
+        assert_eq!(windows_keypad_keysym(0x0D, true), Some(KP_ENTER));
+        assert_eq!(key(KP_LEFT, NONE), Some(Action::Key(Key::Keypad(4))));
+        assert_eq!(key(KP_DOWN, NONE), Some(Action::Key(Key::Keypad(2))));
+        // The dedicated cursor keys and the main Return key are extended
+        // or not keypad keys, and stay as they are.
+        assert_eq!(windows_keypad_keysym(0x25, true), None);
+        assert_eq!(windows_keypad_keysym(0x0D, false), None);
+        assert_eq!(windows_keypad_keysym(0x41, false), None);
     }
 
     #[test]

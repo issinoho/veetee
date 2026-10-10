@@ -6,7 +6,6 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use adw::prelude::*;
-use gtk::glib::translate::IntoGlib;
 use gtk::{gdk, glib};
 use vt_core::Key;
 use vt_keyboard::keymap::{self, PcKey, Target};
@@ -447,7 +446,7 @@ impl Editor {
         keys.set_propagation_phase(gtk::PropagationPhase::Capture);
         keys.connect_key_pressed({
             let (editor, dialog) = (self.clone(), dialog.clone());
-            move |_, keyval, _, state| {
+            move |_, keyval, keycode, state| {
                 if is_modifier(keyval) {
                     return glib::Propagation::Stop;
                 }
@@ -460,7 +459,7 @@ impl Editor {
                     ctrl: state.contains(gdk::ModifierType::CONTROL_MASK),
                     alt: state.contains(gdk::ModifierType::ALT_MASK),
                 };
-                let sym = keyval.to_lower().into_glib();
+                let sym = crate::view::keysym(keyval.to_lower(), keycode);
                 if keymap::key_name(sym).is_none() {
                     editor.toast("veetee cannot bind that key");
                     dialog.close();

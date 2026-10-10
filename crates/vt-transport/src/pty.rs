@@ -1,6 +1,8 @@
 //! Local pseudo-terminal connection: runs a program with a terminal of its
 //! own, a Unix PTY or a Windows pseudo console (ConPTY).
 
+#[cfg(any(windows, test))]
+mod piped;
 #[cfg(unix)]
 mod unix;
 #[cfg(unix)]

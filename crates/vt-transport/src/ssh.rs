@@ -35,9 +35,16 @@ pub struct Ssh {
     description: String,
 }
 
-/// Starts `ssh` on a PTY. `term` becomes the remote `TERM`.
+/// Starts `ssh` on a PTY. `term` becomes the remote `TERM`. On Windows the
+/// session runs over pipes, the pseudo console carrying only OpenSSH's
+/// prompts: a pseudo console rewrites what passes through it, losing DECCOLM,
+/// DEC line drawing and the keypad's application sequences.
 pub fn connect(config: &SshConfig, rows: u16, cols: u16, term: &str) -> io::Result<Ssh> {
-    let pty = Pty::spawn("ssh", &config.args(), rows, cols, term).map_err(|e| {
+    #[cfg(windows)]
+    let spawn = Pty::spawn_piped::<String>;
+    #[cfg(not(windows))]
+    let spawn = Pty::spawn::<String>;
+    let pty = spawn("ssh", &config.args(), rows, cols, term).map_err(|e| {
         if e.kind() == io::ErrorKind::NotFound {
             io::Error::new(e.kind(), "the OpenSSH client (ssh) is not installed")
         } else {

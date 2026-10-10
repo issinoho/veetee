@@ -16,6 +16,8 @@ mod session;
 mod setup_store;
 mod sound;
 mod view;
+#[cfg(windows)]
+mod win_keys;
 mod workspace;
 
 use std::rc::Rc;
@@ -78,6 +80,9 @@ fn main() -> glib::ExitCode {
         }
     };
 
+    // GTK runs on this thread, so the keyboard hook goes here.
+    #[cfg(windows)]
+    win_keys::install();
     let app = adw::Application::builder()
         .application_id(APP_ID)
         .flags(gio::ApplicationFlags::NON_UNIQUE)

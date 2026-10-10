@@ -1,7 +1,8 @@
 //! Windows pseudo consoles (ConPTY, Windows 10 1809 and later). The child
 //! runs attached to a pseudo console fed through two pipes; a thread reads
 //! its output, and another closes the console when the child exits so the
-//! reader sees the end of the output.
+//! reader sees the end of the output. `Pty::spawn_piped` gives the child
+//! pipes for its standard handles as well (see `piped.rs`).
 #![allow(unsafe_code)]
 
 use std::ffi::{OsStr, c_void};
@@ -12,11 +13,13 @@ use std::os::windows::io::{AsRawHandle, FromRawHandle, OwnedHandle};
 use std::os::windows::process::ExitStatusExt;
 use std::process::ExitStatus;
 use std::ptr::{null, null_mut};
-use std::sync::mpsc::{Receiver, RecvTimeoutError, channel};
+use std::sync::mpsc::{Receiver, RecvTimeoutError, Sender, channel};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use windows_sys::Win32::Foundation::{HANDLE, INVALID_HANDLE_VALUE, WAIT_OBJECT_0};
+use windows_sys::Win32::Foundation::{
+    HANDLE, HANDLE_FLAG_INHERIT, INVALID_HANDLE_VALUE, SetHandleInformation, WAIT_OBJECT_0,
+};
 use windows_sys::Win32::System::Console::{
     COORD, ClosePseudoConsole, CreatePseudoConsole, HPCON, ResizePseudoConsole,
 };
@@ -24,9 +27,12 @@ use windows_sys::Win32::System::Pipes::CreatePipe;
 use windows_sys::Win32::System::Threading::{
     CREATE_UNICODE_ENVIRONMENT, CreateProcessW, DeleteProcThreadAttributeList,
     EXTENDED_STARTUPINFO_PRESENT, GetExitCodeProcess, INFINITE, InitializeProcThreadAttributeList,
-    PROC_THREAD_ATTRIBUTE_PSEUDOCONSOLE, PROCESS_INFORMATION, STARTF_USESTDHANDLES, STARTUPINFOEXW,
-    TerminateProcess, UpdateProcThreadAttribute, WaitForSingleObject,
+    PROC_THREAD_ATTRIBUTE_HANDLE_LIST, PROC_THREAD_ATTRIBUTE_PSEUDOCONSOLE, PROCESS_INFORMATION,
+    STARTF_USESTDHANDLES, STARTUPINFOEXW, TerminateProcess, UpdateProcThreadAttribute,
+    WaitForSingleObject,
 };
+
+use super::piped::{ConsoleText, Newlines, Routing};
 
 /// The pseudo console, closed once (by whichever of the exit watcher and
 /// `Drop` gets there first).
@@ -45,7 +51,7 @@ impl Console {
 /// A running child process attached to a pseudo console.
 #[derive(Debug)]
 pub struct Pty {
-    input: File,
+    input: PtyWriter,
     output: Receiver<io::Result<Vec<u8>>>,
     pending: Vec<u8>,
     process: Arc<OwnedHandle>,
@@ -62,6 +68,36 @@ impl Pty {
         rows: u16,
         cols: u16,
         term: &str,
+    ) -> io::Result<Pty> {
+        Pty::open(program, args, rows, cols, term, false)
+    }
+
+    /// Spawns `program` as `spawn` does, but with pipes for its standard
+    /// input, output and error, so that what it reads and writes there
+    /// passes untouched. The pseudo console carries only what the program
+    /// reads from and writes to the console itself, such as OpenSSH's
+    /// password prompts; typed input goes there until the program's
+    /// standard output shows the session has begun (see `piped.rs`).
+    // 🔎 A program that takes the window size from its standard output, as
+    // OpenSSH does (`GetConsoleScreenBufferInfo` on STD_OUTPUT_HANDLE),
+    // finds none, so the host keeps its default size and is not told of resizes.
+    pub fn spawn_piped<S: AsRef<OsStr>>(
+        program: &str,
+        args: &[S],
+        rows: u16,
+        cols: u16,
+        term: &str,
+    ) -> io::Result<Pty> {
+        Pty::open(program, args, rows, cols, term, true)
+    }
+
+    fn open<S: AsRef<OsStr>>(
+        program: &str,
+        args: &[S],
+        rows: u16,
+        cols: u16,
+        term: &str,
+        piped: bool,
     ) -> io::Result<Pty> {
         let (input_read, input_write) = pipe()?;
         let (output_read, output_write) = pipe()?;
@@ -83,7 +119,16 @@ impl Pty {
         // The console holds its own copies of its ends of the pipes.
         drop((input_read, output_write));
 
-        let process = match start(program, args, term, hpc) {
+        // Standard input, output and error: (read, write) each.
+        let standard = if piped {
+            Some([pipe()?, pipe()?, pipe()?])
+        } else {
+            None
+        };
+        let child_ends = standard.as_ref().map(|[stdin, stdout, stderr]| {
+            [&stdin.0, &stdout.1, &stderr.1].map(|h| h.as_raw_handle() as HANDLE)
+        });
+        let process = match start(program, args, term, hpc, child_ends) {
             Ok(p) => Arc::new(p),
             Err(e) => {
                 console.close();
@@ -92,28 +137,44 @@ impl Pty {
         };
 
         let (tx, output) = channel();
-        let mut reader = File::from(output_read);
-        std::thread::Builder::new()
-            .name("conpty-reader".into())
-            .spawn(move || {
-                let mut buf = vec![0u8; 16 * 1024];
-                loop {
-                    match reader.read(&mut buf) {
-                        Ok(0) => break,
-                        Ok(n) => {
-                            if tx.send(Ok(buf[..n].to_vec())).is_err() {
-                                break;
-                            }
-                        }
-                        // The pipe breaks when the console closes.
-                        Err(e) if e.kind() == io::ErrorKind::BrokenPipe => break,
-                        Err(e) => {
-                            let _ = tx.send(Err(e));
-                            break;
-                        }
-                    }
+        let console_input = File::from(input_write);
+        let input = match standard {
+            None => {
+                read_into("conpty-reader", output_read, tx, <[u8]>::to_vec)?;
+                PtyWriter {
+                    console: console_input,
+                    piped: None,
                 }
-            })?;
+            }
+            Some(
+                [
+                    (stdin_read, stdin_write),
+                    (stdout_read, stdout_write),
+                    (stderr_read, stderr_write),
+                ],
+            ) => {
+                // The child holds its own copies of its ends.
+                drop((stdin_read, stdout_write, stderr_write));
+                let routing = Arc::new(Routing::default());
+                let mut text = ConsoleText::default();
+                read_into("conpty-reader", output_read, tx.clone(), move |b| {
+                    text.filter(b)
+                })?;
+                let stdout_routing = routing.clone();
+                read_into("conpty-stdout", stdout_read, tx.clone(), move |b| {
+                    stdout_routing.standard_output(b);
+                    b.to_vec()
+                })?;
+                let mut newlines = Newlines::default();
+                read_into("conpty-stderr", stderr_read, tx, move |b| {
+                    newlines.filter(b)
+                })?;
+                PtyWriter {
+                    console: console_input,
+                    piped: Some((File::from(stdin_write), routing)),
+                }
+            }
+        };
         {
             let (process, console) = (process.clone(), console.clone());
             std::thread::Builder::new()
@@ -131,7 +192,7 @@ impl Pty {
             description.push_str(&arg.as_ref().to_string_lossy());
         }
         Ok(Pty {
-            input: File::from(input_write),
+            input,
             output,
             pending: Vec::new(),
             process,
@@ -205,7 +266,7 @@ impl crate::Transport for Pty {
     }
 
     fn writer(&self) -> io::Result<Box<dyn crate::TransportWriter>> {
-        Ok(Box::new(PtyWriter(self.input.try_clone()?)))
+        Ok(Box::new(self.input.try_clone()?))
     }
 
     fn resize(&mut self, rows: u16, cols: u16) -> io::Result<()> {
@@ -217,15 +278,45 @@ impl crate::Transport for Pty {
     }
 }
 
-struct PtyWriter(File);
+/// Input for the child: the console's, or with pipes, standard input once
+/// the session has begun.
+#[derive(Debug)]
+struct PtyWriter {
+    console: File,
+    piped: Option<(File, Arc<Routing>)>,
+}
+
+impl PtyWriter {
+    fn try_clone(&self) -> io::Result<PtyWriter> {
+        let piped = match &self.piped {
+            Some((stdin, routing)) => Some((stdin.try_clone()?, routing.clone())),
+            None => None,
+        };
+        Ok(PtyWriter {
+            console: self.console.try_clone()?,
+            piped,
+        })
+    }
+}
 
 impl Write for PtyWriter {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-        self.0.write(buf)
+        match &mut self.piped {
+            None => self.console.write(buf),
+            Some((stdin, routing)) if routing.started() => stdin.write(buf),
+            Some((_, routing)) => {
+                self.console.write_all(&routing.to_console(buf))?;
+                Ok(buf.len())
+            }
+        }
     }
 
     fn flush(&mut self) -> io::Result<()> {
-        self.0.flush()
+        self.console.flush()?;
+        if let Some((stdin, _)) = &mut self.piped {
+            stdin.flush()?;
+        }
+        Ok(())
     }
 }
 
@@ -247,6 +338,40 @@ fn size(rows: u16, cols: u16) -> COORD {
     }
 }
 
+/// Reads `handle` on a thread of its own, sending what `shape` makes of
+/// each read to `tx` until the end of the output.
+fn read_into(
+    name: &str,
+    handle: OwnedHandle,
+    tx: Sender<io::Result<Vec<u8>>>,
+    mut shape: impl FnMut(&[u8]) -> Vec<u8> + Send + 'static,
+) -> io::Result<()> {
+    let mut reader = File::from(handle);
+    std::thread::Builder::new()
+        .name(name.into())
+        .spawn(move || {
+            let mut buf = vec![0u8; 16 * 1024];
+            loop {
+                match reader.read(&mut buf) {
+                    Ok(0) => break,
+                    Ok(n) => {
+                        let data = shape(&buf[..n]);
+                        if !data.is_empty() && tx.send(Ok(data)).is_err() {
+                            break;
+                        }
+                    }
+                    // The pipe breaks when the console closes.
+                    Err(e) if e.kind() == io::ErrorKind::BrokenPipe => break,
+                    Err(e) => {
+                        let _ = tx.send(Err(e));
+                        break;
+                    }
+                }
+            }
+        })?;
+    Ok(())
+}
+
 fn pipe() -> io::Result<(OwnedHandle, OwnedHandle)> {
     let (mut read, mut write): (HANDLE, HANDLE) = (null_mut(), null_mut());
     // SAFETY: both out-pointers are valid; no security attributes.
@@ -262,23 +387,26 @@ fn pipe() -> io::Result<(OwnedHandle, OwnedHandle)> {
     })
 }
 
-/// Starts the child attached to the pseudo console `hpc`.
+/// Starts the child attached to the pseudo console `hpc`, with `standard` as its
+/// standard input, output and error if given (or else the console's).
 fn start<S: AsRef<OsStr>>(
     program: &str,
     args: &[S],
     term: &str,
     hpc: HPCON,
+    standard: Option<[HANDLE; 3]>,
 ) -> io::Result<OwnedHandle> {
     let mut command_line = wide(&command_line(program, args));
     let environment = environment(term);
 
+    let attributes = if standard.is_some() { 2 } else { 1 };
     let mut list_size = 0usize;
     // SAFETY: the first call only reports the size the list needs.
-    unsafe { InitializeProcThreadAttributeList(null_mut(), 1, 0, &mut list_size) };
+    unsafe { InitializeProcThreadAttributeList(null_mut(), attributes, 0, &mut list_size) };
     let mut list = vec![0usize; list_size.div_ceil(size_of::<usize>())];
     let list_ptr = list.as_mut_ptr().cast::<c_void>();
     // SAFETY: `list` is at least `list_size` bytes.
-    if unsafe { InitializeProcThreadAttributeList(list_ptr, 1, 0, &mut list_size) } == 0 {
+    if unsafe { InitializeProcThreadAttributeList(list_ptr, attributes, 0, &mut list_size) } == 0 {
         return Err(io::Error::last_os_error());
     }
     let result = (|| {
@@ -298,14 +426,41 @@ fn start<S: AsRef<OsStr>>(
         {
             return Err(io::Error::last_os_error());
         }
+        if let Some(handles) = &standard {
+            // The pipes are inherited, and only they: the handle list keeps
+            // any other inheritable handle of veetee's out of the child.
+            for &h in handles {
+                // SAFETY: `h` is an open pipe handle.
+                if unsafe { SetHandleInformation(h, HANDLE_FLAG_INHERIT, HANDLE_FLAG_INHERIT) } == 0
+                {
+                    return Err(io::Error::last_os_error());
+                }
+            }
+            // SAFETY: `handles` outlives the CreateProcessW call below.
+            if unsafe {
+                UpdateProcThreadAttribute(
+                    list_ptr,
+                    0,
+                    PROC_THREAD_ATTRIBUTE_HANDLE_LIST as usize,
+                    handles.as_ptr().cast(),
+                    size_of_val(handles),
+                    null_mut(),
+                    null(),
+                )
+            } == 0
+            {
+                return Err(io::Error::last_os_error());
+            }
+        }
+        let [stdin, stdout, stderr] = standard.unwrap_or([INVALID_HANDLE_VALUE; 3]);
         let mut startup = STARTUPINFOEXW::default();
         startup.StartupInfo.cb = size_of::<STARTUPINFOEXW>() as u32;
         // Without this a child of a process with redirected standard
         // handles would use those instead of the console.
         startup.StartupInfo.dwFlags = STARTF_USESTDHANDLES;
-        startup.StartupInfo.hStdInput = INVALID_HANDLE_VALUE;
-        startup.StartupInfo.hStdOutput = INVALID_HANDLE_VALUE;
-        startup.StartupInfo.hStdError = INVALID_HANDLE_VALUE;
+        startup.StartupInfo.hStdInput = stdin;
+        startup.StartupInfo.hStdOutput = stdout;
+        startup.StartupInfo.hStdError = stderr;
         startup.lpAttributeList = list_ptr;
         let mut info = PROCESS_INFORMATION {
             hProcess: null_mut(),
@@ -321,7 +476,7 @@ fn start<S: AsRef<OsStr>>(
                 command_line.as_mut_ptr(),
                 null(),
                 null(),
-                0,
+                i32::from(standard.is_some()),
                 EXTENDED_STARTUPINFO_PRESENT | CREATE_UNICODE_ENVIRONMENT,
                 environment.as_ptr().cast(),
                 null(),
@@ -446,5 +601,24 @@ mod tests {
         }
         let text = String::from_utf8_lossy(&out);
         assert!(text.contains("veetee vt420"), "{text:?}");
+    }
+
+    #[test]
+    fn piped_output_arrives_untouched() {
+        let mut pty = Pty::spawn_piped("cmd.exe", &["/C", "echo veetee %TERM%"], 24, 80, "vt420")
+            .expect("spawn");
+        let mut out = Vec::new();
+        let mut buf = [0u8; 256];
+        loop {
+            match pty.read_timeout(&mut buf, Duration::from_secs(10)) {
+                Ok(0) => panic!("timed out; got {:?}", String::from_utf8_lossy(&out)),
+                Ok(n) => out.extend_from_slice(&buf[..n]),
+                Err(e) if e.kind() == io::ErrorKind::UnexpectedEof => break,
+                Err(e) => panic!("{e}"),
+            }
+        }
+        // Through the pipe, with none of the console's escape sequences.
+        assert!(!out.contains(&0x1B), "{:?}", String::from_utf8_lossy(&out));
+        assert!(out.windows(14).any(|w| w == b"veetee vt420\r\n"), "{out:?}");
     }
 }
