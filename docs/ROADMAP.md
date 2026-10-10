@@ -5,7 +5,7 @@ The working roadmap: what is done, what 1.0 ships with, and what is parked. The 
 every control function are in [compat-matrix.md](compat-matrix.md), and released changes in
 [CHANGELOG.md](../CHANGELOG.md).
 
-Latest release: **1.9.0** (27 September 2026); 1.0.0 was released on 17 September 2026 (see
+Latest release: **1.9.1** (10 October 2026); 1.0.0 was released on 17 September 2026 (see
 [Since 1.0](#since-10)). From 1.0 the version follows Semantic Versioning:
 a breaking change to the crates' public API or to saved settings takes the major, new terminal
 behaviour takes the minor, fixes take the patch. Before 1.0 the minor version followed the
@@ -298,6 +298,11 @@ over SSH and a seven-bit line with parity along the way.
 [`stored-settings.md`](stored-settings.md): the zero style, the transmit rate limit, modem control
 on a serial line, overscan, host wake-up and the energy saver. Host wake-up's factory setting and
 the VT500 series' oval zero were put right to DEC's on the way; the keyboard options stay stored.
+
+**1.9.1** (10 October 2026) fixed **Windows**: SSH there ran in a Windows pseudo console, which
+rewrote the host's output (no 132 columns, no DEC line drawing in `MONITOR SYSTEM`) and turned
+keypad sequences into CR; it now runs over pipes. The numeric keypad stays the keypad whatever
+the NumLock state, so EDT's GOLD 4 works first time, and keypad Enter is Enter.
 
 ## After 1.0
 

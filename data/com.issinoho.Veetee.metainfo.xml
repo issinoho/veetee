@@ -67,6 +67,11 @@
   </supports>
   <content_rating type="oars-1.1"/>
   <releases>
+    <release version="1.9.1" date="2026-10-10">
+      <description>
+        <p>On Windows, SSH sessions pass the host's output through untouched, and the numeric keypad stays the keypad whatever the NumLock state.</p>
+      </description>
+    </release>
     <release version="1.9.0" date="2026-09-27">
       <description>
         <p>Zero style, transmit rate limit, modem control, overscan, host wake-up and the energy saver now act as on the VT500 series.</p>
