@@ -20,9 +20,9 @@ file in the directory it is given, and a README is not YAML.
 
 | File in `manifests/` | Holds |
 |------|-------|
-| `issinoho.veetee.yaml` | the version manifest |
-| `issinoho.veetee.installer.yaml` | the zip's URL, its SHA-256, and the paths inside it |
-| `issinoho.veetee.locale.en-US.yaml` | name, publisher, licence, description and tags |
+| `Issinoho.veetee.yaml` | the version manifest |
+| `Issinoho.veetee.installer.yaml` | the zip's URL, its SHA-256, and the paths inside it |
+| `Issinoho.veetee.locale.en-US.yaml` | name, publisher, licence, description and tags |
 
 ## Updating them for a release
 
@@ -54,10 +54,10 @@ veetee                     # the alias is on the path in a new shell, not this o
 
 To remove it again, use the identifier `winget list veetee` reports rather than the package
 identifier: an install from a local manifest has no source to match against, so
-`winget uninstall issinoho.veetee` answers "No installed package found".
+`winget uninstall Issinoho.veetee` answers "No installed package found".
 
 ```powershell
-winget uninstall --id 'ARP\User\X64\issinoho.veetee__DefaultSource'
+winget uninstall --id 'ARP\User\X64\Issinoho.veetee__DefaultSource'
 ```
 
 Where winget cannot create symlinks — Developer Mode off, as on an ordinary desktop — it puts the
@@ -105,6 +105,15 @@ checked from two networks. It is now `https://github.com/issinoho`, which is the
 a publisher with no separate site. If the domain is ever stood up, this is the line to change
 back; the Flathub README wants the same domain for a verified badge, so the two would be settled
 together.
+
+### The publisher is `Issinoho`, capital I
+
+1.9.0 went in as `issinoho.veetee`, under `manifests/i/issinoho/`, after `Issinoho.Loadbearer`
+had already been published under `manifests/i/Issinoho/`. Git keeps the two folders apart; winget
+does not, its identifiers being case-insensitive. The PR merged on 2026-10-15, but the package
+never reached the published index. From 1.9.1 the identifier is `Issinoho.veetee`, matching the
+publisher already there, and the lowercase folder was removed in the same PR
+([winget-pkgs#453859](https://github.com/microsoft/winget-pkgs/pull/453859)).
 
 ## Notes on the manifests
 

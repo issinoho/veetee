@@ -162,9 +162,9 @@ fn winget(args: &[String]) -> Result<()> {
     // reads every file it is given, and chokes on a README.
     let dir = root().join("packaging/winget/manifests");
     let manifests = [
-        "issinoho.veetee.yaml",
-        "issinoho.veetee.installer.yaml",
-        "issinoho.veetee.locale.en-US.yaml",
+        "Issinoho.veetee.yaml",
+        "Issinoho.veetee.installer.yaml",
+        "Issinoho.veetee.locale.en-US.yaml",
     ];
 
     // Whatever the manifests say now, so every mention of it can be replaced:
