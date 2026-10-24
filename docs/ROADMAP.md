@@ -5,7 +5,7 @@ The working roadmap: what is done, what 1.0 ships with, and what is parked. The 
 every control function are in [compat-matrix.md](compat-matrix.md), and released changes in
 [CHANGELOG.md](../CHANGELOG.md).
 
-Latest release: **1.10.0** (24 October 2026); 1.0.0 was released on 17 September 2026 (see
+Latest release: **1.11.0** (24 October 2026); 1.0.0 was released on 17 September 2026 (see
 [Since 1.0](#since-10)). From 1.0 the version follows Semantic Versioning:
 a breaking change to the crates' public API or to saved settings takes the major, new terminal
 behaviour takes the minor, fixes take the patch. Before 1.0 the minor version followed the
@@ -307,6 +307,10 @@ the NumLock state, so EDT's GOLD 4 works first time, and keypad Enter is Enter.
 **1.10.0** (24 October 2026): **Return reconnects** a session whose Telnet, SSH, LAT or serial
 connection has closed, with the same connection and the session's saved Set-Up; the new session
 takes the dead one's place once it connects.
+
+**1.11.0** (24 October 2026): **X11 forwarding over SSH**. `-X`, `-Y` and `--display` do what
+`ssh -X`, `ssh -Y` and `DISPLAY=` do, and saved SSH connections and the Connections dialog keep
+them.
 
 ## After 1.0
 

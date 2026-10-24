@@ -8,6 +8,10 @@ Before 1.0 the minor version followed the project milestones (0.3 = M3). The for
 
 ## [Unreleased]
 
+## [1.11.0] - 2026-10-24
+
+**X11 forwarding over SSH**, from the command line or a saved connection.
+
 - **X11 forwarding over SSH.** `-X` (`--x11`) and `-Y` (`--x11-trusted`) ask OpenSSH to forward
   X11, as `ssh -X` and `ssh -Y` do, and `--display DISPLAY` sets the display the clients appear
   on, so `veetee --display :2 --ssh user@server -X` matches `DISPLAY=:2 ssh -X user@server`.
@@ -915,7 +919,8 @@ The first release: VT100 through VT420 emulation with local, Telnet, SSH and ser
   `cargo deny` licence checks and parser fuzzing.
 - `cargo xtask dist` builds the release tarball and Debian package.
 
-[Unreleased]: https://github.com/issinoho/veetee/compare/v1.10.0...HEAD
+[Unreleased]: https://github.com/issinoho/veetee/compare/v1.11.0...HEAD
+[1.11.0]: https://github.com/issinoho/veetee/compare/v1.10.0...v1.11.0
 [1.10.0]: https://github.com/issinoho/veetee/compare/v1.9.1...v1.10.0
 [1.9.1]: https://github.com/issinoho/veetee/compare/v1.9.0...v1.9.1
 [1.9.0]: https://github.com/issinoho/veetee/compare/v1.8.0...v1.9.0

@@ -67,6 +67,11 @@
   </supports>
   <content_rating type="oars-1.1"/>
   <releases>
+    <release version="1.11.0" date="2026-10-24">
+      <description>
+        <p>SSH connections can forward X11, as ssh -X and ssh -Y do, to a chosen X display, from the command line or a saved connection.</p>
+      </description>
+    </release>
     <release version="1.10.0" date="2026-10-24">
       <description>
         <p>When a connection closes, pressing Return reconnects the session with the same connection and its saved Set-Up.</p>
