@@ -8,6 +8,10 @@ Before 1.0 the minor version followed the project milestones (0.3 = M3). The for
 
 ## [Unreleased]
 
+## [1.10.0] - 2026-10-24
+
+**Return reconnects**: a session whose connection has closed connects again with one key.
+
 - **Return reconnects a session whose connection has closed.** When the last session's Telnet,
   SSH, LAT or serial connection drops, the screen stays, as before, and pressing Return (or keypad
   Enter) opens the same connection again with the session's saved Set-Up. The new session takes
@@ -904,7 +908,8 @@ The first release: VT100 through VT420 emulation with local, Telnet, SSH and ser
   `cargo deny` licence checks and parser fuzzing.
 - `cargo xtask dist` builds the release tarball and Debian package.
 
-[Unreleased]: https://github.com/issinoho/veetee/compare/v1.9.1...HEAD
+[Unreleased]: https://github.com/issinoho/veetee/compare/v1.10.0...HEAD
+[1.10.0]: https://github.com/issinoho/veetee/compare/v1.9.1...v1.10.0
 [1.9.1]: https://github.com/issinoho/veetee/compare/v1.9.0...v1.9.1
 [1.9.0]: https://github.com/issinoho/veetee/compare/v1.8.0...v1.9.0
 [1.8.0]: https://github.com/issinoho/veetee/compare/v1.7.0...v1.8.0
