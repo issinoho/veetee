@@ -173,6 +173,9 @@ pub struct Workspace {
     blinking: Cell<bool>,
     blink_lit: Cell<bool>,
     keymap: SharedKeymap,
+    /// The message that the last session's connection closed, kept up
+    /// until it reconnects.
+    closed_toast: RefCell<Option<adw::Toast>>,
 }
 
 impl Workspace {
@@ -243,6 +246,7 @@ impl Workspace {
             keymap: Rc::new(RefCell::new(crate::keymaps::load(
                 options_keymap.as_deref(),
             ))),
+            closed_toast: RefCell::new(None),
         });
         let weak = Rc::downgrade(&workspace);
         window.connect_close_request(move |_| {
@@ -308,6 +312,19 @@ impl Workspace {
         connection: cli::Connection,
         profile: Option<String>,
     ) {
+        let number = free_number(self.panes.borrow().iter().map(|p| p.number));
+        self.add_numbered_session(session, notices, connection, profile, number);
+    }
+
+    /// Adds a connected session to the window as session `number`.
+    fn add_numbered_session(
+        self: &Rc<Self>,
+        session: Session,
+        notices: async_channel::Receiver<Notice>,
+        connection: cli::Connection,
+        profile: Option<String>,
+        session_number: u8,
+    ) {
         let id = self.next_id.get();
         self.next_id.set(id + 1);
         let weak = Rc::downgrade(self);
@@ -319,7 +336,6 @@ impl Workspace {
                 }
             }
         };
-        let session_number = free_number(self.panes.borrow().iter().map(|p| p.number));
         let callbacks = Callbacks {
             session_number,
             notify: Box::new({
@@ -382,6 +398,7 @@ impl Workspace {
                     }
                 }
             }),
+            reconnect: Box::new(on(|ws, id| ws.reconnect(id))),
             print: Box::new({
                 let weak = weak.clone();
                 move |job: vt_core::PrintJob| {
@@ -822,8 +839,14 @@ impl Workspace {
             // Only worth it for the last session: it is the only thing left
             // to look at, and closing the window is the only alternative.
             *pane.status.borrow_mut() = "Disconnected".into();
-            self.toasts
-                .add_toast(adw::Toast::builder().title(msg).timeout(0).build());
+            let toast = adw::Toast::builder()
+                .title(format!("{msg}. Press Return to reconnect."))
+                .timeout(0)
+                .build();
+            self.toasts.add_toast(toast.clone());
+            if let Some(old) = self.closed_toast.replace(Some(toast)) {
+                old.dismiss();
+            }
             self.refresh();
             return;
         }
@@ -834,6 +857,58 @@ impl Workspace {
             self.notify(&msg);
         }
         self.remove_pane(index);
+    }
+
+    /// Return on a session whose connection closed: opens the same
+    /// connection again, with the session's saved Set-Up, and puts the new
+    /// session in the dead one's place once it is connected. The dead
+    /// screen stays until then, and stays if the connection fails.
+    fn reconnect(self: &Rc<Self>, id: u64) {
+        let Some(pane) = self.panes.borrow().iter().find(|p| p.id == id).cloned() else {
+            return;
+        };
+        if self.opening.replace(true) {
+            return;
+        }
+        let mut config = self.config.clone();
+        crate::setup_store::load_into(&mut config, pane.number);
+        let session_config = config.clone();
+        let connection = pane.connection.clone();
+        let label = pane.label.borrow().clone();
+        self.set_status(id, "Reconnecting");
+        let (tx, rx) = async_channel::bounded(1);
+        std::thread::spawn(move || {
+            let _ = tx.send_blocking(cli::open_transport(&config, &connection));
+        });
+        let weak = Rc::downgrade(self);
+        glib::spawn_future_local(async move {
+            let Ok(opened) = rx.recv().await else { return };
+            let Some(ws) = weak.upgrade() else { return };
+            ws.opening.set(false);
+            let started =
+                opened.and_then(|t| session::Session::start(session_config, t, None, None));
+            match started {
+                Ok((session, notices)) => {
+                    let Some(index) = ws.index_of(id) else { return };
+                    if let Some(toast) = ws.closed_toast.take() {
+                        toast.dismiss();
+                    }
+                    let gone = ws.panes.borrow_mut().remove(index);
+                    ws.recent.borrow_mut().retain(|&r| r != gone.id);
+                    ws.add_numbered_session(
+                        session,
+                        notices,
+                        gone.connection.clone(),
+                        gone.profile.clone(),
+                        gone.number,
+                    );
+                }
+                Err(e) => {
+                    ws.set_status(id, "Disconnected");
+                    ws.notify(&format!("Cannot reconnect to {label}: {e}"));
+                }
+            }
+        });
     }
 
     /// Takes a pane out and gives the window to whatever is left of it.

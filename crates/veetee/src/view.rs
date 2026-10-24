@@ -50,6 +50,8 @@ pub struct Callbacks {
     pub focused: Box<dyn Fn()>,
     /// The connection closed; the text says why when known.
     pub exited: Box<dyn Fn(Option<String>)>,
+    /// Return on a session whose connection has closed: connect again.
+    pub reconnect: Box<dyn Fn()>,
     /// Something for the printer.
     pub print: Box<dyn Fn(vt_core::PrintJob)>,
     /// The line was set anew, or (with the error) the port refused it.
@@ -487,6 +489,15 @@ impl TerminalView {
                 );
                 if let Some(input) = setup_input(keyval, mods, is_setup_key) {
                     view.setup_input(input);
+                }
+                return glib::Propagation::Stop;
+            }
+            // Nothing reaches a host that has gone; Return connects again,
+            // with the same connection and Set-Up.
+            if view.state.borrow().session.is_closed() {
+                if matches!(keyval, gdk::Key::Return | gdk::Key::KP_Enter) {
+                    let callbacks = view.state.borrow().callbacks.clone();
+                    (callbacks.reconnect)();
                 }
                 return glib::Propagation::Stop;
             }

@@ -356,6 +356,11 @@ impl Session {
         recorder.as_mut().and_then(|r| r.mark(None).ok())
     }
 
+    /// The session has ended: closed by veetee, or the connection dropped.
+    pub fn is_closed(&self) -> bool {
+        self.shared.closed.load(Ordering::Acquire)
+    }
+
     pub fn close(&self) {
         if let Some(r) = self
             .shared

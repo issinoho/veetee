@@ -8,6 +8,12 @@ Before 1.0 the minor version followed the project milestones (0.3 = M3). The for
 
 ## [Unreleased]
 
+- **Return reconnects a session whose connection has closed.** When the last session's Telnet,
+  SSH, LAT or serial connection drops, the screen stays, as before, and pressing Return (or keypad
+  Enter) opens the same connection again with the session's saved Set-Up. The new session takes
+  the old one's place once it connects. If it fails, the old screen stays and a message gives the
+  reason. Other keys on a closed session do nothing.
+
 ## [1.9.1] - 2026-10-10
 
 **Fixes for Windows**: SSH sessions get the host's output as sent, and the numeric keypad works
