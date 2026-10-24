@@ -8,6 +8,11 @@ Before 1.0 the minor version followed the project milestones (0.3 = M3). The for
 
 ## [Unreleased]
 
+- **An X display needs its colon.** `--display`, a saved connection's `display` and the
+  Connections window now refuse a display without one, such as `2` for `:2`. OpenSSH found no
+  `xauth` cookie for such a name, forwarded with fake authentication data, and then could not
+  reach the display at all, so clients on the host failed with "Could not find ':' in DISPLAY".
+
 ## [1.11.0] - 2026-10-24
 
 **X11 forwarding over SSH**, from the command line or a saved connection.

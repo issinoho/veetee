@@ -44,6 +44,16 @@ impl std::str::FromStr for X11 {
     }
 }
 
+/// Whether `display` reads as an X display name, `[host]:display[.screen]`,
+/// such as `:0` or `server:10.0`. Without the colon, `ssh` finds no `xauth`
+/// cookie for it and forwards with fake authentication data that no X server
+/// with access control accepts.
+pub fn is_x_display(display: &str) -> bool {
+    display
+        .rsplit_once(':')
+        .is_some_and(|(_, number)| number.starts_with(|c: char| c.is_ascii_digit()))
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct SshConfig {
     /// `[user@]host`, or a `Host` alias from `~/.ssh/config`.
@@ -190,5 +200,15 @@ mod tests {
         assert_eq!(c.args(), ["-tt", "-Y", "--", "user@server"]);
         assert_eq!("trusted".parse(), Ok(X11::Trusted));
         assert!("yes".parse::<X11>().is_err());
+    }
+
+    #[test]
+    fn an_x_display_has_a_colon_and_a_number() {
+        for good in [":0", ":2", ":10.0", "localhost:10", "server.host.com:0.1"] {
+            assert!(is_x_display(good), "{good}");
+        }
+        for bad in ["2", "", ":", "host", "host:x"] {
+            assert!(!is_x_display(bad), "{bad}");
+        }
     }
 }

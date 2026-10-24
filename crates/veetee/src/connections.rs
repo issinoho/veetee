@@ -741,6 +741,7 @@ fn editor(
                 row.grab_focus();
                 toasts.add_toast(adw::Toast::new(msg));
             };
+            display.remove_css_class("error");
             for row in [&name, &host, &command, &device] {
                 row.remove_css_class("error");
             }
@@ -767,6 +768,12 @@ fn editor(
                         }
                     } else {
                         let d = display.text().trim().to_string();
+                        if !d.is_empty() && !vt_transport::ssh::is_x_display(&d) {
+                            return problem(
+                                display.upcast_ref(),
+                                "An X display looks like :0 (the colon matters)",
+                            );
+                        }
                         Connection::Ssh(SshConfig {
                             destination: h,
                             port: (port_value != 0).then_some(port_value),

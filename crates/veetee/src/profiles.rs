@@ -187,7 +187,15 @@ impl Entry {
                     Some(x) => x.parse().map_err(context)?,
                     None => X11::default(),
                 },
-                display: self.display.clone().filter(|d| !d.trim().is_empty()),
+                display: match self.display.as_deref().map(str::trim) {
+                    None | Some("") => None,
+                    Some(d) if vt_transport::ssh::is_x_display(d) => Some(d.to_string()),
+                    Some(d) => {
+                        return Err(context(format!(
+                            "display: an X display such as :0, not {d:?}"
+                        )));
+                    }
+                },
             }),
             "lat" => Connection::Lat {
                 interface: self.interface.clone().filter(|i| !i.trim().is_empty()),

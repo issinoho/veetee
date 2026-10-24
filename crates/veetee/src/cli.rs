@@ -319,8 +319,8 @@ pub fn parse_args_with(
             }
             "--display" => {
                 let v = value()?;
-                if v.trim().is_empty() {
-                    return Err("--display needs a display, e.g. :2".into());
+                if !ssh::is_x_display(v.trim()) {
+                    return Err(format!("--display: an X display such as :0, not {v:?}"));
                 }
                 display = Some(v.trim().to_string());
                 None
@@ -1140,6 +1140,7 @@ mod tests {
         assert!(matches!(o.connection, Connection::Ssh(s) if s.x11 == X11::Trusted));
         assert!(parse(&["--telnet", "vms1", "-X"]).is_err());
         assert!(parse(&["--ssh", "server", "--display", ""]).is_err());
+        assert!(parse(&["--ssh", "server", "--display", "2"]).is_err());
     }
 
     #[test]
