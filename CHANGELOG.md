@@ -8,6 +8,10 @@ Before 1.0 the minor version followed the project milestones (0.3 = M3). The for
 
 ## [Unreleased]
 
+## [1.11.1] - 2026-10-24
+
+**X displays need their colon**: a display such as `2` is refused instead of failing on the host.
+
 - **An X display needs its colon.** `--display`, a saved connection's `display` and the
   Connections window now refuse a display without one, such as `2` for `:2`. OpenSSH found no
   `xauth` cookie for such a name, forwarded with fake authentication data, and then could not
@@ -924,7 +928,8 @@ The first release: VT100 through VT420 emulation with local, Telnet, SSH and ser
   `cargo deny` licence checks and parser fuzzing.
 - `cargo xtask dist` builds the release tarball and Debian package.
 
-[Unreleased]: https://github.com/issinoho/veetee/compare/v1.11.0...HEAD
+[Unreleased]: https://github.com/issinoho/veetee/compare/v1.11.1...HEAD
+[1.11.1]: https://github.com/issinoho/veetee/compare/v1.11.0...v1.11.1
 [1.11.0]: https://github.com/issinoho/veetee/compare/v1.10.0...v1.11.0
 [1.10.0]: https://github.com/issinoho/veetee/compare/v1.9.1...v1.10.0
 [1.9.1]: https://github.com/issinoho/veetee/compare/v1.9.0...v1.9.1

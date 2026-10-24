@@ -67,6 +67,11 @@
   </supports>
   <content_rating type="oars-1.1"/>
   <releases>
+    <release version="1.11.1" date="2026-10-24">
+      <description>
+        <p>An X display for SSH forwarding must be written with its colon, such as :2; a display without one is refused instead of failing on the host.</p>
+      </description>
+    </release>
     <release version="1.11.0" date="2026-10-24">
       <description>
         <p>SSH connections can forward X11, as ssh -X and ssh -Y do, to a chosen X display, from the command line or a saved connection.</p>

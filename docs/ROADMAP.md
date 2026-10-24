@@ -5,7 +5,7 @@ The working roadmap: what is done, what 1.0 ships with, and what is parked. The 
 every control function are in [compat-matrix.md](compat-matrix.md), and released changes in
 [CHANGELOG.md](../CHANGELOG.md).
 
-Latest release: **1.11.0** (24 October 2026); 1.0.0 was released on 17 September 2026 (see
+Latest release: **1.11.1** (24 October 2026); 1.0.0 was released on 17 September 2026 (see
 [Since 1.0](#since-10)). From 1.0 the version follows Semantic Versioning:
 a breaking change to the crates' public API or to saved settings takes the major, new terminal
 behaviour takes the minor, fixes take the patch. Before 1.0 the minor version followed the
@@ -311,6 +311,9 @@ takes the dead one's place once it connects.
 **1.11.0** (24 October 2026): **X11 forwarding over SSH**. `-X`, `-Y` and `--display` do what
 `ssh -X`, `ssh -Y` and `DISPLAY=` do, and saved SSH connections and the Connections dialog keep
 them.
+
+**1.11.1** (24 October 2026): an X display must have its colon (`:2`, not `2`); without it
+OpenSSH could not reach the display and the host's X clients failed.
 
 ## After 1.0
 
