@@ -122,7 +122,9 @@ options work with `--telnet` as well, where they set up a terminal server's line
 which has never met real hardware, so [docs/rfc2217-testing.md](docs/rfc2217-testing.md) asks
 anyone with a terminal server to try it.
 SSH runs the system `ssh -tt`, so keys, agents, `ProxyJump` and `known_hosts` behave exactly as in
-a shell, with `TERM` set to the emulated model. LAT opens a session on an OpenVMS node over raw
+a shell, with `TERM` set to the emulated model. `-X` (`--x11`) or `-Y` (`--x11-trusted`) forwards
+X11, and `--display :2` picks the display, so `veetee --display :2 --ssh user@server -X` does what
+`DISPLAY=:2 ssh -X user@server` does; saved SSH connections keep both. LAT opens a session on an OpenVMS node over raw
 Ethernet, on Linux; see below. Network and serial sessions keep their window open when the
 connection closes, so the final screen can still be read and copied.
 

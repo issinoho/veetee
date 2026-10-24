@@ -106,7 +106,7 @@ fn parse(args: &[String]) -> Result<Command, String> {
             }
             "--ssh" => Some(Connection::Ssh(SshConfig {
                 destination: value()?,
-                port: None,
+                ..SshConfig::default()
             })),
             "--serial" => Some(Connection::Serial(SerialConfig::new(value()?))),
             "-b" | "-d" | "-p" | "-s" | "-f" => {

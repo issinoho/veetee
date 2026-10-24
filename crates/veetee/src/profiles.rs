@@ -10,7 +10,7 @@ use gtk::glib;
 use serde::{Deserialize, Serialize};
 use vt_core::{Config, Model};
 use vt_transport::serial::{FlowControl, Parity, SerialConfig};
-use vt_transport::ssh::SshConfig;
+use vt_transport::ssh::{SshConfig, X11};
 use vt_transport::telnet::ComPort;
 
 use crate::cli::{self, Connection, Options};
@@ -107,6 +107,12 @@ struct Entry {
     port: Option<u16>,
     #[serde(skip_serializing_if = "Option::is_none")]
     telnet_binary: Option<bool>,
+    /// SSH: X11 forwarding, on (ssh -X) or trusted (ssh -Y), and the display
+    /// it forwards to.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    x11: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    display: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     device: Option<String>,
     /// LAT: the interface to speak on, when one was chosen, and the service
@@ -177,6 +183,11 @@ impl Entry {
             "ssh" => Connection::Ssh(SshConfig {
                 destination: need(&self.host, "a host")?,
                 port: self.port,
+                x11: match &self.x11 {
+                    Some(x) => x.parse().map_err(context)?,
+                    None => X11::default(),
+                },
+                display: self.display.clone().filter(|d| !d.trim().is_empty()),
             }),
             "lat" => Connection::Lat {
                 interface: self.interface.clone().filter(|i| !i.trim().is_empty()),
@@ -272,6 +283,8 @@ impl Entry {
                 e.connection = "ssh".into();
                 e.host = Some(s.destination.clone());
                 e.port = s.port;
+                e.x11 = s.x11.name().map(String::from);
+                e.display = s.display.clone();
             }
             Connection::Lat {
                 interface,
@@ -489,6 +502,8 @@ name = "alpha"
 connection = "ssh"
 host = "system@alpha"
 port = 2222
+x11 = "trusted"
+display = ":2"
 log = "~/logs/alpha-%Y%m%d.log"
 log-timestamps = true
 
@@ -509,6 +524,10 @@ service = "TERMINALS"
         assert_eq!(p[1].summary(), "VT420 · /dev/ttyUSB0 19200 7E1");
         assert_eq!(p[1].sessions, 2);
         assert_eq!(p[2].summary(), "VT420 · ssh system@alpha:2222");
+        assert!(matches!(
+            &p[2].connection,
+            Connection::Ssh(s) if s.x11 == X11::Trusted && s.display.as_deref() == Some(":2")
+        ));
         assert_eq!(p[3].summary(), "VT420 · lat MYI64/TERMINALS");
         assert_eq!(
             p[3].connection,
@@ -540,6 +559,10 @@ service = "TERMINALS"
     fn mistakes_are_reported() {
         assert!(parse("[[profile]]\nname = \"x\"\nconnection = \"lat\"\n").is_err());
         assert!(parse("[[profile]]\nname = \"x\"\nconnection = \"telnet\"\n").is_err());
+        assert!(
+            parse("[[profile]]\nname = \"x\"\nconnection = \"ssh\"\nhost = \"a\"\nx11 = \"yes\"\n")
+                .is_err()
+        );
         assert!(
             parse("[[profile]]\nname = \"x\"\nconnection = \"shell\"\nmodel = \"vt999\"\n")
                 .is_err()

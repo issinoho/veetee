@@ -21,7 +21,12 @@ pub fn in_flatpak() -> bool {
 /// A command for `program`. Inside Flatpak, programs such as the user's
 /// shell and OpenSSH run on the host through `flatpak-spawn --host`, which
 /// passes the PTY on and makes it their controlling terminal.
-fn host_command<S: AsRef<OsStr>>(program: &str, args: &[S], term: &str) -> Command {
+fn host_command<S: AsRef<OsStr>>(
+    program: &str,
+    args: &[S],
+    term: &str,
+    env: &[(&str, &str)],
+) -> Command {
     if !in_flatpak() {
         let mut cmd = Command::new(program);
         cmd.args(args);
@@ -31,6 +36,11 @@ fn host_command<S: AsRef<OsStr>>(program: &str, args: &[S], term: &str) -> Comma
     cmd.arg("--host")
         .arg("--watch-bus")
         .arg(format!("--env=TERM={term}"));
+    // The host's program gets the host session's environment, not the
+    // sandbox's, so anything set for it has to be passed across.
+    for (key, value) in env {
+        cmd.arg(format!("--env={key}={value}"));
+    }
     if let Ok(dir) = std::env::current_dir() {
         cmd.arg(format!("--directory={}", dir.display()));
     }
@@ -56,6 +66,18 @@ impl Pty {
         cols: u16,
         term: &str,
     ) -> io::Result<Pty> {
+        Pty::spawn_with_env(program, args, rows, cols, term, &[])
+    }
+
+    /// Spawns `program` as `spawn` does, with `env` added to its environment.
+    pub fn spawn_with_env<S: AsRef<OsStr>>(
+        program: &str,
+        args: &[S],
+        rows: u16,
+        cols: u16,
+        term: &str,
+        env: &[(&str, &str)],
+    ) -> io::Result<Pty> {
         let master = openpt(OpenptFlags::RDWR | OpenptFlags::NOCTTY | OpenptFlags::CLOEXEC)?;
         grantpt(&master)?;
         unlockpt(&master)?;
@@ -64,8 +86,9 @@ impl Pty {
         tcsetwinsize(&slave, winsize(rows, cols))?;
 
         let flatpak = in_flatpak();
-        let mut cmd = host_command(program, args, term);
-        cmd.env("TERM", term)
+        let mut cmd = host_command(program, args, term, env);
+        cmd.envs(env.iter().copied())
+            .env("TERM", term)
             .stdin(Stdio::from(slave.try_clone()?))
             .stdout(Stdio::from(slave.try_clone()?))
             .stderr(Stdio::from(slave));
@@ -220,5 +243,29 @@ mod tests {
             }
         }
         assert_eq!(String::from_utf8_lossy(&out), "30 100\r\nvt420\r\n");
+    }
+
+    #[test]
+    fn child_gets_the_extra_environment() {
+        let mut pty = Pty::spawn_with_env(
+            "sh",
+            &["-c", "echo \"$DISPLAY\""],
+            24,
+            80,
+            "vt420",
+            &[("DISPLAY", ":2")],
+        )
+        .expect("spawn");
+        let mut out = Vec::new();
+        let mut buf = [0u8; 256];
+        loop {
+            match pty.read_timeout(&mut buf, Duration::from_secs(5)) {
+                Ok(0) => panic!("timed out; got {:?}", String::from_utf8_lossy(&out)),
+                Ok(n) => out.extend_from_slice(&buf[..n]),
+                Err(e) if e.kind() == io::ErrorKind::UnexpectedEof => break,
+                Err(e) => panic!("{e}"),
+            }
+        }
+        assert_eq!(String::from_utf8_lossy(&out), ":2\r\n");
     }
 }

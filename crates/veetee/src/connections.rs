@@ -12,7 +12,7 @@ use adw::prelude::*;
 use gtk::glib;
 use vt_core::Model;
 use vt_transport::serial::{FlowControl, Parity, SerialConfig};
-use vt_transport::ssh::SshConfig;
+use vt_transport::ssh::{SshConfig, X11};
 
 use crate::cli::{self, Connection};
 use crate::profiles::{self, Profile};
@@ -34,6 +34,11 @@ const KINDS: [&str; 6] = [
     "LAT",
     "Local shell",
     "Command",
+];
+const X11_CHOICES: [(X11, &str); 3] = [
+    (X11::AsConfigured, "As ~/.ssh/config says"),
+    (X11::On, "On (ssh -X)"),
+    (X11::Trusted, "Trusted (ssh -Y)"),
 ];
 const PHOSPHORS: [(&str, &str); 3] = [
     ("white", "White (P4)"),
@@ -453,6 +458,11 @@ fn editor(
     let port = adw::SpinRow::with_range(0.0, 65535.0, 1.0);
     port.set_title("Port");
     port.set_subtitle("0 uses the standard port");
+    let x11 = combo("X11 forwarding", &X11_CHOICES.map(|x| x.1));
+    x11.set_subtitle("Shows the host's X clients on a display here");
+    let display = adw::EntryRow::builder()
+        .title("X display (empty uses $DISPLAY)")
+        .build();
     let command = adw::EntryRow::builder().title("Command").build();
     let device = adw::EntryRow::builder().title("Device").build();
     // What is up now, so nobody has to leave the window to run `ip addr`.
@@ -564,6 +574,8 @@ fn editor(
             kind.set_selected(1);
             host.set_text(&s.destination);
             port.set_value(s.port.map_or(0.0, f64::from));
+            x11.set_selected(position(X11_CHOICES.map(|x| x.0), s.x11));
+            display.set_text(s.display.as_deref().unwrap_or(""));
         }
         Connection::Serial(s) => {
             kind.set_selected(2);
@@ -602,6 +614,8 @@ fn editor(
         kind.upcast_ref(),
         host.upcast_ref(),
         port.upcast_ref(),
+        x11.upcast_ref(),
+        display.upcast_ref(),
         command.upcast_ref(),
         device.upcast_ref(),
         interface.upcast_ref(),
@@ -642,8 +656,11 @@ fn editor(
             line_group.clone(),
         );
         let (interface, service) = (interface.clone(), service.clone());
+        let (x11, display) = (x11.clone(), display.clone());
         let browse = browse.clone();
         move |kind: u32| {
+            x11.set_visible(kind == 1);
+            display.set_visible(kind == 1);
             browse.set_visible(kind == 3 && cfg!(target_os = "linux"));
             // LAT names a node rather than a host, and there is no port: it
             // is not IP at all.
@@ -749,9 +766,12 @@ fn editor(
                             com_port: keep_com_port,
                         }
                     } else {
+                        let d = display.text().trim().to_string();
                         Connection::Ssh(SshConfig {
                             destination: h,
                             port: (port_value != 0).then_some(port_value),
+                            x11: X11_CHOICES[x11.selected() as usize % X11_CHOICES.len()].0,
+                            display: (!d.is_empty()).then_some(d),
                         })
                     }
                 }

@@ -6,7 +6,7 @@ use vt_core::{Config, Model};
 use vt_transport::Transport;
 use vt_transport::pty::Pty;
 use vt_transport::serial::{Line, Serial, SerialConfig};
-use vt_transport::ssh::{self, SshConfig};
+use vt_transport::ssh::{self, SshConfig, X11};
 use vt_transport::telnet::{ComPort, Telnet, TelnetConfig};
 
 pub const USAGE: &str = "\
@@ -25,6 +25,9 @@ connections (default: the saved connection marked as the default, else your logi
 options:
   --model MODEL          vt100 vt102 vt220 vt320 vt420 (default) vt510 vt520 vt525
   --port PORT            TCP port for --telnet or --ssh
+  -X, --x11              forward X11 over --ssh, as ssh -X does
+  -Y, --x11-trusted      forward X11 over --ssh as trusted clients, as ssh -Y does
+  --display DISPLAY      the X display --ssh forwards to, e.g. :2 (default: $DISPLAY)
   --interface NAME       the interface --lat speaks on; needed only where more
                          than one Ethernet interface is up
   --service NAME         the LAT service to ask for (default: the node's own name)
@@ -240,6 +243,8 @@ pub fn parse_args_with(
     let mut chosen = 0;
     let mut record_keys = false;
     let mut telnet_binary = false;
+    let mut x11: Option<X11> = None;
+    let mut display: Option<String> = None;
     let (mut log_timestamps, mut log_raw) = (false, false);
     let mut args = rest.into_iter().peekable();
     while let Some(arg) = args.next() {
@@ -302,6 +307,22 @@ pub fn parse_args_with(
             }
             "--telnet-binary" => {
                 telnet_binary = true;
+                None
+            }
+            "-X" | "--x11" => {
+                x11 = Some(X11::On);
+                None
+            }
+            "-Y" | "--x11-trusted" => {
+                x11 = Some(X11::Trusted);
+                None
+            }
+            "--display" => {
+                let v = value()?;
+                if v.trim().is_empty() {
+                    return Err("--display needs a display, e.g. :2".into());
+                }
+                display = Some(v.trim().to_string());
                 None
             }
             "--port" => {
@@ -394,6 +415,20 @@ pub fn parse_args_with(
             Connection::Telnet { port, .. } => *port = p,
             Connection::Ssh(s) => s.port = Some(p),
             _ => return Err("--port applies to --telnet and --ssh".into()),
+        }
+    }
+
+    if x11.is_some() || display.is_some() {
+        match &mut options.connection {
+            Connection::Ssh(s) => {
+                if let Some(x) = x11 {
+                    s.x11 = x;
+                }
+                if display.is_some() {
+                    s.display = display;
+                }
+            }
+            _ => return Err("--x11, --x11-trusted and --display apply to --ssh".into()),
         }
     }
 
@@ -493,7 +528,11 @@ fn ssh(spec: &str) -> Result<Connection, String> {
     if destination.is_empty() || destination.starts_with('-') {
         return Err(format!("not an SSH destination: {spec:?}"));
     }
-    Ok(Connection::Ssh(SshConfig { destination, port }))
+    Ok(Connection::Ssh(SshConfig {
+        destination,
+        port,
+        ..SshConfig::default()
+    }))
 }
 
 pub fn parse_model(name: &str) -> Option<Model> {
@@ -1078,10 +1117,29 @@ mod tests {
             o.connection,
             Connection::Ssh(SshConfig {
                 destination: "system@vms1".into(),
-                port: Some(2222)
+                port: Some(2222),
+                ..SshConfig::default()
             })
         );
         assert!(parse(&["--ssh", "-oProxyCommand=x"]).is_err());
+    }
+
+    #[test]
+    fn x11_forwarding_and_the_display_go_with_ssh() {
+        let o = parse(&["--display", ":2", "--ssh", "user@server.host.com", "-X"]).unwrap();
+        assert_eq!(
+            o.connection,
+            Connection::Ssh(SshConfig {
+                destination: "user@server.host.com".into(),
+                port: None,
+                x11: X11::On,
+                display: Some(":2".into()),
+            })
+        );
+        let o = parse(&["--ssh", "server", "--x11-trusted"]).unwrap();
+        assert!(matches!(o.connection, Connection::Ssh(s) if s.x11 == X11::Trusted));
+        assert!(parse(&["--telnet", "vms1", "-X"]).is_err());
+        assert!(parse(&["--ssh", "server", "--display", ""]).is_err());
     }
 
     #[test]

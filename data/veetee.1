@@ -108,6 +108,32 @@ The TCP port for
 or
 .BR \-\-ssh .
 .TP
+.BR \-X ", " \-\-x11
+Forward X11 over
+.BR \-\-ssh ,
+as
+.BR "ssh \-X" :
+X clients started on the host show on a display here.
+Without it,
+.B ForwardX11
+in
+.I ~/.ssh/config
+decides.
+.TP
+.BR \-Y ", " \-\-x11\-trusted
+Forward X11 over
+.B \-\-ssh
+with the clients trusted as local ones, as
+.BR "ssh \-Y" .
+.TP
+.BI \-\-display " DISPLAY"
+The X display that
+.B \-\-ssh
+forwards to, such as
+.BR :2 ;
+by default, veetee's own
+.BR DISPLAY .
+.TP
 .BI \-\-interface " NAME"
 The Ethernet interface
 .B \-\-lat

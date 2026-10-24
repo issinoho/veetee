@@ -69,7 +69,7 @@ impl Pty {
         cols: u16,
         term: &str,
     ) -> io::Result<Pty> {
-        Pty::open(program, args, rows, cols, term, false)
+        Pty::open(program, args, rows, cols, term, &[], false)
     }
 
     /// Spawns `program` as `spawn` does, but with pipes for its standard
@@ -88,7 +88,20 @@ impl Pty {
         cols: u16,
         term: &str,
     ) -> io::Result<Pty> {
-        Pty::open(program, args, rows, cols, term, true)
+        Pty::open(program, args, rows, cols, term, &[], true)
+    }
+
+    /// Spawns `program` as `spawn_piped` does, with `env` added to its
+    /// environment.
+    pub fn spawn_piped_with_env<S: AsRef<OsStr>>(
+        program: &str,
+        args: &[S],
+        rows: u16,
+        cols: u16,
+        term: &str,
+        env: &[(&str, &str)],
+    ) -> io::Result<Pty> {
+        Pty::open(program, args, rows, cols, term, env, true)
     }
 
     fn open<S: AsRef<OsStr>>(
@@ -97,6 +110,7 @@ impl Pty {
         rows: u16,
         cols: u16,
         term: &str,
+        env: &[(&str, &str)],
         piped: bool,
     ) -> io::Result<Pty> {
         let (input_read, input_write) = pipe()?;
@@ -128,7 +142,7 @@ impl Pty {
         let child_ends = standard.as_ref().map(|[stdin, stdout, stderr]| {
             [&stdin.0, &stdout.1, &stderr.1].map(|h| h.as_raw_handle() as HANDLE)
         });
-        let process = match start(program, args, term, hpc, child_ends) {
+        let process = match start(program, args, term, env, hpc, child_ends) {
             Ok(p) => Arc::new(p),
             Err(e) => {
                 console.close();
@@ -393,11 +407,12 @@ fn start<S: AsRef<OsStr>>(
     program: &str,
     args: &[S],
     term: &str,
+    env: &[(&str, &str)],
     hpc: HPCON,
     standard: Option<[HANDLE; 3]>,
 ) -> io::Result<OwnedHandle> {
     let mut command_line = wide(&command_line(program, args));
-    let environment = environment(term);
+    let environment = environment(term, env);
 
     let attributes = if standard.is_some() { 2 } else { 1 };
     let mut list_size = 0usize;
@@ -543,13 +558,16 @@ fn quote(arg: &OsStr, out: &mut std::ffi::OsString) {
     out.push(quoted);
 }
 
-/// This process's environment with `TERM` replaced, as a sorted
-/// UTF-16 environment block.
-fn environment(term: &str) -> Vec<u16> {
-    let mut vars: Vec<(std::ffi::OsString, std::ffi::OsString)> = std::env::vars_os()
-        .filter(|(k, _)| !k.eq_ignore_ascii_case("TERM"))
-        .collect();
+/// This process's environment with `TERM` and the variables in `env`
+/// replaced, as a sorted UTF-16 environment block.
+fn environment(term: &str, env: &[(&str, &str)]) -> Vec<u16> {
+    let replaced = |k: &std::ffi::OsStr| {
+        k.eq_ignore_ascii_case("TERM") || env.iter().any(|(e, _)| k.eq_ignore_ascii_case(e))
+    };
+    let mut vars: Vec<(std::ffi::OsString, std::ffi::OsString)> =
+        std::env::vars_os().filter(|(k, _)| !replaced(k)).collect();
     vars.push(("TERM".into(), term.into()));
+    vars.extend(env.iter().map(|(k, v)| ((*k).into(), (*v).into())));
     vars.sort_by_key(|(k, _)| k.to_string_lossy().to_uppercase());
     let mut block = Vec::new();
     for (k, v) in vars {

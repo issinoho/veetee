@@ -8,6 +8,13 @@ Before 1.0 the minor version followed the project milestones (0.3 = M3). The for
 
 ## [Unreleased]
 
+- **X11 forwarding over SSH.** `-X` (`--x11`) and `-Y` (`--x11-trusted`) ask OpenSSH to forward
+  X11, as `ssh -X` and `ssh -Y` do, and `--display DISPLAY` sets the display the clients appear
+  on, so `veetee --display :2 --ssh user@server -X` matches `DISPLAY=:2 ssh -X user@server`.
+  Saved SSH connections keep both (`x11 = "on"` or `"trusted"`, `display = ":2"`), and the
+  Connections window has fields for them. Without either, `ForwardX11` in `~/.ssh/config` still
+  decides, as before. In the Flatpak the display is passed to the host's `ssh`.
+
 ## [1.10.0] - 2026-10-24
 
 **Return reconnects**: a session whose connection has closed connects again with one key.
