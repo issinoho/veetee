@@ -36,6 +36,13 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
+      # invisible-island.net refuses GitHub's runners; keep the pinned
+      # tarball between runs (the xtask checks its SHA-256 before use).
+      - uses: actions/cache@v4
+        with:
+          path: target/conformance/vttest-*.tgz
+          key: vttest-${{ hashFiles('xtask/src/main.rs') }}
+          restore-keys: vttest-
       - run: cargo xtask vttest
 
   esctest:

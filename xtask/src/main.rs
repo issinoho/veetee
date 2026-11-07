@@ -268,6 +268,56 @@ fn read_dir_sorted(dir: &Path) -> Result<Vec<PathBuf>> {
     Ok(entries)
 }
 
+/// Where vttest's tarball is fetched from, in order. invisible-island.net
+/// refuses GitHub's runners (HTTP 403, November 2026); Debian's orig tarball
+/// for the same release is the same file, which the checksum proves.
+fn vttest_urls() -> [String; 2] {
+    [
+        format!("https://invisible-island.net/archives/vttest/vttest-{VTTEST_VERSION}.tgz"),
+        format!(
+            "https://deb.debian.org/debian/pool/main/v/vttest/vttest_2.7+{VTTEST_VERSION}.orig.tar.gz"
+        ),
+    ]
+}
+
+/// Fetches vttest's tarball to `tarball` from the first source that gives
+/// the pinned file.
+fn fetch_vttest(tarball: &Path) -> Result<()> {
+    let mut problems = Vec::new();
+    for url in vttest_urls() {
+        eprintln!("fetching {url}");
+        let fetched = run(Command::new("curl")
+            .args(["-fsSL", "-o"])
+            .arg(tarball)
+            .arg(&url));
+        let problem = match fetched {
+            Err(e) => e,
+            Ok(()) => match sha256(tarball) {
+                Some(digest) if digest == VTTEST_SHA256 => return Ok(()),
+                digest => format!("checksum mismatch for {url}: got {digest:?}"),
+            },
+        };
+        eprintln!("{problem}");
+        let _ = fs::remove_file(tarball);
+        problems.push(problem);
+    }
+    Err(problems.join("; "))
+}
+
+/// The SHA-256 of `file`, or `None` when it cannot be read.
+fn sha256(file: &Path) -> Option<String> {
+    if !file.exists() {
+        return None;
+    }
+    let output = Command::new("sha256sum").arg(file).output().ok()?;
+    // coreutils escapes a backslash in the file name by prefixing the whole
+    // line with one, which every Windows path triggers, so take the first
+    // field rather than matching the line.
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let digest = stdout.split_ascii_whitespace().next()?;
+    Some(digest.trim_start_matches('\\').to_string())
+}
+
 /// Downloads, verifies and builds vttest under target/conformance. Returns the binary path.
 fn build_vttest() -> Result<PathBuf> {
     let work = target().join("conformance");
@@ -278,29 +328,9 @@ fn build_vttest() -> Result<PathBuf> {
     }
     fs::create_dir_all(&work).map_err(|e| e.to_string())?;
     let tarball = work.join(format!("vttest-{VTTEST_VERSION}.tgz"));
-    let url = format!("https://invisible-island.net/archives/vttest/vttest-{VTTEST_VERSION}.tgz");
-    eprintln!("fetching {url}");
-    run(Command::new("curl")
-        .args(["-fsSL", "-o"])
-        .arg(&tarball)
-        .arg(&url))?;
-
-    let output = Command::new("sha256sum")
-        .arg(&tarball)
-        .output()
-        .map_err(|e| e.to_string())?;
-    // coreutils escapes a backslash in the file name by prefixing the whole
-    // line with one, which every Windows path triggers, so take the first
-    // field rather than matching the line.
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    let digest = stdout
-        .split_ascii_whitespace()
-        .next()
-        .unwrap_or_default()
-        .trim_start_matches('\\');
-    if digest != VTTEST_SHA256 {
-        let _ = fs::remove_file(&tarball);
-        return Err(format!("checksum mismatch for {url}: got {digest:?}"));
+    // A tarball already here (such as CI's cache) is used when it checks out.
+    if sha256(&tarball).as_deref() != Some(VTTEST_SHA256) {
+        fetch_vttest(&tarball)?;
     }
 
     run(Command::new("tar")
