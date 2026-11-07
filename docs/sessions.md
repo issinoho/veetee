@@ -101,6 +101,11 @@ then carries its own connection: its title bar, the window title and subtitle, a
 settings, a log or print file's name, what happens when it drops, and Save As all follow the
 active session rather than the window's first. `--sessions N` still opens N to the window's own.
 
+The chooser also makes a new connection, without going through the Connections window first:
+*New Connection…* asks what kind (Telnet, SSH, serial line, LAT on Linux, local shell or command),
+then only that kind's details, with DEC's factory line settings for a serial line, and can save
+it as a connection on the way. A local shell opens at once.
+
 A new session asks where to connect (decision 3), from the saved connections or a new one, rather
 than logging in again to session 1's host. `--sessions N` still opens N to the window's connection.
 

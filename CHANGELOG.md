@@ -8,6 +8,12 @@ Before 1.0 the minor version followed the project milestones (0.3 = M3). The for
 
 ## [Unreleased]
 
+- **New Session makes new connections.** New Session offered only the window's own connection
+  and the saved ones, so somewhere new meant saving it in Connections first. Its first page now
+  starts with *New Connection…*, which asks what kind of connection, then only the details that
+  kind needs, and connects; *Save as a connection* keeps it for next time. The connection editor
+  and New Session share the same fields and checks.
+
 ## [1.11.1] - 2026-10-24
 
 **X displays need their colon**: a display such as `2` is refused instead of failing on the host.

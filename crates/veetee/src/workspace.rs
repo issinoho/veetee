@@ -467,8 +467,8 @@ impl Workspace {
         }
     }
 
-    /// New Session: asks where the session is to connect — the window's own
-    /// connection or a saved one — and opens it there.
+    /// New Session: asks where the session is to connect — a new connection,
+    /// the window's own or a saved one — and opens it there.
     pub fn new_session(self: &Rc<Self>) {
         let most = max_sessions(self.config.model);
         if self.panes.borrow().len() >= most {
@@ -479,9 +479,10 @@ impl Workspace {
         crate::connections::choose_session(
             &self.window,
             &self.options.connection.label(),
+            self.profile(),
             move |chosen| {
                 if let Some(ws) = weak.upgrade() {
-                    ws.open_session(chosen.map(|p| (p.connection, Some(p.name))));
+                    ws.open_session(chosen);
                 }
             },
         );
