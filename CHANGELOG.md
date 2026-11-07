@@ -8,6 +8,10 @@ Before 1.0 the minor version followed the project milestones (0.3 = M3). The for
 
 ## [Unreleased]
 
+## [1.12.0] - 2026-11-07
+
+**New connections from New Session**: a session can connect somewhere new without saving it first.
+
 - **New Session makes new connections.** New Session offered only the window's own connection
   and the saved ones, so somewhere new meant saving it in Connections first. Its first page now
   starts with *New Connection…*, which asks what kind of connection, then only the details that
@@ -934,7 +938,8 @@ The first release: VT100 through VT420 emulation with local, Telnet, SSH and ser
   `cargo deny` licence checks and parser fuzzing.
 - `cargo xtask dist` builds the release tarball and Debian package.
 
-[Unreleased]: https://github.com/issinoho/veetee/compare/v1.11.1...HEAD
+[Unreleased]: https://github.com/issinoho/veetee/compare/v1.12.0...HEAD
+[1.12.0]: https://github.com/issinoho/veetee/compare/v1.11.1...v1.12.0
 [1.11.1]: https://github.com/issinoho/veetee/compare/v1.11.0...v1.11.1
 [1.11.0]: https://github.com/issinoho/veetee/compare/v1.10.0...v1.11.0
 [1.10.0]: https://github.com/issinoho/veetee/compare/v1.9.1...v1.10.0
