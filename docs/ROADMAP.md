@@ -5,7 +5,7 @@ The working roadmap: what is done, what 1.0 ships with, and what is parked. The 
 every control function are in [compat-matrix.md](compat-matrix.md), and released changes in
 [CHANGELOG.md](../CHANGELOG.md).
 
-Latest release: **1.12.0** (7 November 2026); 1.0.0 was released on 17 September 2026 (see
+Latest release: **1.13.0** (8 November 2026); 1.0.0 was released on 17 September 2026 (see
 [Since 1.0](#since-10)). From 1.0 the version follows Semantic Versioning:
 a breaking change to the crates' public API or to saved settings takes the major, new terminal
 behaviour takes the minor, fixes take the patch. Before 1.0 the minor version followed the
@@ -317,6 +317,9 @@ OpenSSH could not reach the display and the host's X clients failed.
 
 **1.12.0** (7 November 2026): New Session makes new connections — the kind, then only its
 details, saved as a connection if wanted — instead of offering only saved ones.
+
+**1.13.0** (8 November 2026): Separate Sessions gives each session of a window a window of its
+own, still connected, with its screen and scrollback as they were.
 
 ## After 1.0
 

@@ -67,6 +67,11 @@
   </supports>
   <content_rating type="oars-1.1"/>
   <releases>
+    <release version="1.13.0" date="2026-11-08">
+      <description>
+        <p>Separate Sessions, in the window menu, gives each session of a window a window of its own, still connected, with its screen and scrollback as they were.</p>
+      </description>
+    </release>
     <release version="1.12.0" date="2026-11-07">
       <description>
         <p>New Session can make a new connection: it asks the kind of connection, then only the details that kind needs, and can save it as a connection on the way.</p>

@@ -8,6 +8,10 @@ Before 1.0 the minor version followed the project milestones (0.3 = M3). The for
 
 ## [Unreleased]
 
+## [1.13.0] - 2026-11-08
+
+**A window for each session**: Separate Sessions splits a window of sessions into one window each.
+
 - **Added: Separate Sessions**, in the window menu. A window with several sessions can now be
   split into a window per session: the active session keeps its window, and each other session
   moves into a new window of its own, still connected, with its screen and scrollback as they
@@ -946,7 +950,8 @@ The first release: VT100 through VT420 emulation with local, Telnet, SSH and ser
   `cargo deny` licence checks and parser fuzzing.
 - `cargo xtask dist` builds the release tarball and Debian package.
 
-[Unreleased]: https://github.com/issinoho/veetee/compare/v1.12.0...HEAD
+[Unreleased]: https://github.com/issinoho/veetee/compare/v1.13.0...HEAD
+[1.13.0]: https://github.com/issinoho/veetee/compare/v1.12.0...v1.13.0
 [1.12.0]: https://github.com/issinoho/veetee/compare/v1.11.1...v1.12.0
 [1.11.1]: https://github.com/issinoho/veetee/compare/v1.11.0...v1.11.1
 [1.11.0]: https://github.com/issinoho/veetee/compare/v1.10.0...v1.11.0
