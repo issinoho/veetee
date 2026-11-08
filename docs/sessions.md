@@ -40,6 +40,7 @@ and Operating Information (EK-VT520-IN, chapter 2).
 | Layout | The window split horizontally, both sessions shown, a title bar each (DECSWT names it) |
 | Switching | F4 moves the keyboard to the other session; DECES from the host does too |
 | Close Session | In the window menu; the other session takes the whole window |
+| Separate Sessions | In the window menu; the active session keeps the window and every other one moves to a window of its own, still connected. A desktop convenience, not a VT520 function |
 | Set-Up | Saved per model and session (`setup-vt520-session2.conf`) |
 | Session menu (VT500) | Session 3 and 4 dimmed; Pages per session and the rest stored or dimmed |
 | DECUS, DECSPMA, DSR ?85 | Stored and reported; inactive sessions always update |

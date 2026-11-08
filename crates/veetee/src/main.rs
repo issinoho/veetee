@@ -92,7 +92,15 @@ fn main() -> glib::ExitCode {
     app.run_with_args::<&str>(&[])
 }
 
-fn build_window(app: &adw::Application, config: Config, options: Options) {
+/// A window's frame: its header bar and menu, and the place for its
+/// sessions, not yet shown.
+struct Frame {
+    window: adw::ApplicationWindow,
+    title: adw::WindowTitle,
+    toasts: adw::ToastOverlay,
+}
+
+fn build_frame(app: &adw::Application, config: &Config, options: &Options) -> Frame {
     let connection = options.connection.label();
     let base_subtitle = format!("{} · {connection}", cli::model_name(config.model));
     let name = options.profile.clone().unwrap_or_else(|| "veetee".into());
@@ -119,6 +127,7 @@ fn build_window(app: &adw::Application, config: Config, options: Options) {
     session_section.append(Some("Set-Up"), Some("win.setup"));
     session_section.append(Some("New Session"), Some("win.new-session"));
     session_section.append(Some("Close Session"), Some("win.close-session"));
+    session_section.append(Some("Separate Sessions"), Some("win.separate-sessions"));
     session_section.append(Some("Find…"), Some("win.search"));
     session_section.append(Some("Mark Checkpoint"), Some("win.mark-checkpoint"));
     session_section.append(Some("Log to File…"), Some("win.log"));
@@ -142,12 +151,6 @@ fn build_window(app: &adw::Application, config: Config, options: Options) {
     );
 
     let toasts = adw::ToastOverlay::new();
-    let connecting = adw::StatusPage::builder()
-        .icon_name("network-transmit-receive-symbolic")
-        .title("Connecting")
-        .description(glib::markup_escape_text(&connection).as_str())
-        .build();
-    toasts.set_child(Some(&connecting));
     let toolbar = adw::ToolbarView::new();
     toolbar.add_top_bar(&header);
     toolbar.set_content(Some(&toasts));
@@ -160,6 +163,26 @@ fn build_window(app: &adw::Application, config: Config, options: Options) {
         .content(&toolbar)
         .build();
     add_window_actions(&window);
+    Frame {
+        window,
+        title,
+        toasts,
+    }
+}
+
+fn build_window(app: &adw::Application, config: Config, options: Options) {
+    let Frame {
+        window,
+        title,
+        toasts,
+    } = build_frame(app, &config, &options);
+    let connection = options.connection.label();
+    let connecting = adw::StatusPage::builder()
+        .icon_name("network-transmit-receive-symbolic")
+        .title("Connecting")
+        .description(glib::markup_escape_text(&connection).as_str())
+        .build();
+    toasts.set_child(Some(&connecting));
     window.present();
     capture_window_later(&window);
 
@@ -197,7 +220,7 @@ fn build_window(app: &adw::Application, config: Config, options: Options) {
         let phosphor = phosphor_named(&options.phosphor);
         let (first_connection, first_profile) =
             (options.connection.clone(), options.profile.clone());
-        let workspace = workspace::Workspace::new(&window, &title, &toasts, config, options);
+        let workspace = workspace::Workspace::new(&window, &title, &toasts, config, options, None);
         workspace.set_phosphor(phosphor);
         workspace.add_session(session, notices, first_connection, first_profile);
         workspace.open_more(workspace.sessions_to_open().saturating_sub(1));
@@ -207,6 +230,33 @@ fn build_window(app: &adw::Application, config: Config, options: Options) {
             gtk::prelude::ActionGroupExt::activate_action(&window, &action, None);
         }
     });
+}
+
+/// A window of its own, `size` big, for a session moved out of another by
+/// Separate Sessions; the caller puts the session in it. It shares the keymap
+/// of the window the session came from, which the session's keyboard uses.
+pub(crate) fn window_for_session(
+    app: &adw::Application,
+    config: Config,
+    options: Options,
+    keymap: view::SharedKeymap,
+    size: (i32, i32),
+) -> Rc<workspace::Workspace> {
+    let Frame {
+        window,
+        title,
+        toasts,
+    } = build_frame(app, &config, &options);
+    if size.0 > 0 && size.1 > 0 {
+        window.set_default_size(size.0, size.1);
+    }
+    let phosphor = phosphor_named(&options.phosphor);
+    let workspace =
+        workspace::Workspace::new(&window, &title, &toasts, config, options, Some(keymap));
+    workspace.set_phosphor(phosphor);
+    add_session_actions(&window, &workspace);
+    window.present();
+    workspace
 }
 
 /// Opens a saved connection in a new window.
@@ -308,6 +358,17 @@ fn add_session_actions(window: &adw::ApplicationWindow, workspace: &Rc<workspace
         }
     });
     window.add_action(&close_session);
+
+    let separate = gio::SimpleAction::new("separate-sessions", None);
+    separate.connect_activate({
+        let workspace = Rc::downgrade(workspace);
+        move |_, _| {
+            if let Some(ws) = workspace.upgrade() {
+                ws.separate_sessions();
+            }
+        }
+    });
+    window.add_action(&separate);
 
     let setup = gio::SimpleAction::new("setup", None);
     setup.connect_activate({

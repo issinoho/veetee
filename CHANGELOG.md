@@ -8,6 +8,14 @@ Before 1.0 the minor version followed the project milestones (0.3 = M3). The for
 
 ## [Unreleased]
 
+- **Added: Separate Sessions**, in the window menu. A window with several sessions can now be
+  split into a window per session: the active session keeps its window, and each other session
+  moves into a new window of its own, still connected, with its screen and scrollback as they
+  were. A moved session keeps its number, so Set-Up still saves to the slot its settings came
+  from. A session with a file transfer running stays where it is until the transfer ends. A
+  VT520 has no such function, since its sessions share one screen; on a desktop a window each
+  is often more useful.
+
 ## [1.12.0] - 2026-11-07
 
 **New connections from New Session**: a session can connect somewhere new without saving it first.

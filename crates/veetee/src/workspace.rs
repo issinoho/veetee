@@ -59,8 +59,30 @@ fn shown(open: &[u8], recent: &[u8], two_windows: bool) -> Vec<u8> {
     shown
 }
 
+/// Where a session's screen reports to: its window and its id there. A
+/// session moved to a window of its own (Separate Sessions) is pointed at the
+/// new one, so it keeps its connection and screen.
+#[derive(Clone)]
+struct Route(Rc<RefCell<(Weak<Workspace>, u64)>>);
+
+impl Route {
+    fn new(workspace: Weak<Workspace>, id: u64) -> Route {
+        Route(Rc::new(RefCell::new((workspace, id))))
+    }
+
+    fn get(&self) -> Option<(Rc<Workspace>, u64)> {
+        let (workspace, id) = &*self.0.borrow();
+        workspace.upgrade().map(|ws| (ws, *id))
+    }
+
+    fn point(&self, workspace: Weak<Workspace>, id: u64) {
+        *self.0.borrow_mut() = (workspace, id);
+    }
+}
+
 /// A bar above a session's screen while a file transfer has its line: what
 /// is going, how far it has got, and a way to stop it.
+#[derive(Clone)]
 struct TransferBar {
     bar: gtk::Box,
     label: gtk::Label,
@@ -138,6 +160,8 @@ struct Pane {
     unseen: Cell<bool>,
     /// Extra status such as "Hold Screen" or "Disconnected".
     status: RefCell<String>,
+    /// The window and id its screen reports to.
+    route: Route,
 }
 
 pub struct Workspace {
@@ -185,8 +209,13 @@ impl Workspace {
         toasts: &adw::ToastOverlay,
         config: Config,
         options: Options,
+        keymap: Option<SharedKeymap>,
     ) -> Rc<Workspace> {
-        let options_keymap = options.keymap.clone();
+        let keymap = keymap.unwrap_or_else(|| {
+            Rc::new(RefCell::new(crate::keymaps::load(
+                options.keymap.as_deref(),
+            )))
+        });
         let paned = gtk::Paned::builder()
             .orientation(gtk::Orientation::Vertical)
             .wide_handle(true)
@@ -243,9 +272,7 @@ impl Workspace {
             on_screen: RefCell::new(Vec::new()),
             blinking: Cell::new(false),
             blink_lit: Cell::new(true),
-            keymap: Rc::new(RefCell::new(crate::keymaps::load(
-                options_keymap.as_deref(),
-            ))),
+            keymap,
             closed_toast: RefCell::new(None),
         });
         let weak = Rc::downgrade(&workspace);
@@ -327,11 +354,11 @@ impl Workspace {
     ) {
         let id = self.next_id.get();
         self.next_id.set(id + 1);
-        let weak = Rc::downgrade(self);
+        let route = Route::new(Rc::downgrade(self), id);
         let on = |f: fn(&Rc<Workspace>, u64)| {
-            let weak: Weak<Workspace> = weak.clone();
+            let route = route.clone();
             move || {
-                if let Some(ws) = weak.upgrade() {
+                if let Some((ws, id)) = route.get() {
                     f(&ws, id);
                 }
             }
@@ -339,33 +366,33 @@ impl Workspace {
         let callbacks = Callbacks {
             session_number,
             notify: Box::new({
-                let weak = weak.clone();
+                let route = route.clone();
                 move |msg: &str| {
-                    if let Some(ws) = weak.upgrade() {
+                    if let Some((ws, _)) = route.get() {
                         ws.notify(msg);
                     }
                 }
             }),
             status: Box::new({
-                let weak = weak.clone();
+                let route = route.clone();
                 move |text: &str| {
-                    if let Some(ws) = weak.upgrade() {
+                    if let Some((ws, id)) = route.get() {
                         ws.set_status(id, text);
                     }
                 }
             }),
             title: Box::new({
-                let weak = weak.clone();
+                let route = route.clone();
                 move |name: &str| {
-                    if let Some(ws) = weak.upgrade() {
+                    if let Some((ws, id)) = route.get() {
                         ws.set_name(id, name);
                     }
                 }
             }),
             icon: Box::new({
-                let weak = weak.clone();
+                let route = route.clone();
                 move |name: &str| {
-                    if let Some(ws) = weak.upgrade() {
+                    if let Some((ws, id)) = route.get() {
                         ws.set_icon(id, name);
                     }
                 }
@@ -373,17 +400,17 @@ impl Workspace {
             output: Box::new(on(|ws, id| ws.output(id))),
             switch_session: Box::new(on(|ws, _| ws.switch_session())),
             split: Box::new({
-                let weak = weak.clone();
+                let route = route.clone();
                 move |op: Split| {
-                    if let Some(ws) = weak.upgrade() {
+                    if let Some((ws, _)) = route.get() {
                         ws.split(op);
                     }
                 }
             }),
             go_to_session: Box::new({
-                let weak = weak.clone();
+                let route = route.clone();
                 move |n: u8| {
-                    if let Some(ws) = weak.upgrade() {
+                    if let Some((ws, _)) = route.get() {
                         ws.go_to_session(n);
                     }
                 }
@@ -391,26 +418,26 @@ impl Workspace {
             activate: Box::new(on(|ws, id| ws.activate(id))),
             focused: Box::new(on(|ws, id| ws.focused(id))),
             exited: Box::new({
-                let weak = weak.clone();
+                let route = route.clone();
                 move |reason: Option<String>| {
-                    if let Some(ws) = weak.upgrade() {
+                    if let Some((ws, id)) = route.get() {
                         ws.exited(id, reason);
                     }
                 }
             }),
             reconnect: Box::new(on(|ws, id| ws.reconnect(id))),
             print: Box::new({
-                let weak = weak.clone();
+                let route = route.clone();
                 move |job: vt_core::PrintJob| {
-                    if let Some(ws) = weak.upgrade() {
+                    if let Some((ws, id)) = route.get() {
                         ws.print(id, job);
                     }
                 }
             }),
             line: Box::new({
-                let weak = weak.clone();
+                let route = route.clone();
                 move |line, error| {
-                    if let Some(ws) = weak.upgrade() {
+                    if let Some((ws, id)) = route.get() {
                         ws.line_set(id, line, error);
                     }
                 }
@@ -446,6 +473,7 @@ impl Workspace {
             icon: RefCell::new(String::new()),
             unseen: Cell::new(false),
             status: RefCell::new(String::new()),
+            route,
         });
         {
             let mut panes = self.panes.borrow_mut();
@@ -950,6 +978,112 @@ impl Workspace {
         let pane = self.panes.borrow()[index].clone();
         pane.view.session().close();
         self.remove_pane(index);
+    }
+
+    /// Separate Sessions: the active session keeps this window, and every
+    /// other session moves to a window of its own, still connected and with
+    /// its screen as it was. Not a VT520 function — its sessions share one
+    /// screen — but on a desktop a window each is often the better use of it.
+    ///
+    /// A moved session keeps its number, so Set-Up still saves to the slot
+    /// its settings came from. One with a file transfer running stays, as
+    /// the transfer's progress bar belongs to this window.
+    pub fn separate_sessions(self: &Rc<Self>) {
+        if self.panes.borrow().len() < 2 {
+            self.notify("Only one session is open");
+            return;
+        }
+        let Some(app) = self
+            .window
+            .application()
+            .and_then(|a| a.downcast::<adw::Application>().ok())
+        else {
+            return;
+        };
+        let active = self.active.get();
+        let (moving, staying): (Vec<Rc<Pane>>, Vec<Rc<Pane>>) = self
+            .panes
+            .borrow()
+            .iter()
+            .filter(|p| p.id != active)
+            .cloned()
+            .partition(|p| {
+                !p.view
+                    .session()
+                    .transfer()
+                    .is_some_and(|t| t.status == vt_kermit::Status::Running)
+            });
+        for pane in &staying {
+            self.notify(&format!(
+                "Session {} stays here until its file transfer ends",
+                pane.number
+            ));
+        }
+        if moving.is_empty() {
+            return;
+        }
+        self.panes
+            .borrow_mut()
+            .retain(|p| !moving.iter().any(|m| m.id == p.id));
+        self.recent
+            .borrow_mut()
+            .retain(|r| !moving.iter().any(|m| m.id == *r));
+        // Laid out again first, which takes the moving screens out of the
+        // split, so they are free to go into windows of their own.
+        self.activate_session(active);
+        let size = (self.window.width(), self.window.height());
+        for pane in moving {
+            let options = Options {
+                connection: pane.connection.clone(),
+                profile: pane.profile.clone(),
+                sessions: 1,
+                phosphor: self.phosphor(),
+                record: None,
+                log: None,
+                ..self.options.clone()
+            };
+            let workspace = crate::window_for_session(
+                &app,
+                self.config.clone(),
+                options,
+                self.keymap.clone(),
+                size,
+            );
+            workspace.adopt(&pane);
+        }
+    }
+
+    /// Takes in a session moved from another window (Separate Sessions):
+    /// its screen now reports here.
+    fn adopt(self: &Rc<Self>, from: &Pane) {
+        let id = self.next_id.get();
+        self.next_id.set(id + 1);
+        from.route.point(Rc::downgrade(self), id);
+        from.view.set_theme(self.theme.borrow().clone());
+        from.view
+            .set_visible_bell(self.appearance.get().visible_bell);
+        let pane = Rc::new(Pane {
+            id,
+            number: from.number,
+            connection: from.connection.clone(),
+            profile: from.profile.clone(),
+            label: RefCell::new(from.label.borrow().clone()),
+            view: from.view.clone(),
+            frame: from.frame.clone(),
+            header: from.header.clone(),
+            transfer: from.transfer.clone(),
+            name: RefCell::new(from.name.borrow().clone()),
+            icon: RefCell::new(from.icon.borrow().clone()),
+            unseen: Cell::new(false),
+            status: RefCell::new(from.status.borrow().clone()),
+            route: from.route.clone(),
+        });
+        {
+            let mut panes = self.panes.borrow_mut();
+            panes.push(pane);
+            panes.sort_by_key(|p| p.number);
+        }
+        self.activate_session(id);
     }
 
     /// Updates session headers and the window title for the active session.
@@ -1724,8 +1858,14 @@ impl Workspace {
         self.keymap.clone()
     }
 
+    /// The phosphor now, by the name the menu and `--phosphor` use.
     pub fn phosphor(&self) -> String {
-        self.options.phosphor.clone()
+        match self.phosphor.get() {
+            vt_render::Phosphor::White => "white",
+            vt_render::Phosphor::Green => "green",
+            vt_render::Phosphor::Amber => "amber",
+        }
+        .into()
     }
 
     pub fn sessions_to_open(&self) -> u8 {
