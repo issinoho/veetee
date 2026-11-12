@@ -6,20 +6,20 @@
 # an alias to bin\veetee.exe, which finds its DLLs beside itself as it would
 # anywhere else.
 PackageIdentifier: Issinoho.veetee
-PackageVersion: 1.11.1
+PackageVersion: 1.13.1
 MinimumOSVersion: 10.0.17763.0
 InstallerType: zip
 NestedInstallerType: portable
 NestedInstallerFiles:
-  - RelativeFilePath: veetee-1.11.1-x86_64-windows\bin\veetee.exe
+  - RelativeFilePath: veetee-1.13.1-x86_64-windows\bin\veetee.exe
     PortableCommandAlias: veetee
   # The headless driver, for recordings and conformance scripts.
-  - RelativeFilePath: veetee-1.11.1-x86_64-windows\bin\vt-headless.exe
+  - RelativeFilePath: veetee-1.13.1-x86_64-windows\bin\vt-headless.exe
     PortableCommandAlias: vt-headless
-ReleaseDate: 2026-10-24
+ReleaseDate: 2026-11-12
 Installers:
   - Architecture: x64
-    InstallerUrl: https://github.com/issinoho/veetee/releases/download/v1.11.1/veetee-1.11.1-x86_64-windows.zip
-    InstallerSha256: 5DE9878652FF97F15414483EEE475CF8F9467E7DC916646F28E7DD3FC859811E
+    InstallerUrl: https://github.com/issinoho/veetee/releases/download/v1.13.1/veetee-1.13.1-x86_64-windows.zip
+    InstallerSha256: F85D83B4959F29B3674D91F715E093FF063F232E8B7ADAB176121CBD0DA20EE1
 ManifestType: installer
 ManifestVersion: 1.6.0
