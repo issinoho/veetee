@@ -6,9 +6,9 @@
 
 use std::cell::{Cell, RefCell};
 
-use gtk::glib;
 use gtk::prelude::*;
 use gtk::subclass::prelude::*;
+use gtk::{gdk, glib};
 
 mod imp {
     use super::*;
@@ -33,7 +33,28 @@ mod imp {
 
     impl ObjectImpl for TerminalArea {}
     impl WidgetImpl for TerminalArea {}
-    impl GLAreaImpl for TerminalArea {}
+    impl GLAreaImpl for TerminalArea {
+        /// Desktop OpenGL 3.3 core where the display allows it, else OpenGL
+        /// ES 3.0, which the renderer also supports. Asking for 3.3 of
+        /// whichever API GTK chose means ES 3.3 under a GLES display, which
+        /// doesn't exist; Mesa then falls back to desktop GL, but NVIDIA's
+        /// EGL won't share a desktop context with GTK's ES one.
+        fn create_context(&self) -> Option<gdk::GLContext> {
+            let surface = self.obj().native()?.surface()?;
+            for (api, major, minor) in [(gdk::GLAPI::GL, 3, 3), (gdk::GLAPI::GLES, 3, 0)] {
+                let Ok(context) = surface.create_gl_context() else {
+                    break;
+                };
+                context.set_allowed_apis(api);
+                context.set_required_version(major, minor);
+                if context.realize().is_ok() {
+                    return Some(context);
+                }
+            }
+            // GTK's own attempt, which reports why it failed.
+            self.parent_create_context()
+        }
+    }
 
     impl AccessibleTextImpl for TerminalArea {
         fn caret_position(&self) -> u32 {

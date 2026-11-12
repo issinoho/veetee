@@ -67,6 +67,11 @@
   </supports>
   <content_rating type="oars-1.1"/>
   <releases>
+    <release version="1.13.1" date="2026-11-12">
+      <description>
+        <p>veetee now starts with NVIDIA's driver, falling back to OpenGL ES where desktop OpenGL can't share GTK's context, and the keyclick is a sharp tick that can be heard.</p>
+      </description>
+    </release>
     <release version="1.13.0" date="2026-11-08">
       <description>
         <p>Separate Sessions, in the window menu, gives each session of a window a window of its own, still connected, with its screen and scrollback as they were.</p>

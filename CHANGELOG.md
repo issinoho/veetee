@@ -8,6 +8,19 @@ Before 1.0 the minor version followed the project milestones (0.3 = M3). The for
 
 ## [Unreleased]
 
+## [1.13.1] - 2026-11-12
+
+**NVIDIA OpenGL and an audible keyclick**: veetee starts with NVIDIA's driver without a workaround, and the keyclick can be heard.
+
+- **Fixed: "Unable to create a GL context" with NVIDIA's driver.** veetee asked for OpenGL 3.3
+  of whichever API GTK chose, and when GTK chose OpenGL ES that meant ES 3.3, which doesn't
+  exist. Mesa fell back to desktop GL, but NVIDIA's EGL won't share a desktop context with GTK's
+  ES one. veetee now asks for desktop OpenGL 3.3 and, failing that, OpenGL ES 3.0, which the
+  renderer already supported; `GDK_DEBUG=gl-prefer-gl` is no longer needed.
+- **Fixed: the keyclick was too quiet to hear on many speakers.** It ramped up and down within
+  its 2 ms, which left about two cycles of a quiet tone. It is now a 3 ms tick that starts at full
+  volume, so it is heard as a click.
+
 ## [1.13.0] - 2026-11-08
 
 **A window for each session**: Separate Sessions splits a window of sessions into one window each.
@@ -950,7 +963,8 @@ The first release: VT100 through VT420 emulation with local, Telnet, SSH and ser
   `cargo deny` licence checks and parser fuzzing.
 - `cargo xtask dist` builds the release tarball and Debian package.
 
-[Unreleased]: https://github.com/issinoho/veetee/compare/v1.13.0...HEAD
+[Unreleased]: https://github.com/issinoho/veetee/compare/v1.13.1...HEAD
+[1.13.1]: https://github.com/issinoho/veetee/compare/v1.13.0...v1.13.1
 [1.13.0]: https://github.com/issinoho/veetee/compare/v1.12.0...v1.13.0
 [1.12.0]: https://github.com/issinoho/veetee/compare/v1.11.1...v1.12.0
 [1.11.1]: https://github.com/issinoho/veetee/compare/v1.11.0...v1.11.1

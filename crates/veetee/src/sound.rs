@@ -1,5 +1,5 @@
 //! The terminal's sounds: the warning and margin bells (125 ms beeps), the
-//! keyclick (a 2 ms beep) and DECPS notes (EK-VT520-RM section 2.17, DECPS).
+//! keyclick (a 3 ms tick with a sharp start) and DECPS notes (EK-VT520-RM section 2.17, DECPS).
 //!
 //! Sounds are synthesised as a soft square wave, like the keyboard beeper,
 //! and mixed on an audio thread. Bells and clicks play at once; DECPS notes
@@ -16,7 +16,13 @@ use vt_core::setup::Volume;
 // 🔎 The LK401/LK411 beeper pitch is not documented; C6 is a stand-in.
 const BEEP_HZ: f32 = 1046.5;
 const BELL_MS: u32 = 125;
-const CLICK_MS: u32 = 2;
+const CLICK_MS: u32 = 3;
+/// Rise and fall of a sound, in milliseconds. Bells and notes ease in and
+/// out so they don't click; the keyclick starts at once, so that it is
+/// heard as a click: with 1 ms ramps its 2 ms were two quiet cycles of
+/// tone, inaudible on small speakers.
+const SOFT_RAMP: (f32, f32) = (1.0, 1.0);
+const CLICK_RAMP: (f32, f32) = (0.05, 1.0);
 
 /// A sound to play.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -60,16 +66,26 @@ struct Voice {
     phase: f32,
     elapsed: u32,
     length: u32,
+    /// Rise and fall in samples.
+    attack: f32,
+    release: f32,
 }
 
 impl Voice {
     fn new(hz: f32, gain: f32, ms: u32, rate: f32) -> Voice {
+        Voice::shaped(hz, gain, ms, SOFT_RAMP, rate)
+    }
+
+    fn shaped(hz: f32, gain: f32, ms: u32, (attack, release): (f32, f32), rate: f32) -> Voice {
+        let samples = |ms: f32| (ms / 1000.0 * rate).max(1.0);
         Voice {
             hz,
             gain,
             phase: 0.0,
             elapsed: 0,
-            length: ((ms as f32 / 1000.0) * rate).max(1.0) as u32,
+            length: samples(ms as f32) as u32,
+            attack: samples(attack),
+            release: samples(release),
         }
     }
 
@@ -82,10 +98,10 @@ impl Voice {
         let t = self.phase * std::f32::consts::TAU;
         let wave = t.sin() + (3.0 * t).sin() / 3.0 + (5.0 * t).sin() / 5.0;
         self.phase = (self.phase + self.hz / rate).fract();
-        // 1 ms ramps at each end avoid clicks of their own.
-        let ramp = (rate / 1000.0).max(1.0);
         let pos = self.elapsed as f32;
-        let envelope = (pos / ramp).min(1.0).min((self.length as f32 - pos) / ramp);
+        let envelope = (pos / self.attack)
+            .min(1.0)
+            .min((self.length as f32 - pos) / self.release);
         self.elapsed += 1;
         wave * self.gain * envelope.max(0.0)
     }
@@ -117,7 +133,7 @@ impl Mixer {
             }
             Sound::Click(v) if v != Volume::Off => {
                 self.voices
-                    .push(Voice::new(BEEP_HZ, gain(v), CLICK_MS, rate))
+                    .push(Voice::shaped(BEEP_HZ, gain(v), CLICK_MS, CLICK_RAMP, rate))
             }
             // The VT520 buffers 16 notes; later ones would wait for room.
             Sound::Note {
@@ -280,7 +296,7 @@ mod tests {
     }
 
     #[test]
-    fn bell_lasts_125_ms_and_click_2_ms() {
+    fn bell_lasts_125_ms_and_click_3_ms() {
         let mut m = Mixer::new(8000.0);
         m.play(Sound::Bell(Volume::High));
         let bell = render(&mut m, 1100);
@@ -291,10 +307,21 @@ mod tests {
         );
         assert!(m.idle());
         m.play(Sound::Click(Volume::Low));
-        render(&mut m, 16);
-        assert!(m.idle(), "a click is 2 ms");
+        render(&mut m, 24);
+        assert!(m.idle(), "a click is 3 ms");
         m.play(Sound::Bell(Volume::Off));
         assert!(m.idle());
+    }
+
+    #[test]
+    fn a_click_is_loud_at_once() {
+        // Within the first half millisecond (a half cycle of the beep) the
+        // click is near full volume, not still ramping up.
+        let mut m = Mixer::new(48000.0);
+        m.play(Sound::Click(Volume::High));
+        let start = render(&mut m, 24);
+        let peak = start.iter().fold(0.0f32, |a, s| a.max(s.abs()));
+        assert!(peak > 0.15, "peak {peak}");
     }
 
     #[test]
