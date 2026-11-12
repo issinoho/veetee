@@ -1664,8 +1664,8 @@ impl Emulator {
     fn resize_tabs(&mut self, cols: usize) {
         let old = self.tabs.len();
         self.tabs.resize(cols, false);
-        for c in old..cols {
-            self.tabs[c] = c > 0 && c % TAB_WIDTH == 0;
+        for (c, tab) in self.tabs.iter_mut().enumerate().skip(old) {
+            *tab = c > 0 && c % TAB_WIDTH == 0;
         }
     }
 
